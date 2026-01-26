@@ -1,0 +1,55 @@
+#!/bin/bash
+# mkosi.postinst - Configure container for nested containerization
+
+set -e
+
+# Configure Podman registries (allow short names like "alpine")
+# The containers-common package creates /etc/containers
+if [ -d "$BUILDROOT/etc/containers" ]; then
+    mkdir -p "$BUILDROOT/etc/containers/registries.conf.d"
+    cat > "$BUILDROOT/etc/containers/registries.conf.d/10-unqualified-search.conf" << 'EOF'
+unqualified-search-registries = ["docker.io", "quay.io", "ghcr.io"]
+EOF
+fi
+
+# Configure subuid/subgid for root (for nested containers)
+echo "root:100000:65536" >> "$BUILDROOT/etc/subuid"
+echo "root:100000:65536" >> "$BUILDROOT/etc/subgid"
+
+# Enable cgroup controllers delegation for nested containers
+mkdir -p "$BUILDROOT/etc/systemd/system/user@.service.d/"
+cat > "$BUILDROOT/etc/systemd/system/user@.service.d/delegate.conf" << 'EOF'
+[Service]
+Delegate=cpu cpuset io memory pids
+EOF
+
+# Configure Podman to use fuse-overlayfs (works inside nspawn)
+if [ -d "$BUILDROOT/etc/containers" ]; then
+    cat > "$BUILDROOT/etc/containers/storage.conf" << 'EOF'
+[storage]
+driver = "overlay"
+runroot = "/run/containers/storage"
+graphroot = "/var/lib/containers/storage"
+
+[storage.options.overlay]
+mount_program = "/usr/bin/fuse-overlayfs"
+EOF
+fi
+
+# Enable lingering for rootless containers
+mkdir -p "$BUILDROOT/var/lib/systemd/linger"
+
+# Create a welcome message
+cat > "$BUILDROOT/etc/motd" << 'EOF'
+===========================================
+  nspawnbox Container (Arch Linux)
+  
+  Podman is available for nested containers:
+    podman run --rm alpine echo hello
+    
+  To test Docker compatibility:
+    podman run --rm docker.io/hello-world
+===========================================
+EOF
+
+echo "Post-installation configuration complete!"
