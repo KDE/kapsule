@@ -12,28 +12,13 @@ A distrobox-like tool using Incus as the container/VM backend, with native KDE/P
 
 ### Phase 1: Prototype (IN PROGRESS)
 
-**Objective:** Create an Arch Linux container via Incus with nested container support.
+**Objective:** Create a privileged Arch Linux container via Incus with nested container support.
 
 **Prerequisites:**
 - Incus installed and initialized (`incus admin init`)
 - User added to `incus-admin` group
 
-**Container profile for nested containers:**
-```yaml
-config:
-  security.nesting: "true"
-  security.syscalls.intercept.mknod: "true"
-  security.syscalls.intercept.setxattr: "true"
-devices:
-  eth0:
-    name: eth0
-    network: incusbr0
-    type: nic
-  root:
-    path: /
-    pool: default
-    type: disk
-```
+**Note:** Using privileged containers for v1 to simplify nested container support. Security hardening deferred to v2.
 
 **Packages to install inside container:**
 - Base: base, base-devel, systemd, dbus
@@ -44,17 +29,11 @@ devices:
 ### Setup Commands
 
 ```bash
-# Create a profile for nested container support
-incus profile create nested
-incus profile set nested security.nesting=true
-incus profile set nested security.syscalls.intercept.mknod=true
-incus profile set nested security.syscalls.intercept.setxattr=true
+# Launch a privileged Arch Linux container with host networking
+incus launch images:archlinux arch-container -c security.privileged=true -c raw.lxc="lxc.net.0.type=none"
 
-# Launch an Arch Linux container with the nested profile
-incus launch images:archlinux arch-container --profile default --profile nested
-
-# Or create a container without starting it
-incus init images:archlinux arch-container --profile default --profile nested
+# Or create without starting
+incus init images:archlinux arch-container -c security.privileged=true -c raw.lxc="lxc.net.0.type=none"
 
 # Start and enter the container
 incus start arch-container
@@ -75,10 +54,9 @@ podman run --rm docker.io/hello-world
 
 ### Immediate (Phase 1)
 - [ ] Install and initialize Incus on host
-- [ ] Create nested container profile
+- [ ] Launch privileged Arch container
 - [ ] Verify nested podman works inside the container
-- [ ] Test fuse-overlayfs storage driver
-- [ ] Ensure subuid/subgid mappings work for rootless podman
+- [ ] Test overlayfs storage driver (native, since privileged)
 
 ### Phase 2: CLI Tools
 - [ ] `incusbox-create` - Create containers from various distro images
@@ -131,18 +109,19 @@ podman run --rm docker.io/hello-world
 
 ## Key Technical Details
 
-### Nested Container Requirements
+### Nested Container Requirements (v1 - Privileged)
 
-For podman/docker inside Incus:
+For podman/docker inside privileged Incus containers:
 
-1. **security.nesting: "true"** - enables nested container support
-2. **security.syscalls.intercept.mknod: "true"** - allows mknod syscalls for device creation
-3. **security.syscalls.intercept.setxattr: "true"** - allows extended attributes
-4. **subuid/subgid:** Mappings in /etc/subuid and /etc/subgid inside container
+1. **security.privileged: "true"** - container runs with full root privileges
+2. Native overlayfs works directly (no fuse-overlayfs needed)
+3. All capabilities available, no syscall filtering
+
+**Security Note:** Privileged containers have no isolation from the host kernel. This is acceptable for development/trusted workloads.
 
 ### Storage Driver
 
-Podman inside Incus uses **fuse-overlayfs** because native overlayfs doesn't work with user namespaces in nested scenarios. Configured in `/etc/containers/storage.conf`.
+Podman inside privileged Incus containers can use native **overlayfs** directly. No special configuration needed.
 
 ### Comparison with Distrobox
 
@@ -154,16 +133,6 @@ Podman inside Incus uses **fuse-overlayfs** because native overlayfs doesn't wor
 | Desktop integration | Generic XDG | KDE-native |
 | Management | Custom scripts | incus CLI + custom |
 | Image source | Container registries | Incus images + custom |
-
-### Incus Advantages over systemd-nspawn
-
-- Built-in image server with many distros pre-built
-- Native VM support alongside containers
-- REST API for programmatic control
-- Clustering support for multi-host deployments
-- Snapshot and backup functionality
-- Network and storage management
-- Web UI available (incus-ui-canonical)
 
 ## References
 
