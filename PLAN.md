@@ -4,104 +4,628 @@ A distrobox-like tool using Incus as the container/VM backend, with native KDE/P
 
 **CLI:** `kapsule` (alias: `kap`)
 
+---
+
 ## Project Goals
 
 1. **Primary:** Create containers that can run docker/podman inside them (nested containerization)
 2. **Secondary:** Tight integration with KDE/Plasma (widget, KIO worker, System Settings module)
 3. **Long-term:** Full distrobox feature parity with Incus backend
 
-## Current Status
+---
 
-### Phase 1: Prototype (IN PROGRESS)
+## Technology Stack
 
-**Objective:** Create a privileged Arch Linux container via Incus with nested container support.
+### Architecture Overview
 
-**Prerequisites:**
-- Incus installed and initialized (`incus admin init`)
-- User added to `incus-admin` group
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    KDE Components (C++/QML)                     │
+│   Plasma Widget  │  KIO Worker  │  KCM  │  Konsole Integration  │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ D-Bus (org.kde.kapsule)
+┌────────────────────────────▼────────────────────────────────────┐
+│                    kapsule-daemon (Python)                      │
+│   • D-Bus service for container lifecycle                       │
+│   • Incus REST API client                                       │
+│   • Feature → profile mapping                                   │
+│   • Polkit integration for authorization                        │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ Unix socket (REST)
+┌────────────────────────────▼────────────────────────────────────┐
+│                       Incus Daemon                              │
+│                /var/lib/incus/unix.socket                       │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-**Note:** Using privileged containers for v1 to simplify nested container support. Security hardening deferred to v2.
+### Why This Architecture
 
-**Packages to install inside container:**
-- Base: base, base-devel, systemd, dbus
-- Container runtime: podman, buildah, skopeo, fuse-overlayfs, slirp4netns, crun, netavark, aardvark-dns, passt
-- User namespaces: shadow (newuidmap/newgidmap)
-- Networking: iptables, nftables, iproute2
+| Decision | Rationale |
+|----------|-----------|
+| **Python daemon** | Incus REST API is trivial with `httpx`. Fast iteration. No CGO/native binding complexity. |
+| **D-Bus boundary** | Clean separation. KDE components only need to call D-Bus methods. Standard Linux IPC. |
+| **C++ only where required** | KIO workers and KCM backends must be C++ (Qt plugin API). Keep them thin - just D-Bus calls. |
+| **Python CLI** | Same codebase as daemon. `click` for argument parsing. Instant development velocity. |
 
-### Setup Commands
+### Component Languages
+
+| Component | Language | Build System | Framework |
+|-----------|----------|--------------|-----------|
+| `kapsule` CLI | Python 3.11+ | meson + setuptools | click |
+| `kapsule-daemon` | Python 3.11+ | meson + setuptools | dbus-next, httpx |
+| `libkapsule-qt` | C++ | CMake | Qt6, KF6 |
+| Plasma Widget | QML | CMake | libplasma |
+| KIO Worker | C++ | CMake | KIO |
+| KCM Module | QML + C++ | CMake | KDeclarative |
+
+### Python Dependencies
+
+```
+# Core
+httpx           # Async HTTP client with Unix socket support
+dbus-next       # Modern async D-Bus library  
+click           # CLI framework
+pyyaml          # Profile/config parsing
+pydantic        # Data validation
+
+# Development
+pytest
+pytest-asyncio
+black
+ruff
+mypy
+```
+
+---
+
+## Project Structure
+
+```
+kapsule/
+├── meson.build                     # Top-level build (coordinates Python + C++)
+├── pyproject.toml                  # Python package definition
+│
+├── src/
+│   └── kapsule/                    # Python package
+│       ├── __init__.py
+│       ├── cli/                    # CLI commands
+│       │   ├── __init__.py
+│       │   ├── main.py             # Entry point
+│       │   ├── create.py
+│       │   ├── enter.py
+│       │   ├── list.py
+│       │   └── rm.py
+│       ├── daemon/                 # D-Bus service
+│       │   ├── __init__.py
+│       │   ├── service.py          # org.kde.kapsule implementation
+│       │   └── polkit.py           # Authorization helpers
+│       ├── incus/                  # Incus REST client
+│       │   ├── __init__.py
+│       │   ├── client.py           # HTTP client wrapper
+│       │   ├── containers.py       # Container operations
+│       │   ├── images.py           # Image operations
+│       │   └── profiles.py         # Profile operations
+│       ├── features/               # Feature → profile mapping
+│       │   ├── __init__.py
+│       │   ├── registry.py         # Feature definitions
+│       │   └── resolver.py         # --with/--without logic
+│       └── config.py               # Configuration handling
+│
+├── kde/                            # KDE/Qt components (C++)
+│   ├── CMakeLists.txt
+│   ├── libkapsule-qt/              # Qt wrapper around D-Bus
+│   │   ├── CMakeLists.txt
+│   │   ├── kapsuleclient.h
+│   │   ├── kapsuleclient.cpp
+│   │   └── container.h
+│   ├── kio/                        # KIO worker
+│   │   ├── CMakeLists.txt
+│   │   └── kio_kapsule.cpp
+│   ├── kcm/                        # System Settings module
+│   │   ├── CMakeLists.txt
+│   │   ├── kcm_kapsule.cpp
+│   │   └── ui/
+│   │       └── main.qml
+│   └── plasmoid/                   # Plasma widget
+│       ├── CMakeLists.txt
+│       └── package/
+│           ├── metadata.json
+│           └── contents/
+│               └── ui/
+│                   └── main.qml
+│
+├── data/
+│   ├── profiles/                   # Default Incus profiles (YAML)
+│   │   ├── kapsule-base.yaml
+│   │   ├── kapsule-graphics.yaml
+│   │   ├── kapsule-audio.yaml
+│   │   ├── kapsule-dbus.yaml
+│   │   ├── kapsule-home.yaml
+│   │   └── kapsule-gpu.yaml
+│   ├── dbus/
+│   │   ├── org.kde.kapsule.service
+│   │   └── org.kde.kapsule.conf
+│   ├── polkit/
+│   │   └── org.kde.kapsule.policy
+│   ├── systemd/
+│   │   ├── kapsule-daemon.service
+│   │   └── kapsule-init.service
+│   └── applications/
+│       └── org.kde.kapsule.desktop
+│
+├── scripts/
+│   ├── kapsule-firstboot.sh        # First-boot initialization
+│   └── container-setup.sh          # Runs inside new containers
+│
+└── tests/
+    ├── conftest.py
+    ├── test_cli/
+    ├── test_incus/
+    └── test_daemon/
+```
+
+---
+
+## Building with kde-builder
+
+### kde-builder Configuration
+
+Add to `~/.config/kde-builder.yaml`:
+
+```yaml
+# Custom project: Kapsule
+project kapsule:
+  repository: https://invent.kde.org/utilities/kapsule.git
+  branch: main
+  # Meson handles Python, CMake handles C++/Qt parts
+  override-build-system: meson
+  meson-options: -Dkde_components=true
+
+# KDE dependencies needed for the Qt components
+group kapsule-kde-deps:
+  repository: kde-projects
+  use-projects:
+    - frameworks/extra-cmake-modules
+    - frameworks/ki18n
+    - frameworks/kcoreaddons
+    - frameworks/kconfig
+    - frameworks/kio
+    - frameworks/kirigami
+    - plasma/libplasma
+```
+
+### Build Commands
 
 ```bash
-# Launch a privileged Arch Linux container with host networking
-incus launch images:archlinux arch-container -c security.privileged=true -c raw.lxc="lxc.net.0.type=none"
+# Build kapsule and all KDE dependencies
+kde-builder kapsule
 
-# Or create without starting
-incus init images:archlinux arch-container -c security.privileged=true -c raw.lxc="lxc.net.0.type=none"
+# Build only, no source update
+kde-builder --no-src kapsule
 
-# Start and enter the container
-incus start arch-container
-incus exec arch-container -- bash
+# Run the CLI
+kde-builder --run kapsule -- --help
 
-# Install packages inside the container
-pacman -Syu podman buildah skopeo fuse-overlayfs slirp4netns crun netavark aardvark-dns passt
+# Run the daemon (for development)
+kde-builder --run kapsule -- daemon
 ```
 
-### Test nested containers (inside Incus container)
+### Meson Build Configuration
+
+```meson
+# meson.build
+project('kapsule', 
+  version: '0.1.0',
+  meson_version: '>= 1.0.0',
+)
+
+# Python components
+python = import('python')
+py = python.find_installation('python3', required: true)
+
+# Install Python package
+py.install_sources(
+  'src/kapsule/__init__.py',
+  # ... all Python files
+  subdir: 'kapsule',
+)
+
+# Install CLI entry point
+install_data('scripts/kapsule', install_dir: get_option('bindir'))
+
+# Install data files
+install_subdir('data/profiles', install_dir: get_option('datadir') / 'kapsule')
+install_data('data/dbus/org.kde.kapsule.service', 
+  install_dir: get_option('datadir') / 'dbus-1/system-services')
+install_data('data/polkit/org.kde.kapsule.policy',
+  install_dir: get_option('datadir') / 'polkit-1/actions')
+install_data('data/systemd/kapsule-daemon.service',
+  install_dir: get_option('prefix') / 'lib/systemd/system')
+
+# KDE components (optional, requires Qt/KF6)
+if get_option('kde_components')
+  subdir('kde')
+endif
+```
+
+---
+
+## D-Bus API
+
+### Service Definition
+
+**Bus:** System bus (for Polkit integration)  
+**Name:** `org.kde.kapsule`  
+**Path:** `/org/kde/kapsule`
+
+### Interface: `org.kde.kapsule.Manager`
+
+```xml
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+  "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node name="/org/kde/kapsule">
+  <interface name="org.kde.kapsule.Manager">
+    
+    <!-- Container lifecycle -->
+    <method name="CreateContainer">
+      <arg name="name" type="s" direction="in"/>
+      <arg name="image" type="s" direction="in"/>
+      <arg name="features" type="as" direction="in"/>
+      <arg name="container_path" type="o" direction="out"/>
+    </method>
+    
+    <method name="DeleteContainer">
+      <arg name="name" type="s" direction="in"/>
+      <arg name="force" type="b" direction="in"/>
+    </method>
+    
+    <method name="StartContainer">
+      <arg name="name" type="s" direction="in"/>
+    </method>
+    
+    <method name="StopContainer">
+      <arg name="name" type="s" direction="in"/>
+      <arg name="force" type="b" direction="in"/>
+    </method>
+    
+    <!-- Queries -->
+    <method name="ListContainers">
+      <arg name="containers" type="a(ssss)" direction="out"/>
+      <!-- Returns array of (name, status, image, created) -->
+    </method>
+    
+    <method name="GetContainer">
+      <arg name="name" type="s" direction="in"/>
+      <arg name="info" type="a{sv}" direction="out"/>
+    </method>
+    
+    <!-- Shell access -->
+    <method name="GetShellCommand">
+      <arg name="name" type="s" direction="in"/>
+      <arg name="command" type="as" direction="out"/>
+      <!-- Returns ["incus", "exec", "name", "--", "sudo", "-u", "user", "-i"] -->
+    </method>
+    
+    <method name="EnsureDefaultContainer">
+      <arg name="name" type="s" direction="out"/>
+      <!-- Creates user's default container if missing, returns name -->
+    </method>
+    
+    <!-- Features (maps to Incus profiles internally) -->
+    <method name="ListFeatures">
+      <arg name="features" type="as" direction="out"/>
+      <!-- Returns: ["graphics", "audio", "home", "gpu", ...] -->
+    </method>
+    
+    <!-- Signals -->
+    <signal name="ContainerStateChanged">
+      <arg name="name" type="s"/>
+      <arg name="state" type="s"/>
+    </signal>
+    
+    <!-- Properties -->
+    <property name="Version" type="s" access="read"/>
+    <property name="IncusAvailable" type="b" access="read"/>
+    
+  </interface>
+</node>
+```
+
+### Polkit Actions
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>KDE</vendor>
+  <vendor_url>https://kde.org</vendor_url>
+
+  <!-- Enter container - no password for active desktop session -->
+  <action id="org.kde.kapsule.enter-container">
+    <description>Enter a Kapsule container</description>
+    <message>Authentication is required to enter the container</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <!-- Create/delete containers - password once, cached -->
+  <action id="org.kde.kapsule.manage-container">
+    <description>Create or delete Kapsule containers</description>
+    <message>Authentication is required to manage containers</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <!-- System initialization - admin only -->
+  <action id="org.kde.kapsule.initialize">
+    <description>Initialize Kapsule system</description>
+    <message>Authentication is required to initialize Kapsule</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+</policyconfig>
+```
+
+---
+
+## CLI Design
+
+### Commands
 
 ```bash
-podman run --rm alpine echo "hello from nested container"
-podman run --rm docker.io/hello-world
+# Container lifecycle
+kapsule create <name> [--image IMAGE] [--with FEATURE]... [--without FEATURE]...
+kapsule rm <name> [--force]
+kapsule start <name>
+kapsule stop <name> [--force]
+
+# Enter containers
+kapsule enter <name>              # Interactive shell
+kapsule exec <name> -- <command>  # Run command
+
+# List and inspect
+kapsule list                      # List all containers
+kapsule info <name>               # Container details
+
+# Application export (distrobox-style)
+kapsule export <name> <app>       # Export .desktop file to host
+
+# Feature management
+kapsule features                  # List available features
+kapsule features show <name>      # Show feature details
+
+# System
+kapsule init                      # First-time setup
+kapsule daemon                    # Run D-Bus daemon (for development)
+
+# Examples
+kap create arch-dev                              # All default features
+kap create arch-dev --without audio              # Exclude audio
+kap create arch-dev --without audio --without gpu  # Minimal graphics
+kap create headless --without graphics --without audio --without gpu
+kap enter arch-dev
 ```
 
-## Known Issues / TODO
+### Example CLI Implementation
 
-### Immediate (Phase 1)
-- [ ] Install and initialize Incus on host
-- [ ] Launch privileged Arch container
-- [ ] Verify nested podman works inside the container
-- [ ] Test overlayfs storage driver (native, since privileged)
+```python
+# src/kapsule/cli/main.py
+import click
+import asyncio
+from kapsule.daemon.client import KapsuleClient
 
-### Phase 2: CLI Tools
-- [ ] `kapsule-create` - Create containers from various distro images
-- [ ] `kapsule-enter` - Enter containers (wrapper around incus exec)
-- [ ] `kapsule-export` - Export applications to host (modify .desktop files)
-- [ ] `kapsule-rm` - Remove containers
-- [ ] `kapsule-list` - List containers with status
+@click.group()
+@click.version_option()
+@click.pass_context
+def cli(ctx):
+    """Kapsule - Incus-based container manager with KDE integration."""
+    ctx.ensure_object(dict)
+    ctx.obj['client'] = KapsuleClient()
 
-### Phase 3: Profile Management
-- [ ] Design composable profile system
-- [ ] Create base profiles for common features
-- [ ] Implement profile generation in CLI tools
+@cli.command()
+@click.argument('name')
+@click.option('--image', '-i', default='archlinux', help='Base image')
+@click.option('--with', 'with_features', multiple=True, help='Features to enable')
+@click.option('--without', 'without_features', multiple=True, help='Features to disable')
+@click.pass_context
+def create(ctx, name, image, with_features, without_features):
+    """Create a new container.
+    
+    By default, all features are enabled (graphics, audio, home, gpu).
+    Use --without to disable specific features.
+    """
+    client = ctx.obj['client']
+    features = resolve_features(with_features, without_features)
+    asyncio.run(client.create_container(name, image, features))
+    click.echo(f"✓ Created container: {name}")
 
-### Phase 4: KDE Integration
-- [ ] D-Bus service (`org.kde.kapsule`) for container lifecycle
-- [ ] Plasma widget showing container status and quick actions
-- [ ] KIO worker (`kapsule://container/path`) for Dolphin integration
-- [ ] KCM System Settings module for configuration
+@cli.command()
+@click.argument('name')
+@click.pass_context
+def enter(ctx, name):
+    """Enter a container shell."""
+    import os
+    client = ctx.obj['client']
+    cmd = asyncio.run(client.get_shell_command(name))
+    os.execvp(cmd[0], cmd)
 
-### Phase 5: Advanced Features
-- [ ] VM support via Incus VMs for stronger isolation
-- [ ] Home directory integration (like distrobox)
-- [ ] GPU acceleration (bind GPU device)
+@cli.command('list')
+@click.pass_context
+def list_containers(ctx):
+    """List all containers."""
+    client = ctx.obj['client']
+    containers = asyncio.run(client.list_containers())
+    
+    if not containers:
+        click.echo("No containers found. Create one with: kapsule create <name>")
+        return
+    
+    click.echo(f"{'NAME':<20} {'STATUS':<10} {'IMAGE':<15} {'CREATED'}")
+    click.echo("-" * 60)
+    for c in containers:
+        click.echo(f"{c.name:<20} {c.status:<10} {c.image:<15} {c.created}")
 
-## Profile Management Strategy
+def main():
+    cli(obj={})
 
-### Composable Profiles
-
-Use Incus's native profile stacking to combine features. Each profile handles one concern:
-
+if __name__ == '__main__':
+    main()
 ```
-┌────────────────────────────────────────────────────────────┐
-│                    Container Instance                       │
-├────────────────────────────────────────────────────────────┤
-│  default + kapsule-base + graphics + audio + home + gpu   │
-└────────────────────────────────────────────────────────────┘
+
+---
+
+## Incus REST Client
+
+```python
+# src/kapsule/incus/client.py
+from typing import Any
+import httpx
+
+class IncusClient:
+    """Low-level client for Incus REST API over Unix socket."""
+    
+    def __init__(self, socket_path: str = "/var/lib/incus/unix.socket"):
+        transport = httpx.HTTPTransport(uds=socket_path)
+        self._client = httpx.Client(
+            transport=transport,
+            base_url="http://localhost",
+            timeout=30.0,
+        )
+    
+    def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
+        """Make request and handle Incus response format."""
+        response = self._client.request(method, path, **kwargs)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Incus wraps responses in {"type": "sync/async", "metadata": ...}
+        if data.get("type") == "error":
+            raise IncusError(data.get("error", "Unknown error"))
+        
+        return data.get("metadata", data)
+    
+    def get(self, path: str) -> dict[str, Any]:
+        return self._request("GET", path)
+    
+    def post(self, path: str, json: dict = None) -> dict[str, Any]:
+        return self._request("POST", path, json=json)
+    
+    def put(self, path: str, json: dict = None) -> dict[str, Any]:
+        return self._request("PUT", path, json=json)
+    
+    def delete(self, path: str) -> dict[str, Any]:
+        return self._request("DELETE", path)
+
+
+# src/kapsule/incus/containers.py
+from dataclasses import dataclass
+from .client import IncusClient
+
+@dataclass
+class Container:
+    name: str
+    status: str
+    image: str
+    created: str
+    profiles: list[str]
+
+class ContainerManager:
+    """High-level container operations."""
+    
+    def __init__(self, client: IncusClient):
+        self._client = client
+    
+    def list(self) -> list[Container]:
+        """List all containers."""
+        instances = self._client.get("/1.0/instances")
+        containers = []
+        for path in instances:
+            name = path.split("/")[-1]
+            info = self._client.get(f"/1.0/instances/{name}")
+            containers.append(Container(
+                name=name,
+                status=info["status"],
+                image=info.get("config", {}).get("image.description", "unknown"),
+                created=info["created_at"],
+                profiles=info.get("profiles", []),
+            ))
+        return containers
+    
+    def create(self, name: str, image: str, profiles: list[str]) -> Container:
+        """Create a new container."""
+        self._client.post("/1.0/instances", json={
+            "name": name,
+            "source": {
+                "type": "image",
+                "alias": image,
+            },
+            "profiles": profiles,
+        })
+        # Wait for creation, then return info
+        return self.get(name)
+    
+    def get(self, name: str) -> Container:
+        """Get container info."""
+        info = self._client.get(f"/1.0/instances/{name}")
+        return Container(
+            name=name,
+            status=info["status"],
+            image=info.get("config", {}).get("image.description", "unknown"),
+            created=info["created_at"],
+            profiles=info.get("profiles", []),
+        )
+    
+    def start(self, name: str) -> None:
+        """Start a container."""
+        self._client.put(f"/1.0/instances/{name}/state", json={
+            "action": "start",
+        })
+    
+    def stop(self, name: str, force: bool = False) -> None:
+        """Stop a container."""
+        self._client.put(f"/1.0/instances/{name}/state", json={
+            "action": "stop",
+            "force": force,
+        })
+    
+    def delete(self, name: str) -> None:
+        """Delete a container."""
+        self._client.delete(f"/1.0/instances/{name}")
 ```
+
+---
+
+## Features (Incus Profiles)
+
+User-facing **features** map to Incus **profiles** internally:
+
+| Feature | Incus Profile | Description |
+|---------|---------------|-------------|
+| (base) | `kapsule-base` | Always applied - privileged container, host networking |
+| `graphics` | `kapsule-graphics` | Wayland/X11 display access |
+| `audio` | `kapsule-audio` | PipeWire/PulseAudio access |
+| `dbus` | `kapsule-dbus` | Session D-Bus access |
+| `home` | `kapsule-home` | Mount home directory |
+| `gpu` | `kapsule-gpu` | GPU passthrough |
+
+**Default:** All features enabled. Users disable with `--without`.
 
 ### Profile Definitions
 
-Store profiles in `~/.config/kapsule/profiles/` or `/etc/kapsule/profiles/`:
+Stored in `/usr/share/kapsule/profiles/` (system) and `~/.config/kapsule/profiles/` (user).
 
-**kapsule-base** (always applied)
+**kapsule-base.yaml** (always applied)
 ```yaml
 config:
   security.privileged: "true"
@@ -109,7 +633,7 @@ config:
     lxc.net.0.type=none
 ```
 
-**kapsule-graphics** (Wayland + X11 fallback)
+**kapsule-graphics.yaml** (Wayland + X11)
 ```yaml
 config:
   environment.DISPLAY: "${DISPLAY}"
@@ -124,13 +648,9 @@ devices:
     type: disk
     source: /tmp/.X11-unix
     path: /tmp/.X11-unix
-  xauth:
-    type: disk
-    source: "${XAUTHORITY}"
-    path: "/run/user/1000/.Xauthority"
 ```
 
-**kapsule-audio** (PipeWire/PulseAudio)
+**kapsule-audio.yaml** (PipeWire/PulseAudio)
 ```yaml
 devices:
   pipewire:
@@ -143,18 +663,7 @@ devices:
     path: "/run/user/1000/pulse"
 ```
 
-**kapsule-dbus** (session bus access)
-```yaml
-config:
-  environment.DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus"
-devices:
-  dbus:
-    type: disk
-    source: "${XDG_RUNTIME_DIR}/bus"
-    path: "/run/user/1000/bus"
-```
-
-**kapsule-home** (home directory mount)
+**kapsule-home.yaml** (home directory)
 ```yaml
 devices:
   home:
@@ -163,7 +672,7 @@ devices:
     path: "${HOME}"
 ```
 
-**kapsule-gpu** (GPU passthrough)
+**kapsule-gpu.yaml** (GPU passthrough)
 ```yaml
 devices:
   gpu:
@@ -171,497 +680,31 @@ devices:
     gid: "video"
 ```
 
-### CLI Usage
+---
 
-```bash
-# Create container with specific features
-kapsule create arch-dev --graphics --audio --dbus --home
-# Or using the short alias:
-kap create arch-dev --graphics --audio --dbus --home
+## KDE Linux Integration
 
-# This translates to:
-incus launch images:archlinux arch-dev \
-  --profile default \
-  --profile kapsule-base \
-  --profile kapsule-graphics \
-  --profile kapsule-audio \
-  --profile kapsule-dbus \
-  --profile kapsule-home
-
-# Or use presets
-kap create arch-dev --preset desktop  # graphics + audio + dbus + home + gpu
-kap create arch-dev --preset minimal  # base only
-kap create arch-dev --preset server   # base + dbus
-```
-
-### Profile Installation
-
-On first run, `kapsule init` registers all profiles with Incus:
-
-```bash
-kapsule init
-# Creates: kapsule-base, kapsule-graphics, kapsule-audio, etc.
-# Stores user config in ~/.config/kapsule/config.yaml
-```
-
-### Variable Expansion
-
-Profiles use environment variable placeholders that get expanded at container creation time:
-- `${HOME}` → `/home/fernie`
-- `${XDG_RUNTIME_DIR}` → `/run/user/1000`
-- `${WAYLAND_DISPLAY}` → `wayland-0`
-- `${DISPLAY}` → `:0`
-
-The CLI tool handles this expansion before passing to Incus.
-
-## Architecture
+### Build-Time Components (in KDE Linux image)
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      User Interface                      │
-├──────────────┬──────────────┬──────────────┬────────────┤
-│ CLI Tools    │ Plasma Widget│ KCM Module   │ KIO Worker │
-│ (kapsule)   │ (status/mgmt)│ (settings)   │ (file acc) │
-└──────────────┴──────────────┴──────────────┴────────────┘
-                              │
-┌─────────────────────────────────────────────────────────┐
-│                     D-Bus Service                        │
-│                    org.kde.kapsule                      │
-└─────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────┐
-│                    Core Library                          │
-│  - Container creation/management                         │
-│  - Profile configuration                                 │
-│  - Bind mount configuration                              │
-│  - Application export                                    │
-└─────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────┐
-│                         Incus                            │
-│              (incus CLI / REST API / liblxc)             │
-└─────────────────────────────────────────────────────────┘
-```
-
-## Key Technical Details
-
-### Nested Container Requirements (v1 - Privileged)
-
-For podman/docker inside privileged Incus containers:
-
-1. **security.privileged: "true"** - container runs with full root privileges
-2. Native overlayfs works directly (no fuse-overlayfs needed)
-3. All capabilities available, no syscall filtering
-
-**Security Note:** Privileged containers have no isolation from the host kernel. This is acceptable for development/trusted workloads.
-
-### Storage Driver
-
-Podman inside privileged Incus containers can use native **overlayfs** directly. No special configuration needed.
-
-### Comparison with Distrobox
-
-| Feature | Distrobox | kapsule (planned) |
-|---------|-----------|---------------------|
-| Backend | podman/docker | Incus (containers/VMs) |
-| Init system | None (container) | Full systemd |
-| Isolation | Container namespaces | Container or VM |
-| Desktop integration | Generic XDG | KDE-native |
-| Management | Custom scripts | incus CLI + custom |
-| Image source | Container registries | Incus images + custom |
-
-## KDE Linux Integration (Immutable Distro)
-
-KDE Linux is an immutable distro where the root filesystem is read-only and atomic updates replace the entire system image. This creates a clear separation between what's "baked in" at image build time vs what happens at runtime.
-
-### Build-Time (Baked into KDE Linux Image)
-
-These components should be part of the KDE Linux image itself:
-
-#### 1. **Core Incus/Container Infrastructure**
-```
-/usr/bin/incus              # Incus CLI
-/usr/lib/incus/             # Incus daemon and tools
-/usr/bin/kapsule            # Our CLI tool
-/usr/bin/kap                # Symlink to kapsule (short alias)
-/usr/lib/kapsule/           # Core library
-```
-
-#### 2. **Default Configuration (Read-Only)**
-```
-/usr/share/kapsule/
-├── profiles/               # Default profile templates
-│   ├── kapsule-base.yaml
-│   ├── kapsule-graphics.yaml
-│   ├── kapsule-audio.yaml
-│   ├── kapsule-dbus.yaml
-│   ├── kapsule-home.yaml
-│   └── kapsule-gpu.yaml
-├── images/                 # Pre-packaged container rootfs (optional)
-│   └── arch-container.tar  # Compressed container image
-├── presets/
-│   ├── desktop.yaml        # graphics + audio + dbus + home + gpu
-│   ├── minimal.yaml        # base only
-│   └── server.yaml         # base + dbus
-└── defaults.yaml           # Default settings
-```
-
-#### 3. **KDE Integration Components**
-```
-/usr/lib/systemd/user/org.kde.kapsule.service  # D-Bus service (user session)
-/usr/share/dbus-1/services/org.kde.kapsule.service
-/usr/share/plasma/plasmoids/org.kde.kapsule/   # Plasma widget
-/usr/lib/qt6/plugins/kf6/kio/kapsule.so        # KIO worker
-/usr/share/kpackage/kcms/kcm_kapsule/          # System Settings module
-/usr/share/applications/org.kde.kapsule.desktop
-```
-
-#### 4. **Systemd Units (Templates)**
-```
-/usr/lib/systemd/system/incus.service           # Incus daemon
-/usr/lib/systemd/system/incus.socket            # Socket activation
-/usr/lib/tmpfiles.d/kapsule.conf               # Runtime directory setup
-/usr/lib/sysusers.d/kapsule.conf               # incus-admin group creation
-```
-
-#### 5. **Polkit Rules**
-```
+/usr/bin/kapsule                              # CLI (Python)
+/usr/bin/kap                                  # Symlink to kapsule
+/usr/lib/python3.x/site-packages/kapsule/    # Python package
+/usr/lib/kapsule/kapsule-firstboot.sh        # First-boot script
+/usr/share/kapsule/profiles/*.yaml           # Default profiles
+/usr/share/kapsule/images/arch.tar.zst       # Pre-bundled image (~300MB)
+/usr/share/dbus-1/system-services/org.kde.kapsule.service
 /usr/share/polkit-1/actions/org.kde.kapsule.policy
-/usr/share/polkit-1/rules.d/50-kapsule.rules
+/usr/lib/systemd/system/kapsule-daemon.service
+/usr/lib/systemd/system/kapsule-init.service
+
+# KDE components
+/usr/lib/qt6/plugins/kf6/kio/kapsule.so      # KIO worker
+/usr/share/plasma/plasmoids/org.kde.kapsule/ # Plasma widget
+/usr/lib/qt6/plugins/plasma/kcms/kcm_kapsule.so
 ```
 
----
-
-### First-Boot / System Setup (Runs Once After Install)
-
-These happen on first boot via systemd-firstboot or a custom first-boot service:
-
-#### 1. **Incus Initialization**
-```bash
-# Initialize Incus storage and networking
-# This creates /var/lib/incus/ structure
-incus admin init --minimal --auto
-
-# Or with ZFS if available
-incus admin init --storage-backend=zfs --storage-pool=incus
-```
-
-#### 2. **User Group Setup**
-```bash
-# Already handled by sysusers.d, but first user needs to be added
-usermod -aG incus-admin $FIRST_USER
-```
-
-#### 3. **Import Pre-bundled Container Image (Optional)**
-```bash
-# If we ship a pre-built container image
-if [[ -f /usr/share/kapsule/images/arch-container.tar ]]; then
-    incus image import /usr/share/kapsule/images/arch-container.tar --alias kapsule/arch
-fi
-```
-
----
-
-### Runtime (Per-User, On-Demand)
-
-These happen when a user first runs kapsule or creates containers:
-
-#### 1. **User Configuration (Writable)**
-```
-~/.config/kapsule/
-├── config.yaml             # User preferences (default distro, presets, etc.)
-├── profiles/               # User-defined custom profiles
-└── containers.d/           # Per-container overrides
-```
-
-#### 2. **Incus Profile Registration**
-```bash
-# On first run, register profiles from /usr/share/kapsule/profiles/ + user profiles
-# Profiles are registered with Incus (stored in /var/lib/incus/)
-kapsule init  # Idempotent - checks if profiles exist first
-```
-
-#### 3. **Container Creation**
-```bash
-# Download image (if not pre-bundled) and create container
-kapsule create arch-dev --preset desktop
-
-# This:
-# 1. Fetches images:archlinux (cached in /var/lib/incus/images/)
-# 2. Creates container with merged profiles
-# 3. Runs init script inside container
-```
-
-#### 4. **Session Integration**
-```bash
-# D-Bus service starts on demand via socket activation
-# Plasma widget queries org.kde.kapsule for container status
-# KIO worker mounts container filesystem on demand
-```
-
----
-
-### Data Locations on KDE Linux
-
-| Path | Type | Purpose |
-|------|------|---------|
-| `/usr/share/kapsule/` | Immutable | Default profiles, presets, bundled images |
-| `/etc/kapsule/` | Mutable (config) | System-wide overrides (admin can customize) |
-| `/var/lib/incus/` | Mutable (state) | Incus storage pools, images, containers |
-| `/var/lib/kapsule/` | Mutable (state) | Global cache, shared container data |
-| `~/.config/kapsule/` | User config | Per-user preferences and custom profiles |
-| `~/.local/share/kapsule/` | User data | Exported .desktop files, icons |
-
----
-
-### First-Run Flow (User Perspective)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  User clicks "Kapsule" in app launcher or Plasma widget        │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Check: Is user in incus-admin group?                           │
-│  NO → Prompt to add user (requires logout/login or newgrp)      │
-│  YES → Continue                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Check: Is Incus initialized? (/var/lib/incus/database exists?) │
-│  NO → Run incus admin init (may need Polkit elevation)          │
-│  YES → Continue                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Check: Are kapsule profiles registered?                       │
-│  NO → Run kapsule init (register profiles with Incus)          │
-│  YES → Continue                                                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Show container list (empty on first run)                       │
-│  Offer: "Create your first container" wizard                    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-### Pre-Bundled vs Downloaded Images
-
-**Option A: Pre-bundle a base container image**
-- Pros: Instant container creation, works offline, consistent experience
-- Cons: Larger KDE Linux image size (+500MB-1GB), may get stale
-
-**Option B: Download on first use**
-- Pros: Smaller base image, always fresh, user chooses distro
-- Cons: Requires network, slower first-run experience
-
-**Recommendation: Hybrid Approach**
-- Ship a minimal "kapsule-ready" Arch image (~300MB compressed) for instant first container
-- Allow downloading other distros (Ubuntu, Fedora, etc.) on demand
-- Cache downloaded images in `/var/lib/incus/images/`
-
----
-
-### Systemd Integration for KDE Linux
-
-**kapsule-firstboot.service** (runs once)
-```ini
-[Unit]
-Description=Kapsule First Boot Setup
-ConditionPathExists=!/var/lib/kapsule/.initialized
-After=incus.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/lib/kapsule/firstboot.sh
-ExecStartPost=/usr/bin/touch /var/lib/kapsule/.initialized
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**firstboot.sh**
-```bash
-#!/bin/bash
-# Initialize Incus if not already done
-if ! incus admin init --dump &>/dev/null; then
-    incus admin init --minimal --auto
-fi
-
-# Import bundled container image
-if [[ -f /usr/share/kapsule/images/arch-container.tar.zst ]]; then
-    zstd -d /usr/share/kapsule/images/arch-container.tar.zst -o /tmp/arch.tar
-    incus image import /tmp/arch.tar --alias kapsule/arch
-    rm /tmp/arch.tar
-fi
-
-# Register default profiles
-for profile in /usr/share/kapsule/profiles/*.yaml; do
-    name=$(basename "$profile" .yaml)
-    if ! incus profile show "$name" &>/dev/null; then
-        incus profile create "$name"
-        incus profile edit "$name" < "$profile"
-    fi
-done
-```
-
----
-
-### Summary: Build vs Runtime
-
-| Component | Build Time | First Boot | First Run (User) | On Demand |
-|-----------|:----------:|:----------:|:----------------:|:---------:|
-| Incus binaries | ✓ | | | |
-| kapsule CLI/lib | ✓ | | | |
-| KDE integration (widget, KIO, KCM) | ✓ | | | |
-| Default profile templates | ✓ | | | |
-| Pre-bundled container image | ✓ | | | |
-| Incus initialization | | ✓ | | |
-| Profile registration with Incus | | ✓ | | |
-| Image import to Incus | | ✓ | | |
-| User added to incus-admin | | ✓* | | |
-| User config (~/.config/kapsule) | | | ✓ | |
-| Container creation | | | | ✓ |
-| Image download (non-bundled) | | | | ✓ |
-
-*First user added automatically; subsequent users via System Settings
-
----
-
-## Seamless First-Run: Konsole Defaults to Kapsule
-
-### The Challenge
-
-If Konsole defaults to opening inside an kapsule container, the **entire dependency chain must succeed** on the very first terminal launch—with zero user intervention.
-
-```
-User clicks Konsole
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ DEPENDENCY CHAIN (all must be true)                             │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. Incus daemon running                                         │
-│ 2. User authorized to use Incus (THE HARD ONE)                  │
-│ 3. Incus storage/network initialized                            │
-│ 4. Kapsule profiles registered                                 │
-│ 5. Container image available                                    │
-│ 6. Default container exists                                     │
-│ 7. Container is running (or starts instantly)                   │
-│ 8. User session inside container works                          │
-└─────────────────────────────────────────────────────────────────┘
-       │
-       ▼
-User sees shell prompt inside container
-```
-
-**If ANY step fails, user gets a broken terminal.** Unacceptable.
-
----
-
-### Blocker Analysis & Mitigations
-
-#### Blocker 1: Incus Daemon Not Running
-
-**Problem:** Service could be disabled, crashed, or not yet started.
-
-**Mitigation:**
-- Use **socket activation** (`incus.socket`) - daemon starts on first connection
-- Mark `incus.socket` as `WantedBy=sockets.target` (enabled by default)
-- Konsole wrapper checks socket exists before attempting connection
-
-```ini
-# /usr/lib/systemd/system/incus.socket
-[Socket]
-ListenStream=/var/lib/incus/unix.socket
-
-[Install]
-WantedBy=sockets.target
-```
-
-**Fallback:** If socket doesn't exist after 2s, fall back to host shell.
-
----
-
-#### Blocker 2: User Not Authorized for Incus (THE BIG ONE)
-
-**Problem:** Traditional approach requires user in `incus-admin` group. But:
-- Group membership requires logout/login to take effect
-- Can't add user to group at image build time (user doesn't exist)
-- First-boot can add user to group, but they haven't logged out yet
-
-**Why this is critical:** User logs in → clicks Konsole → `incus exec` fails with permission denied → broken first experience.
-
-**Solution: Eliminate the Group Requirement**
-
-Use a **privileged system service** that performs Incus operations on behalf of users, authorized via Polkit:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         User Session                             │
-│  Konsole → kapsule-enter → D-Bus call                          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼ (D-Bus, authorized by Polkit)
-┌─────────────────────────────────────────────────────────────────┐
-│              org.kde.kapsule (System Service)                   │
-│                     Runs as root                                 │
-│                                                                  │
-│  Methods:                                                        │
-│    .EnsureDefaultContainer() → creates if missing, starts it    │
-│    .GetShellCommand() → returns "incus exec default -- ..."     │
-│    .EnterContainer(name) → returns PTY fd or exec command       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         Incus Daemon                             │
-│                 (accessed by root-owned service)                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Polkit Policy** (`/usr/share/polkit-1/actions/org.kde.kapsule.policy`):
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE policyconfig PUBLIC
- "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
-<policyconfig>
-  <action id="org.kde.kapsule.enter-container">
-    <description>Enter an kapsule container</description>
-    <message>Authentication is required to enter the container</message>
-    <defaults>
-      <allow_any>auth_admin</allow_any>
-      <allow_inactive>auth_admin</allow_inactive>
-      <allow_active>yes</allow_active>  <!-- No password for active session! -->
-    </defaults>
-  </action>
-  
-  <action id="org.kde.kapsule.manage-container">
-    <description>Create or delete kapsule containers</description>
-    <defaults>
-      <allow_active>auth_admin_keep</allow_active>  <!-- Password once, cached -->
-    </defaults>
-  </action>
-</policyconfig>
-```
-
-**Result:** Active desktop users can enter containers without password. Creating/deleting requires one password prompt (cached).
-
----
-
-#### Blocker 3: Incus Not Initialized
-
-**Problem:** Fresh install has no storage pools or network configuration.
-
-**Mitigation:** First-boot service handles this before user ever logs in.
+### First-Boot Service
 
 ```ini
 # /usr/lib/systemd/system/kapsule-init.service
@@ -670,11 +713,11 @@ Description=Initialize Kapsule
 ConditionPathExists=!/var/lib/kapsule/.initialized
 After=incus.socket
 Requires=incus.socket
-Before=display-manager.service  # CRITICAL: before user can log in!
+Before=display-manager.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/lib/kapsule/init-incus.sh
+ExecStart=/usr/lib/kapsule/kapsule-firstboot.sh
 ExecStartPost=/usr/bin/touch /var/lib/kapsule/.initialized
 RemainAfterExit=yes
 
@@ -682,296 +725,78 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 ```
 
-**Ordering guarantee:** `Before=display-manager.service` ensures init completes before SDDM shows login screen.
-
----
-
-#### Blocker 4: Profiles Not Registered
-
-**Problem:** Kapsule profiles must be in Incus's database.
-
-**Mitigation:** Same first-boot service registers all profiles:
-
-```bash
-# /usr/lib/kapsule/init-incus.sh
-#!/bin/bash
-set -e
-
-# Initialize Incus (idempotent)
-incus admin init --minimal --auto 2>/dev/null || true
-
-# Register profiles
-for profile in /usr/share/kapsule/profiles/*.yaml; do
-    name=$(basename "$profile" .yaml)
-    incus profile show "$name" &>/dev/null || {
-        incus profile create "$name"
-        incus profile edit "$name" < "$profile"
-    }
-done
-
-# Import bundled image
-if [[ -f /usr/share/kapsule/images/arch.tar.zst ]] && \
-   ! incus image show kapsule/arch &>/dev/null; then
-    incus image import /usr/share/kapsule/images/arch.tar.zst --alias kapsule/arch
-fi
-```
-
----
-
-#### Blocker 5: Container Image Not Available
-
-**Problem:** Downloading an image takes 30-120 seconds on first run. Unacceptable for first terminal launch.
-
-**Mitigation:** **Ship a pre-built image in the KDE Linux ISO.**
+### Runtime Data
 
 ```
-/usr/share/kapsule/images/arch.tar.zst  (~300MB compressed)
-```
-
-First-boot imports it to Incus. No network required for first container.
-
-**Fallback for non-bundled distros:** Show progress in Konsole:
-```
-Downloading Fedora 41 image... [████████░░░░░░░░░░░░] 42%
-```
-
----
-
-#### Blocker 6: Default Container Doesn't Exist
-
-**Problem:** Container must be created before user can enter it.
-
-**Two strategies:**
-
-**Strategy A: Pre-create at first boot (recommended)**
-- Add to `init-incus.sh`: create a default container for the first user
-- Challenge: We don't know the username yet at first boot
-
-**Strategy B: Create on first Konsole launch**
-- System service creates container on-demand
-- Fast if using ZFS/btrfs (instant clone from image)
-- 2-5 second delay on first launch
-
-**Hybrid approach:**
-```bash
-# In init-incus.sh - create a template container
-incus init kapsule/arch kapsule-template \
-    --profile default \
-    --profile kapsule-base
-
-# First user login triggers clone + customization
-# (handled by org.kde.kapsule service)
-```
-
-**On first Konsole launch:**
-```python
-# Pseudocode in org.kde.kapsule service
-def ensure_user_container(user):
-    container_name = f"kapsule-{user}"
-    if not container_exists(container_name):
-        # Instant clone from template (ZFS/btrfs) or copy (slower)
-        incus_copy("kapsule-template", container_name)
-        configure_user_mapping(container_name, user)
-    if not container_running(container_name):
-        incus_start(container_name)
-    return container_name
-```
-
----
-
-#### Blocker 7: Container Startup Time
-
-**Problem:** Booting systemd inside container takes 2-5 seconds.
-
-**Mitigations:**
-
-1. **Keep container running persistently**
-   ```ini
-   # Container configured with:
-   boot.autostart: "true"
-   boot.autostart.priority: 0
-   ```
-
-2. **Socket-activated container start**
-   - Container starts when Konsole tries to connect
-   - Show brief "Starting container..." message
-
-3. **Warm container pool**
-   - Keep template container in "frozen" state (cgroup freezer)
-   - Clone from frozen state → instant resume
-   - More complex but <100ms startup
-
-**Recommended:** Keep default container running. It uses minimal resources when idle (~10MB RAM for sleeping systemd).
-
----
-
-#### Blocker 8: User Identity Inside Container
-
-**Problem:** User inside container must match host user:
-- Same username
-- Same UID/GID (for home directory access)
-- Same home directory path
-
-**Mitigation:** Configure idmap and bind mounts per-user:
-
-```yaml
-# Dynamic profile created per user
-config:
-  raw.idmap: |
-    uid 1000 1000
-    gid 1000 1000
-  user.user: "fernie"
-  
-devices:
-  home:
-    type: disk
-    source: /home/fernie
-    path: /home/fernie
-```
-
-**On first enter, run setup inside container:**
-```bash
-# Create user inside container matching host user
-useradd -u 1000 -g 1000 -d /home/fernie -s /bin/zsh fernie
-```
-
----
-
-### The Complete First-Run Timeline
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     FIRST BOOT (before login)                    │
-│                        ~30-60 seconds                            │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. incus.socket activated                                        │
-│ 2. kapsule-init.service runs:                                   │
-│    - incus admin init                                            │
-│    - Import bundled image                                        │
-│    - Register profiles                                           │
-│    - Create template container                                   │
-│ 3. display-manager.service starts (login screen appears)         │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     USER LOGS IN                                 │
-├─────────────────────────────────────────────────────────────────┤
-│ - Plasma session starts                                          │
-│ - org.kde.kapsule user service activates (D-Bus)                │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                FIRST KONSOLE LAUNCH (~3 seconds)                 │
-├─────────────────────────────────────────────────────────────────┤
-│ 1. Konsole calls org.kde.kapsule.EnsureDefaultContainer()       │
-│ 2. Service clones template → kapsule-fernie (instant w/ ZFS)    │
-│ 3. Service configures user mapping for fernie                    │
-│ 4. Service starts container (systemd boot, ~2-3s)                │
-│ 5. Service creates user inside container                         │
-│ 6. Konsole runs: incus exec kapsule-fernie -- sudo -u fernie -i │
-│ 7. User sees shell prompt                                        │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│               SUBSEQUENT KONSOLE LAUNCHES (<500ms)               │
-├─────────────────────────────────────────────────────────────────┤
-│ Container already running → instant shell                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-### Failure Handling: Never Leave User Without a Shell
-
-**Critical principle:** If kapsule fails, Konsole MUST fall back to host shell.
-
-```python
-# Konsole profile logic (pseudocode)
-def get_shell_command():
-    try:
-        container = kapsule_service.EnsureDefaultContainer(timeout=10)
-        return f"incus exec {container} -- sudo -u {USER} -i"
-    except KapsuleError as e:
-        notify_user(f"Container unavailable: {e}. Opening host shell.")
-        return "/bin/zsh"  # Fallback to host
-    except TimeoutError:
-        notify_user("Container taking too long to start. Opening host shell.")
-        return "/bin/zsh"
-```
-
-**Visual indicator in shell prompt:**
-```bash
-# Inside container - show container name
-PS1="📦 kapsule-fernie $ "
-
-# Host shell (fallback) - clear indication
-PS1="🖥️ kde-linux $ "
-```
-
-**Konsole tab title:**
-- Container: "kapsule-fernie: ~"
-- Host (fallback): "⚠️ KDE Linux (host): ~"
-
----
-
-### Edge Cases to Handle
-
-| Scenario | Handling |
-|----------|----------|
-| **Incus daemon crashes mid-session** | Terminal keeps working (existing exec survives). New terminals fall back to host. |
-| **Container OOMs / crashes** | Konsole shows error, offers "Restart container" or "Open host shell" |
-| **Disk full - can't create container** | Fall back to host, show notification with "Free up space" action |
-| **User deleted container accidentally** | Service recreates on next Konsole launch |
-| **Multiple users on same machine** | Each user gets their own container (kapsule-alice, kapsule-bob) |
-| **System update replaces base image** | Existing containers keep running, new containers use new image |
-| **Offline first boot** | Works - bundled image, no network needed |
-| **Corporate proxy blocks image download** | Only affects non-default distros, default works offline |
-
----
-
-### Required Components Summary
-
-**Ship in KDE Linux Image:**
-```
-/usr/bin/incus
-/usr/bin/kapsule
-/usr/lib/kapsule/init-incus.sh
-/usr/lib/systemd/system/incus.socket
-/usr/lib/systemd/system/kapsule-init.service
-/usr/share/dbus-1/system-services/org.kde.kapsule.service
-/usr/share/polkit-1/actions/org.kde.kapsule.policy
-/usr/share/kapsule/images/arch.tar.zst           # ~300MB
-/usr/share/kapsule/profiles/*.yaml
-/usr/share/konsole/Kapsule.profile               # Konsole profile using kapsule
-```
-
-**Runtime state:**
-```
-/var/lib/incus/                     # Incus database, images, containers
+/var/lib/incus/                    # Incus storage, containers
 /var/lib/kapsule/.initialized      # First-boot marker
-~/.config/kapsule/                 # User preferences
+~/.config/kapsule/config.yaml      # User preferences
+~/.config/kapsule/profiles/        # Custom profiles
+~/.local/share/kapsule/            # Exported .desktop files
 ```
 
 ---
 
-### Open Questions
+## Development Phases
 
-1. **Storage backend:** ZFS enables instant clones but requires ZFS on host. btrfs also works. ext4 falls back to full copy (~5-10s for 1GB container). Should KDE Linux mandate ZFS/btrfs?
+### Phase 1: Core Python Package
+- [ ] Project structure with meson build
+- [ ] Incus REST client (`httpx` + Unix socket)
+- [ ] Container CRUD operations
+- [ ] Basic CLI (create, list, enter, rm)
+- [ ] Test against real Incus instance
 
-2. **Container persistence:** Should user changes inside container persist across reboots? (Default: yes, container has its own writable rootfs)
+### Phase 2: D-Bus Service
+- [ ] D-Bus daemon with `dbus-next`
+- [ ] Polkit integration for authorization
+- [ ] CLI talks to daemon instead of Incus directly
+- [ ] Systemd service file
 
-3. **Multiple containers:** Should Konsole have a dropdown to select container, or always use default? (Recommend: default, with right-click menu for others)
+### Phase 3: Feature System
+- [ ] Feature ↔ profile mapping
+- [ ] Profile YAML loading and validation
+- [ ] Variable expansion (`${HOME}`, `${XDG_RUNTIME_DIR}`, etc.)
+- [ ] Profile registration with Incus
 
-4. **System Settings integration:** Should there be a KCM to "reset container to defaults" / "switch default distro"?
+### Phase 4: KDE Components
+- [ ] `libkapsule-qt` - D-Bus wrapper for Qt
+- [ ] Plasma widget (container status, quick actions)
+- [ ] KIO worker (`kapsule://container/path`)
+- [ ] KCM System Settings module
 
-5. **Updates:** How do container base images get updated? Pull new image and rebuild container? Pacman -Syu inside container?
+### Phase 5: KDE Linux Integration
+- [ ] First-boot service
+- [ ] Pre-bundled container image
+- [ ] Konsole integration (default to container)
+- [ ] Seamless first-run experience
+
+### Phase 6: Advanced Features
+- [ ] Application export (distrobox-style `.desktop` files)
+- [ ] VM support for stronger isolation
+- [ ] Container updates/rebuilds
+- [ ] Multi-user support
+
+---
+
+## Nested Container Requirements (v1 - Privileged)
+
+For podman/docker inside privileged Incus containers:
+
+1. **security.privileged: "true"** - container runs with full root privileges
+2. Native overlayfs works directly (no fuse-overlayfs needed)
+3. All capabilities available, no syscall filtering
+
+**Security Note:** Privileged containers have no isolation from the host kernel. Acceptable for development/trusted workloads. Security hardening (unprivileged containers with user namespaces) planned for v2.
+
+---
 
 ## References
 
 - [Incus documentation](https://linuxcontainers.org/incus/docs/main/)
+- [Incus REST API](https://linuxcontainers.org/incus/docs/main/rest-api/)
 - [Incus images](https://images.linuxcontainers.org/)
 - [Distrobox source](https://github.com/89luca89/distrobox)
-- [Arch Wiki: Incus](https://wiki.archlinux.org/title/Incus)
+- [kde-builder documentation](https://kde-builder.kde.org/)
+- [KDE Frameworks 6](https://develop.kde.org/docs/frameworks/)
+- [dbus-next (Python D-Bus)](https://python-dbus-next.readthedocs.io/)
+- [httpx (Python HTTP client)](https://www.python-httpx.org/)
