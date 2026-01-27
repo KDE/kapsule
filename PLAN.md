@@ -45,13 +45,13 @@ A distrobox-like tool using Incus as the container/VM backend, with native KDE/P
 | **Python daemon** | Incus REST API is trivial with `httpx`. Fast iteration. No CGO/native binding complexity. |
 | **D-Bus boundary** | Clean separation. KDE components only need to call D-Bus methods. Standard Linux IPC. |
 | **C++ only where required** | KIO workers and KCM backends must be C++ (Qt plugin API). Keep them thin - just D-Bus calls. |
-| **Python CLI** | Same codebase as daemon. `click` for argument parsing. Instant development velocity. |
+| **Python CLI** | Same codebase as daemon. `typer` for argument parsing. Instant development velocity. |
 
 ### Component Languages
 
 | Component | Language | Build System | Framework |
 |-----------|----------|--------------|-----------|
-| `kapsule` CLI | Python 3.11+ | meson + setuptools | click |
+| `kapsule` CLI | Python 3.11+ | meson + setuptools | typer |
 | `kapsule-daemon` | Python 3.11+ | meson + setuptools | dbus-next, httpx |
 | `libkapsule-qt` | C++ | CMake | Qt6, KF6 |
 | Plasma Widget | QML | CMake | libplasma |
@@ -64,7 +64,8 @@ A distrobox-like tool using Incus as the container/VM backend, with native KDE/P
 # Core
 httpx           # Async HTTP client with Unix socket support
 dbus-next       # Modern async D-Bus library  
-click           # CLI framework
+typer           # CLI framework (type hints based)
+rich            # Beautiful terminal output (typer dependency)
 pyyaml          # Profile/config parsing
 pydantic        # Data validation
 
@@ -421,66 +422,79 @@ kap enter arch-dev
 
 ```python
 # src/kapsule/cli/main.py
-import click
 import asyncio
+from typing import Annotated, Optional
+
+import typer
+from rich import print
+from rich.table import Table
+
 from kapsule.daemon.client import KapsuleClient
+from kapsule.features import resolve_features
 
-@click.group()
-@click.version_option()
-@click.pass_context
-def cli(ctx):
-    """Kapsule - Incus-based container manager with KDE integration."""
-    ctx.ensure_object(dict)
-    ctx.obj['client'] = KapsuleClient()
+app = typer.Typer(help="Kapsule - Incus-based container manager with KDE integration.")
+client = KapsuleClient()
 
-@cli.command()
-@click.argument('name')
-@click.option('--image', '-i', default='archlinux', help='Base image')
-@click.option('--with', 'with_features', multiple=True, help='Features to enable')
-@click.option('--without', 'without_features', multiple=True, help='Features to disable')
-@click.pass_context
-def create(ctx, name, image, with_features, without_features):
+
+@app.command()
+def create(
+    name: str,
+    image: Annotated[str, typer.Option("--image", "-i", help="Base image")] = "archlinux",
+    with_features: Annotated[list[str], typer.Option("--with", help="Features to enable")] = [],
+    without: Annotated[list[str], typer.Option(help="Features to disable")] = [],
+):
     """Create a new container.
     
     By default, all features are enabled (graphics, audio, home, gpu).
     Use --without to disable specific features.
     """
-    client = ctx.obj['client']
-    features = resolve_features(with_features, without_features)
+    features = resolve_features(with_features, without)
     asyncio.run(client.create_container(name, image, features))
-    click.echo(f"✓ Created container: {name}")
+    print(f"[green]✓[/green] Created container: [bold]{name}[/bold]")
 
-@cli.command()
-@click.argument('name')
-@click.pass_context
-def enter(ctx, name):
+
+@app.command()
+def enter(name: str):
     """Enter a container shell."""
     import os
-    client = ctx.obj['client']
     cmd = asyncio.run(client.get_shell_command(name))
     os.execvp(cmd[0], cmd)
 
-@cli.command('list')
-@click.pass_context
-def list_containers(ctx):
+
+@app.command("list")
+def list_containers():
     """List all containers."""
-    client = ctx.obj['client']
     containers = asyncio.run(client.list_containers())
     
     if not containers:
-        click.echo("No containers found. Create one with: kapsule create <name>")
+        print("No containers found. Create one with: [bold]kapsule create <name>[/bold]")
         return
     
-    click.echo(f"{'NAME':<20} {'STATUS':<10} {'IMAGE':<15} {'CREATED'}")
-    click.echo("-" * 60)
+    table = Table()
+    table.add_column("Name", style="cyan")
+    table.add_column("Status")
+    table.add_column("Image")
+    table.add_column("Created")
+    
     for c in containers:
-        click.echo(f"{c.name:<20} {c.status:<10} {c.image:<15} {c.created}")
+        status_style = "green" if c.status == "Running" else "dim"
+        table.add_row(c.name, f"[{status_style}]{c.status}[/]", c.image, c.created)
+    
+    print(table)
 
-def main():
-    cli(obj={})
 
-if __name__ == '__main__':
-    main()
+@app.command()
+def rm(
+    name: str,
+    force: Annotated[bool, typer.Option("--force", "-f", help="Force removal")] = False,
+):
+    """Remove a container."""
+    asyncio.run(client.delete_container(name, force))
+    print(f"[green]✓[/green] Removed container: [bold]{name}[/bold]")
+
+
+if __name__ == "__main__":
+    app()
 ```
 
 ---
