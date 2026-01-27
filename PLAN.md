@@ -65,18 +65,150 @@ podman run --rm docker.io/hello-world
 - [ ] `incusbox-rm` - Remove containers
 - [ ] `incusbox-list` - List containers with status
 
-### Phase 3: KDE Integration
+### Phase 3: Profile Management
+- [ ] Design composable profile system
+- [ ] Create base profiles for common features
+- [ ] Implement profile generation in CLI tools
+
+### Phase 4: KDE Integration
 - [ ] D-Bus service (`org.kde.incusbox`) for container lifecycle
 - [ ] Plasma widget showing container status and quick actions
 - [ ] KIO worker (`incusbox://container/path`) for Dolphin integration
 - [ ] KCM System Settings module for configuration
 
-### Phase 4: Advanced Features
+### Phase 5: Advanced Features
 - [ ] VM support via Incus VMs for stronger isolation
 - [ ] Home directory integration (like distrobox)
-- [ ] Graphics passthrough (X11/Wayland)
-- [ ] Audio passthrough (PipeWire/PulseAudio)
 - [ ] GPU acceleration (bind GPU device)
+
+## Profile Management Strategy
+
+### Composable Profiles
+
+Use Incus's native profile stacking to combine features. Each profile handles one concern:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                    Container Instance                       │
+├────────────────────────────────────────────────────────────┤
+│  default + incusbox-base + graphics + audio + home + gpu   │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Profile Definitions
+
+Store profiles in `~/.config/incusbox/profiles/` or `/etc/incusbox/profiles/`:
+
+**incusbox-base** (always applied)
+```yaml
+config:
+  security.privileged: "true"
+  raw.lxc: |
+    lxc.net.0.type=none
+```
+
+**incusbox-graphics** (Wayland + X11 fallback)
+```yaml
+config:
+  environment.DISPLAY: "${DISPLAY}"
+  environment.WAYLAND_DISPLAY: "${WAYLAND_DISPLAY}"
+  environment.XDG_RUNTIME_DIR: "/run/user/1000"
+devices:
+  wayland:
+    type: disk
+    source: "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}"
+    path: "/run/user/1000/${WAYLAND_DISPLAY}"
+  x11:
+    type: disk
+    source: /tmp/.X11-unix
+    path: /tmp/.X11-unix
+  xauth:
+    type: disk
+    source: "${XAUTHORITY}"
+    path: "/run/user/1000/.Xauthority"
+```
+
+**incusbox-audio** (PipeWire/PulseAudio)
+```yaml
+devices:
+  pipewire:
+    type: disk
+    source: "${XDG_RUNTIME_DIR}/pipewire-0"
+    path: "/run/user/1000/pipewire-0"
+  pulse:
+    type: disk
+    source: "${XDG_RUNTIME_DIR}/pulse"
+    path: "/run/user/1000/pulse"
+```
+
+**incusbox-dbus** (session bus access)
+```yaml
+config:
+  environment.DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus"
+devices:
+  dbus:
+    type: disk
+    source: "${XDG_RUNTIME_DIR}/bus"
+    path: "/run/user/1000/bus"
+```
+
+**incusbox-home** (home directory mount)
+```yaml
+devices:
+  home:
+    type: disk
+    source: "${HOME}"
+    path: "${HOME}"
+```
+
+**incusbox-gpu** (GPU passthrough)
+```yaml
+devices:
+  gpu:
+    type: gpu
+    gid: "video"
+```
+
+### CLI Usage
+
+```bash
+# Create container with specific features
+incusbox create arch-dev --graphics --audio --dbus --home
+
+# This translates to:
+incus launch images:archlinux arch-dev \
+  --profile default \
+  --profile incusbox-base \
+  --profile incusbox-graphics \
+  --profile incusbox-audio \
+  --profile incusbox-dbus \
+  --profile incusbox-home
+
+# Or use presets
+incusbox create arch-dev --preset desktop  # graphics + audio + dbus + home + gpu
+incusbox create arch-dev --preset minimal  # base only
+incusbox create arch-dev --preset server   # base + dbus
+```
+
+### Profile Installation
+
+On first run, `incusbox init` registers all profiles with Incus:
+
+```bash
+incusbox init
+# Creates: incusbox-base, incusbox-graphics, incusbox-audio, etc.
+# Stores user config in ~/.config/incusbox/config.yaml
+```
+
+### Variable Expansion
+
+Profiles use environment variable placeholders that get expanded at container creation time:
+- `${HOME}` → `/home/fernie`
+- `${XDG_RUNTIME_DIR}` → `/run/user/1000`
+- `${WAYLAND_DISPLAY}` → `wayland-0`
+- `${DISPLAY}` → `:0`
+
+The CLI tool handles this expansion before passing to Incus.
 
 ## Architecture
 
