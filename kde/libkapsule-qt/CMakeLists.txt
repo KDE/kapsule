@@ -26,7 +26,7 @@ ecm_generate_export_header(KapsuleQt
     EXPORT_FILE_NAME kapsule_export.h
     GROUP_BASE_NAME KDE
     VERSION ${KAPSULE_VERSION}
-    USE_VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/../kapsule_version.h"
+    USE_VERSION_HEADER "${CMAKE_BINARY_DIR}/kapsule_version.h"
     DEPRECATED_BASE_VERSION 0
     DEPRECATION_VERSIONS
     EXCLUDE_DEPRECATED_BEFORE_AND_AT ${EXCLUDE_DEPRECATED_BEFORE_AND_AT}
@@ -114,7 +114,7 @@ configure_package_config_file(
 
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/KapsuleConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/../KapsuleConfigVersion.cmake"
+    "${CMAKE_BINARY_DIR}/KapsuleConfigVersion.cmake"
     DESTINATION ${CMAKECONFIG_INSTALL_DIR}
     COMPONENT Devel
 )
