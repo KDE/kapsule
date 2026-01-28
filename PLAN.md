@@ -52,7 +52,7 @@ A distrobox-like tool using Incus as the container/VM backend, with native KDE/P
 | Component | Language | Build System | Framework |
 |-----------|----------|--------------|-----------|
 | `kapsule` CLI | Python 3.11+ | CMake | typer |
-| `kapsule-daemon` | Python 3.11+ | CMake | dbus-next, httpx |
+| `kapsule-daemon` | Python 3.11+ | CMake | dbus-fast, httpx |
 | `libkapsule-qt` | C++ | CMake | Qt6, KF6 |
 | Plasma Widget | QML | CMake | libplasma |
 | KIO Worker | C++ | CMake | KIO |
@@ -63,11 +63,11 @@ A distrobox-like tool using Incus as the container/VM backend, with native KDE/P
 ```
 # Core
 httpx           # Async HTTP client with Unix socket support
-dbus-next       # Modern async D-Bus library  
+dbus-fast       # Fast async D-Bus library (Cython-accelerated)
 typer           # CLI framework (type hints based)
 rich            # Beautiful terminal output (typer dependency)
 pyyaml          # Profile/config parsing
-pydantic        # Data validation
+pydantic        # Data validation (also used for Incus API models)
 
 # Development
 pytest
@@ -88,83 +88,38 @@ kapsule/
 │
 ├── src/
 │   ├── cli/                        # Python CLI package (kapsule)
-│   │   ├── __init__.py             # Package init with version
+│   │   ├── __init__.py
 │   │   └── main.py                 # CLI entry point (typer app)
 │   │
-│   ├── daemon/                     # D-Bus service
+│   ├── daemon/                     # D-Bus service + Incus client
 │   │   ├── __init__.py
-│   │   ├── service.py              # org.kde.kapsule implementation
-│   │   └── polkit.py               # Authorization helpers
-│   │
-│   ├── incus/                      # Incus REST client
-│   │   ├── __init__.py
-│   │   ├── client.py               # HTTP client wrapper
-│   │   ├── containers.py           # Container operations
-│   │   ├── images.py               # Image operations
-│   │   └── profiles.py             # Profile operations
-│   │
-│   ├── features/                   # Feature → profile mapping
-│   │   ├── __init__.py
-│   │   ├── registry.py             # Feature definitions
-│   │   └── resolver.py             # --with/--without logic
-│   │
-│   ├── config.py                   # Configuration handling
+│   │   ├── __main__.py             # Entry point: python -m src.daemon
+│   │   ├── service.py              # org.kde.kapsule.Manager interface
+│   │   ├── incus_client.py         # Async Incus REST client
+│   │   └── models_generated.py     # Pydantic models from Incus OpenAPI
 │   │
 │   ├── libkapsule-qt/              # Qt wrapper for D-Bus API
 │   │   ├── CMakeLists.txt
-│   │   ├── kapsuleclient.h         # KapsuleClient class
-│   │   ├── kapsuleclient.cpp
-│   │   ├── container.h             # Container data class
-│   │   ├── container.cpp
+│   │   ├── kapsuleclient.h/.cpp    # KapsuleClient class
+│   │   ├── container.h/.cpp        # Container data class
 │   │   └── KapsuleConfig.cmake.in
 │   │
-│   ├── kio/                        # KIO worker
-│   │   ├── CMakeLists.txt
-│   │   └── kio_kapsule.cpp
-│   │
-│   ├── kcm/                        # System Settings module
-│   │   ├── CMakeLists.txt
-│   │   ├── kcm_kapsule.cpp
-│   │   └── ui/
-│   │       └── main.qml
-│   │
-│   └── plasmoid/                   # Plasma widget
-│       ├── CMakeLists.txt
-│       └── package/
-│           ├── metadata.json
-│           └── contents/
-│               └── ui/
-│                   └── main.qml
+│   ├── kio/                        # KIO worker (planned)
+│   ├── kcm/                        # System Settings module (planned)
+│   └── plasmoid/                   # Plasma widget (planned)
 │
 ├── scripts/
 │   ├── kapsule.in                  # Launcher script template
-│   ├── kapsule-firstboot.sh        # First-boot initialization
-│   └── container-setup.sh          # Runs inside new containers
+│   └── update_incus_models.py      # Regenerate models from OpenAPI
 │
-├── data/
+├── data/                           # (planned)
 │   ├── profiles/                   # Default Incus profiles (YAML)
-│   │   ├── kapsule-base.yaml
-│   │   ├── kapsule-graphics.yaml
-│   │   ├── kapsule-audio.yaml
-│   │   ├── kapsule-dbus.yaml
-│   │   ├── kapsule-home.yaml
-│   │   └── kapsule-gpu.yaml
-│   ├── dbus/
-│   │   ├── org.kde.kapsule.service
-│   │   └── org.kde.kapsule.conf
-│   ├── polkit/
-│   │   └── org.kde.kapsule.policy
-│   ├── systemd/
-│   │   ├── kapsule-daemon.service
-│   │   └── kapsule-init.service
-│   └── applications/
-│       └── org.kde.kapsule.desktop
+│   ├── dbus/                       # D-Bus service/config files
+│   ├── polkit/                     # Polkit policy
+│   └── systemd/                    # Systemd service files
 │
 └── tests/
-    ├── conftest.py
-    ├── test_cli/
-    ├── test_incus/
-    └── test_daemon/
+    └── ...
 ```
 
 ---
@@ -238,81 +193,62 @@ VENDOR_PYTHON_DEPS      # ON by default - vendors Python dependencies
 
 ### Service Definition
 
-**Bus:** System bus (for Polkit integration)  
+**Bus:** Session bus (development) or System bus (production, for Polkit)  
 **Name:** `org.kde.kapsule`  
 **Path:** `/org/kde/kapsule`
 
-### Interface: `org.kde.kapsule.Manager`
+### Interface: `org.kde.kapsule.Manager` (Implemented)
+
+Current implementation in `src/daemon/service.py`:
+
+```
+interface org.kde.kapsule.Manager {
+  methods:
+    ListContainers() -> a(ssss)      # Returns [(name, status, image, created), ...]
+    IsIncusAvailable() -> b          # Check if Incus daemon is accessible
+    GetShellCommand(name: s) -> as   # Get command to enter container
+  signals:
+    ContainerStateChanged(name: s, state: s)
+    OperationProgress(op_id: s, stage: s, progress: d, message: s)
+  properties:
+    readonly s Version
+}
+```
+
+### Planned Methods (Not Yet Implemented)
 
 ```xml
-<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
-  "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
-<node name="/org/kde/kapsule">
-  <interface name="org.kde.kapsule.Manager">
-    
-    <!-- Container lifecycle -->
-    <method name="CreateContainer">
-      <arg name="name" type="s" direction="in"/>
-      <arg name="image" type="s" direction="in"/>
-      <arg name="features" type="as" direction="in"/>
-      <arg name="container_path" type="o" direction="out"/>
-    </method>
-    
-    <method name="DeleteContainer">
-      <arg name="name" type="s" direction="in"/>
-      <arg name="force" type="b" direction="in"/>
-    </method>
-    
-    <method name="StartContainer">
-      <arg name="name" type="s" direction="in"/>
-    </method>
-    
-    <method name="StopContainer">
-      <arg name="name" type="s" direction="in"/>
-      <arg name="force" type="b" direction="in"/>
-    </method>
-    
-    <!-- Queries -->
-    <method name="ListContainers">
-      <arg name="containers" type="a(ssss)" direction="out"/>
-      <!-- Returns array of (name, status, image, created) -->
-    </method>
-    
-    <method name="GetContainer">
-      <arg name="name" type="s" direction="in"/>
-      <arg name="info" type="a{sv}" direction="out"/>
-    </method>
-    
-    <!-- Shell access -->
-    <method name="GetShellCommand">
-      <arg name="name" type="s" direction="in"/>
-      <arg name="command" type="as" direction="out"/>
-      <!-- Returns ["incus", "exec", "name", "--", "sudo", "-u", "user", "-i"] -->
-    </method>
-    
-    <method name="EnsureDefaultContainer">
-      <arg name="name" type="s" direction="out"/>
-      <!-- Creates user's default container if missing, returns name -->
-    </method>
-    
-    <!-- Features (maps to Incus profiles internally) -->
-    <method name="ListFeatures">
-      <arg name="features" type="as" direction="out"/>
-      <!-- Returns: ["graphics", "audio", "home", "gpu", ...] -->
-    </method>
-    
-    <!-- Signals -->
-    <signal name="ContainerStateChanged">
-      <arg name="name" type="s"/>
-      <arg name="state" type="s"/>
-    </signal>
-    
-    <!-- Properties -->
-    <property name="Version" type="s" access="read"/>
-    <property name="IncusAvailable" type="b" access="read"/>
-    
-  </interface>
-</node>
+<!-- Container lifecycle -->
+<method name="CreateContainer">
+  <arg name="name" type="s" direction="in"/>
+  <arg name="image" type="s" direction="in"/>
+  <arg name="features" type="as" direction="in"/>
+  <arg name="operation_id" type="s" direction="out"/>
+</method>
+
+<method name="DeleteContainer">
+  <arg name="name" type="s" direction="in"/>
+  <arg name="force" type="b" direction="in"/>
+</method>
+
+<method name="StartContainer">
+  <arg name="name" type="s" direction="in"/>
+</method>
+
+<method name="StopContainer">
+  <arg name="name" type="s" direction="in"/>
+  <arg name="force" type="b" direction="in"/>
+</method>
+
+<method name="GetContainer">
+  <arg name="name" type="s" direction="in"/>
+  <arg name="info" type="a{sv}" direction="out"/>
+</method>
+
+<!-- Features -->
+<method name="ListFeatures">
+  <arg name="features" type="as" direction="out"/>
+</method>
 ```
 
 ### Polkit Actions
@@ -365,16 +301,14 @@ VENDOR_PYTHON_DEPS      # ON by default - vendors Python dependencies
 
 ## CLI Design
 
-### Current Implementation (Stub)
+### Current Commands (Stub Implementations)
 
-The CLI is implemented with typer in `src/cli/main.py`. Current commands are stubs that print what they would do:
+The CLI in `src/cli/main.py` uses typer. Commands currently print what they would do:
 
 ```bash
 kapsule --version               # Show version
 kapsule --help                  # Show help
-
-# Container lifecycle (stub implementations)
-kapsule create <name> [--image IMAGE] [--with-docker] [--with-graphics] [--with-audio] [--with-home]
+kapsule create <name> [--image IMAGE] [--with-docker] [--with-graphics] ...
 kapsule rm <name> [--force]
 kapsule start <name>
 kapsule stop <name>
@@ -382,270 +316,43 @@ kapsule enter <name> [--command CMD]
 kapsule list [--all]
 ```
 
-### Planned Commands (Full Feature Set)
+### Planned: CLI Talks to Daemon via D-Bus
+
+Once complete, CLI will call D-Bus methods instead of Incus directly:
 
 ```bash
-# Container lifecycle
 kapsule create <name> [--image IMAGE] [--with FEATURE]... [--without FEATURE]...
 kapsule rm <name> [--force]
 kapsule start <name>
 kapsule stop <name> [--force]
-
-# Enter containers
 kapsule enter <name>              # Interactive shell
 kapsule exec <name> -- <command>  # Run command
-
-# List and inspect
 kapsule list                      # List all containers
 kapsule info <name>               # Container details
-
-# Application export (distrobox-style)
 kapsule export <name> <app>       # Export .desktop file to host
-
-# Feature management
 kapsule features                  # List available features
-kapsule features show <name>      # Show feature details
-
-# System
 kapsule init                      # First-time setup
 kapsule daemon                    # Run D-Bus daemon (for development)
-
-# Examples
-kap create arch-dev                              # All default features
-kap create arch-dev --without audio              # Exclude audio
-kap create arch-dev --without audio --without gpu  # Minimal graphics
-kap create headless --without graphics --without audio --without gpu
-kap enter arch-dev
-```
-
-### Current CLI Implementation
-
-```python
-# src/cli/main.py (excerpt - current stub implementation)
-import typer
-from rich.console import Console
-from typing import Optional
-
-app = typer.Typer(
-    name="kapsule",
-    help="Incus-based container management with KDE integration",
-)
-console = Console()
-
-@app.command()
-def create(
-    name: str = typer.Argument(..., help="Name of the container to create"),
-    image: str = typer.Option("ubuntu:24.04", "--image", "-i"),
-    with_docker: bool = typer.Option(False, "--with-docker"),
-    with_graphics: bool = typer.Option(True, "--with-graphics"),
-    with_audio: bool = typer.Option(True, "--with-audio"),
-    with_home: bool = typer.Option(True, "--with-home"),
-) -> None:
-    """Create a new kapsule container."""
-    console.print(f"[bold green]Creating container:[/bold green] {name}")
-    # TODO: Implement actual container creation via Incus REST API
-    console.print("[yellow]⚠ Stub implementation - not yet functional[/yellow]")
-```
-
-### Planned CLI Implementation (with D-Bus client)
-
-```python
-# src/kapsule/cli/main.py
-import asyncio
-from typing import Annotated, Optional
-
-import typer
-from rich import print
-from rich.table import Table
-
-from kapsule.daemon.client import KapsuleClient
-from kapsule.features import resolve_features
-
-app = typer.Typer(help="Kapsule - Incus-based container manager with KDE integration.")
-client = KapsuleClient()
-
-
-@app.command()
-def create(
-    name: str,
-    image: Annotated[str, typer.Option("--image", "-i", help="Base image")] = "archlinux",
-    with_features: Annotated[list[str], typer.Option("--with", help="Features to enable")] = [],
-    without: Annotated[list[str], typer.Option(help="Features to disable")] = [],
-):
-    """Create a new container.
-    
-    By default, all features are enabled (graphics, audio, home, gpu).
-    Use --without to disable specific features.
-    """
-    features = resolve_features(with_features, without)
-    asyncio.run(client.create_container(name, image, features))
-    print(f"[green]✓[/green] Created container: [bold]{name}[/bold]")
-
-
-@app.command()
-def enter(name: str):
-    """Enter a container shell."""
-    import os
-    cmd = asyncio.run(client.get_shell_command(name))
-    os.execvp(cmd[0], cmd)
-
-
-@app.command("list")
-def list_containers():
-    """List all containers."""
-    containers = asyncio.run(client.list_containers())
-    
-    if not containers:
-        print("No containers found. Create one with: [bold]kapsule create <name>[/bold]")
-        return
-    
-    table = Table()
-    table.add_column("Name", style="cyan")
-    table.add_column("Status")
-    table.add_column("Image")
-    table.add_column("Created")
-    
-    for c in containers:
-        status_style = "green" if c.status == "Running" else "dim"
-        table.add_row(c.name, f"[{status_style}]{c.status}[/]", c.image, c.created)
-    
-    print(table)
-
-
-@app.command()
-def rm(
-    name: str,
-    force: Annotated[bool, typer.Option("--force", "-f", help="Force removal")] = False,
-):
-    """Remove a container."""
-    asyncio.run(client.delete_container(name, force))
-    print(f"[green]✓[/green] Removed container: [bold]{name}[/bold]")
-
-
-if __name__ == "__main__":
-    app()
 ```
 
 ---
 
-## Incus REST Client
+## Incus REST Client (Implemented)
+
+The async Incus client is in `src/daemon/incus_client.py`:
 
 ```python
-# src/kapsule/incus/client.py
-from typing import Any
-import httpx
-
 class IncusClient:
-    """Low-level client for Incus REST API over Unix socket."""
+    """Async client for Incus REST API over Unix socket."""
     
-    def __init__(self, socket_path: str = "/var/lib/incus/unix.socket"):
-        transport = httpx.HTTPTransport(uds=socket_path)
-        self._client = httpx.Client(
-            transport=transport,
-            base_url="http://localhost",
-            timeout=30.0,
-        )
-    
-    def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
-        """Make request and handle Incus response format."""
-        response = self._client.request(method, path, **kwargs)
-        response.raise_for_status()
-        data = response.json()
-        
-        # Incus wraps responses in {"type": "sync/async", "metadata": ...}
-        if data.get("type") == "error":
-            raise IncusError(data.get("error", "Unknown error"))
-        
-        return data.get("metadata", data)
-    
-    def get(self, path: str) -> dict[str, Any]:
-        return self._request("GET", path)
-    
-    def post(self, path: str, json: dict = None) -> dict[str, Any]:
-        return self._request("POST", path, json=json)
-    
-    def put(self, path: str, json: dict = None) -> dict[str, Any]:
-        return self._request("PUT", path, json=json)
-    
-    def delete(self, path: str) -> dict[str, Any]:
-        return self._request("DELETE", path)
-
-
-# src/kapsule/incus/containers.py
-from dataclasses import dataclass
-from .client import IncusClient
-
-@dataclass
-class Container:
-    name: str
-    status: str
-    image: str
-    created: str
-    profiles: list[str]
-
-class ContainerManager:
-    """High-level container operations."""
-    
-    def __init__(self, client: IncusClient):
-        self._client = client
-    
-    def list(self) -> list[Container]:
-        """List all containers."""
-        instances = self._client.get("/1.0/instances")
-        containers = []
-        for path in instances:
-            name = path.split("/")[-1]
-            info = self._client.get(f"/1.0/instances/{name}")
-            containers.append(Container(
-                name=name,
-                status=info["status"],
-                image=info.get("config", {}).get("image.description", "unknown"),
-                created=info["created_at"],
-                profiles=info.get("profiles", []),
-            ))
-        return containers
-    
-    def create(self, name: str, image: str, profiles: list[str]) -> Container:
-        """Create a new container."""
-        self._client.post("/1.0/instances", json={
-            "name": name,
-            "source": {
-                "type": "image",
-                "alias": image,
-            },
-            "profiles": profiles,
-        })
-        # Wait for creation, then return info
-        return self.get(name)
-    
-    def get(self, name: str) -> Container:
-        """Get container info."""
-        info = self._client.get(f"/1.0/instances/{name}")
-        return Container(
-            name=name,
-            status=info["status"],
-            image=info.get("config", {}).get("image.description", "unknown"),
-            created=info["created_at"],
-            profiles=info.get("profiles", []),
-        )
-    
-    def start(self, name: str) -> None:
-        """Start a container."""
-        self._client.put(f"/1.0/instances/{name}/state", json={
-            "action": "start",
-        })
-    
-    def stop(self, name: str, force: bool = False) -> None:
-        """Stop a container."""
-        self._client.put(f"/1.0/instances/{name}/state", json={
-            "action": "stop",
-            "force": force,
-        })
-    
-    def delete(self, name: str) -> None:
-        """Delete a container."""
-        self._client.delete(f"/1.0/instances/{name}")
+    async def list_instances(recursion=1) -> list[Instance]
+    async def list_containers() -> list[ContainerInfo]  # Simplified for D-Bus
+    async def get_instance(name) -> Instance
+    async def is_available() -> bool
 ```
+
+Uses `httpx.AsyncHTTPTransport(uds=...)` for Unix socket communication.
+Response models are Pydantic classes generated from Incus OpenAPI spec.
 
 ---
 
@@ -782,29 +489,32 @@ WantedBy=multi-user.target
 
 ## Development Phases
 
-### Phase 1: Core Python Package ✅ (Partial)
+### Phase 1: Core Python Package ✅
 - [x] Project structure with CMake build
-- [x] Basic CLI scaffolding (typer-based with create, enter, list, rm, start, stop)
-- [x] Python package structure (`src/cli/`)
+- [x] Basic CLI scaffolding (typer-based)
+- [x] Python package structure (`src/cli/`, `src/daemon/`)
 - [x] Launcher script with vendored dependencies support
-- [ ] Incus REST client (`httpx` + Unix socket)
-- [ ] Container CRUD operations (actual implementation)
+- [x] Async Incus REST client (`httpx` + Unix socket)
+- [x] Pydantic models generated from Incus OpenAPI spec
+- [ ] Container CRUD operations in daemon
 - [ ] Test against real Incus instance
 
-### Phase 2: C++ Library ✅ (Partial)
+### Phase 2: D-Bus Daemon ✅ (Basic)
+- [x] D-Bus daemon with `dbus-fast`
+- [x] `ListContainers()`, `IsIncusAvailable()`, `GetShellCommand()` methods
+- [x] `Version` property, progress signals defined
+- [ ] Container lifecycle methods (Create, Delete, Start, Stop)
+- [ ] Polkit integration for authorization
+- [ ] CLI talks to daemon instead of Incus directly
+- [ ] Systemd service file
+
+### Phase 3: C++ Library (Partial)
 - [x] `libkapsule-qt` library structure
 - [x] `Container` data class with Qt property system
 - [x] `KapsuleClient` D-Bus wrapper class (skeleton)
 - [x] CMake build with ECM integration
-- [x] Generated export headers and pkg-config
 - [ ] Actual D-Bus communication implementation
 - [ ] Connect to running daemon
-
-### Phase 3: D-Bus Service
-- [ ] D-Bus daemon with `dbus-next`
-- [ ] Polkit integration for authorization
-- [ ] CLI talks to daemon instead of Incus directly
-- [ ] Systemd service file
 
 ### Phase 4: Feature System
 - [ ] Feature ↔ profile mapping
@@ -851,5 +561,5 @@ For podman/docker inside privileged Incus containers:
 - [Distrobox source](https://github.com/89luca89/distrobox)
 - [kde-builder documentation](https://kde-builder.kde.org/)
 - [KDE Frameworks 6](https://develop.kde.org/docs/frameworks/)
-- [dbus-next (Python D-Bus)](https://python-dbus-next.readthedocs.io/)
+- [dbus-fast (Python D-Bus)](https://dbus-fast.readthedocs.io/)
 - [httpx (Python HTTP client)](https://www.python-httpx.org/)
