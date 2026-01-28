@@ -51,8 +51,8 @@ A distrobox-like tool using Incus as the container/VM backend, with native KDE/P
 
 | Component | Language | Build System | Framework |
 |-----------|----------|--------------|-----------|
-| `kapsule` CLI | Python 3.11+ | meson + setuptools | typer |
-| `kapsule-daemon` | Python 3.11+ | meson + setuptools | dbus-next, httpx |
+| `kapsule` CLI | Python 3.11+ | CMake | typer |
+| `kapsule-daemon` | Python 3.11+ | CMake | dbus-next, httpx |
 | `libkapsule-qt` | C++ | CMake | Qt6, KF6 |
 | Plasma Widget | QML | CMake | libplasma |
 | KIO Worker | C++ | CMake | KIO |
@@ -83,50 +83,51 @@ mypy
 
 ```
 kapsule/
-├── meson.build                     # Top-level build (coordinates Python + C++)
+├── CMakeLists.txt                  # Unified CMake build (Python + C++)
 ├── pyproject.toml                  # Python package definition
 │
 ├── src/
-│   └── kapsule/                    # Python package
-│       ├── __init__.py
-│       ├── cli/                    # CLI commands
-│       │   ├── __init__.py
-│       │   ├── main.py             # Entry point
-│       │   ├── create.py
-│       │   ├── enter.py
-│       │   ├── list.py
-│       │   └── rm.py
-│       ├── daemon/                 # D-Bus service
-│       │   ├── __init__.py
-│       │   ├── service.py          # org.kde.kapsule implementation
-│       │   └── polkit.py           # Authorization helpers
-│       ├── incus/                  # Incus REST client
-│       │   ├── __init__.py
-│       │   ├── client.py           # HTTP client wrapper
-│       │   ├── containers.py       # Container operations
-│       │   ├── images.py           # Image operations
-│       │   └── profiles.py         # Profile operations
-│       ├── features/               # Feature → profile mapping
-│       │   ├── __init__.py
-│       │   ├── registry.py         # Feature definitions
-│       │   └── resolver.py         # --with/--without logic
-│       └── config.py               # Configuration handling
-│
-├── kde/                            # KDE/Qt components (C++)
-│   ├── CMakeLists.txt
-│   ├── libkapsule-qt/              # Qt wrapper around D-Bus
+│   ├── cli/                        # Python CLI package (kapsule)
+│   │   ├── __init__.py             # Package init with version
+│   │   └── main.py                 # CLI entry point (typer app)
+│   │
+│   ├── daemon/                     # D-Bus service
+│   │   ├── __init__.py
+│   │   ├── service.py              # org.kde.kapsule implementation
+│   │   └── polkit.py               # Authorization helpers
+│   │
+│   ├── incus/                      # Incus REST client
+│   │   ├── __init__.py
+│   │   ├── client.py               # HTTP client wrapper
+│   │   ├── containers.py           # Container operations
+│   │   ├── images.py               # Image operations
+│   │   └── profiles.py             # Profile operations
+│   │
+│   ├── features/                   # Feature → profile mapping
+│   │   ├── __init__.py
+│   │   ├── registry.py             # Feature definitions
+│   │   └── resolver.py             # --with/--without logic
+│   │
+│   ├── config.py                   # Configuration handling
+│   │
+│   ├── libkapsule-qt/              # Qt wrapper for D-Bus API
 │   │   ├── CMakeLists.txt
-│   │   ├── kapsuleclient.h
+│   │   ├── kapsuleclient.h         # KapsuleClient class
 │   │   ├── kapsuleclient.cpp
-│   │   └── container.h
+│   │   ├── container.h             # Container data class
+│   │   ├── container.cpp
+│   │   └── KapsuleConfig.cmake.in
+│   │
 │   ├── kio/                        # KIO worker
 │   │   ├── CMakeLists.txt
 │   │   └── kio_kapsule.cpp
+│   │
 │   ├── kcm/                        # System Settings module
 │   │   ├── CMakeLists.txt
 │   │   ├── kcm_kapsule.cpp
 │   │   └── ui/
 │   │       └── main.qml
+│   │
 │   └── plasmoid/                   # Plasma widget
 │       ├── CMakeLists.txt
 │       └── package/
@@ -134,6 +135,11 @@ kapsule/
 │           └── contents/
 │               └── ui/
 │                   └── main.qml
+│
+├── scripts/
+│   ├── kapsule.in                  # Launcher script template
+│   ├── kapsule-firstboot.sh        # First-boot initialization
+│   └── container-setup.sh          # Runs inside new containers
 │
 ├── data/
 │   ├── profiles/                   # Default Incus profiles (YAML)
@@ -153,10 +159,6 @@ kapsule/
 │   │   └── kapsule-init.service
 │   └── applications/
 │       └── org.kde.kapsule.desktop
-│
-├── scripts/
-│   ├── kapsule-firstboot.sh        # First-boot initialization
-│   └── container-setup.sh          # Runs inside new containers
 │
 └── tests/
     ├── conftest.py
@@ -178,8 +180,6 @@ Add to `~/.config/kde-builder.yaml`:
 project kapsule:
   repository: kde:fernando/kapsule
   branch: main
-  override-build-system: meson
-  meson-options: -Dkde_components=true
 
 # KDE dependencies for the Qt/KDE components (optional - only needed if 
 # building KDE components and not using distro packages)
@@ -215,43 +215,22 @@ kde-builder --run kapsule -- --help
 kde-builder --run kapsule -- daemon
 ```
 
-### Meson Build Configuration
+### CMake Build System
 
-```meson
-# meson.build
-project('kapsule', 
-  version: '0.1.0',
-  meson_version: '>= 1.0.0',
-)
+The project uses a unified CMake build system that handles both Python and C++ components:
 
-# Python components
-python = import('python')
-py = python.find_installation('python3', required: true)
-
-# Install Python package
-py.install_sources(
-  'src/kapsule/__init__.py',
-  # ... all Python files
-  subdir: 'kapsule',
-)
-
-# Install CLI entry point
-install_data('scripts/kapsule', install_dir: get_option('bindir'))
-
-# Install data files
-install_subdir('data/profiles', install_dir: get_option('datadir') / 'kapsule')
-install_data('data/dbus/org.kde.kapsule.service', 
-  install_dir: get_option('datadir') / 'dbus-1/system-services')
-install_data('data/polkit/org.kde.kapsule.policy',
-  install_dir: get_option('datadir') / 'polkit-1/actions')
-install_data('data/systemd/kapsule-daemon.service',
-  install_dir: get_option('prefix') / 'lib/systemd/system')
-
-# KDE components (optional, requires Qt/KF6)
-if get_option('kde_components')
-  subdir('kde')
-endif
+```cmake
+# CMakeLists.txt options
+BUILD_KDE_COMPONENTS    # ON by default - builds libkapsule-qt
+INSTALL_PYTHON_CLI      # ON by default - installs Python CLI
+VENDOR_PYTHON_DEPS      # ON by default - vendors Python dependencies
 ```
+
+**Key features:**
+- ECM (Extra CMake Modules) for KDE integration
+- Python dependency vendoring via pip at install time
+- Configurable launcher script (`scripts/kapsule.in`)
+- Separate vendor and kapsule Python paths
 
 ---
 
@@ -386,7 +365,24 @@ endif
 
 ## CLI Design
 
-### Commands
+### Current Implementation (Stub)
+
+The CLI is implemented with typer in `src/cli/main.py`. Current commands are stubs that print what they would do:
+
+```bash
+kapsule --version               # Show version
+kapsule --help                  # Show help
+
+# Container lifecycle (stub implementations)
+kapsule create <name> [--image IMAGE] [--with-docker] [--with-graphics] [--with-audio] [--with-home]
+kapsule rm <name> [--force]
+kapsule start <name>
+kapsule stop <name>
+kapsule enter <name> [--command CMD]
+kapsule list [--all]
+```
+
+### Planned Commands (Full Feature Set)
 
 ```bash
 # Container lifecycle
@@ -422,7 +418,36 @@ kap create headless --without graphics --without audio --without gpu
 kap enter arch-dev
 ```
 
-### Example CLI Implementation
+### Current CLI Implementation
+
+```python
+# src/cli/main.py (excerpt - current stub implementation)
+import typer
+from rich.console import Console
+from typing import Optional
+
+app = typer.Typer(
+    name="kapsule",
+    help="Incus-based container management with KDE integration",
+)
+console = Console()
+
+@app.command()
+def create(
+    name: str = typer.Argument(..., help="Name of the container to create"),
+    image: str = typer.Option("ubuntu:24.04", "--image", "-i"),
+    with_docker: bool = typer.Option(False, "--with-docker"),
+    with_graphics: bool = typer.Option(True, "--with-graphics"),
+    with_audio: bool = typer.Option(True, "--with-audio"),
+    with_home: bool = typer.Option(True, "--with-home"),
+) -> None:
+    """Create a new kapsule container."""
+    console.print(f"[bold green]Creating container:[/bold green] {name}")
+    # TODO: Implement actual container creation via Incus REST API
+    console.print("[yellow]⚠ Stub implementation - not yet functional[/yellow]")
+```
+
+### Planned CLI Implementation (with D-Bus client)
 
 ```python
 # src/kapsule/cli/main.py
@@ -757,38 +782,48 @@ WantedBy=multi-user.target
 
 ## Development Phases
 
-### Phase 1: Core Python Package
-- [ ] Project structure with meson build
+### Phase 1: Core Python Package ✅ (Partial)
+- [x] Project structure with CMake build
+- [x] Basic CLI scaffolding (typer-based with create, enter, list, rm, start, stop)
+- [x] Python package structure (`src/cli/`)
+- [x] Launcher script with vendored dependencies support
 - [ ] Incus REST client (`httpx` + Unix socket)
-- [ ] Container CRUD operations
-- [ ] Basic CLI (create, list, enter, rm)
+- [ ] Container CRUD operations (actual implementation)
 - [ ] Test against real Incus instance
 
-### Phase 2: D-Bus Service
+### Phase 2: C++ Library ✅ (Partial)
+- [x] `libkapsule-qt` library structure
+- [x] `Container` data class with Qt property system
+- [x] `KapsuleClient` D-Bus wrapper class (skeleton)
+- [x] CMake build with ECM integration
+- [x] Generated export headers and pkg-config
+- [ ] Actual D-Bus communication implementation
+- [ ] Connect to running daemon
+
+### Phase 3: D-Bus Service
 - [ ] D-Bus daemon with `dbus-next`
 - [ ] Polkit integration for authorization
 - [ ] CLI talks to daemon instead of Incus directly
 - [ ] Systemd service file
 
-### Phase 3: Feature System
+### Phase 4: Feature System
 - [ ] Feature ↔ profile mapping
 - [ ] Profile YAML loading and validation
 - [ ] Variable expansion (`${HOME}`, `${XDG_RUNTIME_DIR}`, etc.)
 - [ ] Profile registration with Incus
 
-### Phase 4: KDE Components
-- [ ] `libkapsule-qt` - D-Bus wrapper for Qt
+### Phase 5: KDE Components
 - [ ] Plasma widget (container status, quick actions)
 - [ ] KIO worker (`kapsule://container/path`)
 - [ ] KCM System Settings module
 
-### Phase 5: KDE Linux Integration
+### Phase 6: KDE Linux Integration
 - [ ] First-boot service
 - [ ] Pre-bundled container image
 - [ ] Konsole integration (default to container)
 - [ ] Seamless first-run experience
 
-### Phase 6: Advanced Features
+### Phase 7: Advanced Features
 - [ ] Application export (distrobox-style `.desktop` files)
 - [ ] VM support for stronger isolation
 - [ ] Container updates/rebuilds
