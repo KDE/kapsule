@@ -1,3 +1,0 @@
-"""
-Kapsule CLI commands.
-"""

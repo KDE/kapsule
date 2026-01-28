@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2024-2026 KDE Community
 
-# Add vendored dependencies and kapsule package to Python path
-KAPSULE_PYTHON_PATH="@KAPSULE_PYTHON_PATH@"
-KAPSULE_VENDOR_PATH="@KAPSULE_VENDOR_PATH@"
+# Resolve paths relative to script location
+PREFIX_DIR="$(dirname "$0")/.."
+KAPSULE_PYTHON_PATH="$PREFIX_DIR/share/kapsule/python"
+KAPSULE_VENDOR_PATH="$PREFIX_DIR/share/kapsule/vendor"
 
 # Build PYTHONPATH: vendor first (so vendored deps take precedence), then kapsule
 if [ -n "$PYTHONPATH" ]; then
@@ -15,4 +16,4 @@ else
     export PYTHONPATH="${KAPSULE_VENDOR_PATH}:${KAPSULE_PYTHON_PATH}"
 fi
 
-exec @PYTHON_EXECUTABLE@ -m kapsule.cli.main "$@"
+exec @PYTHON_EXECUTABLE@ -m kapsule.main "$@"

@@ -56,8 +56,8 @@ dev = [
 ]
 
 [project.scripts]
-kapsule = "kapsule.cli.main:cli"
-kap = "kapsule.cli.main:cli"
+kapsule = "kapsule.main:cli"
+kap = "kapsule.main:cli"
 
 [project.urls]
 Homepage = "https://invent.kde.org/utilities/kapsule"
@@ -66,7 +66,11 @@ Repository = "https://invent.kde.org/utilities/kapsule.git"
 "Bug Tracker" = "https://bugs.kde.org/enter_bug.cgi?product=kapsule"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src/cli"]
+include = ["*"]
+
+[tool.setuptools.package-dir]
+kapsule = "src/cli"
 
 [tool.setuptools.package-data]
 kapsule = ["py.typed"]

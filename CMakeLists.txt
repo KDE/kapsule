@@ -70,20 +70,13 @@ endif()
 if(INSTALL_PYTHON_CLI)
     # Install kapsule package
     install(FILES
-        src/kapsule/__init__.py
+        src/cli/__init__.py
+        src/cli/main.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule"
-    )
-
-    install(FILES
-        src/kapsule/cli/__init__.py
-        src/kapsule/cli/main.py
-        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/cli"
     )
 
     # Configure and install launcher scripts
     set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
-    set(KAPSULE_PYTHON_PATH "${CMAKE_INSTALL_PREFIX}/${KAPSULE_PYTHON_DIR}")
-    set(KAPSULE_VENDOR_PATH "${CMAKE_INSTALL_PREFIX}/${KAPSULE_VENDOR_DIR}")
 
     configure_file(
         scripts/kapsule.in
