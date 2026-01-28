@@ -1,0 +1,58 @@
+# Kapsule Build Options
+# See: https://mesonbuild.com/Build-options.html
+
+# Enable KDE/Qt components (libkapsule-qt, plasmoid, KIO worker, KCM)
+option('kde_components',
+    type: 'feature',
+    value: 'auto',
+    description: 'Build KDE/Qt components (requires Qt6, KF6)'
+)
+
+# Python installation to use
+option('python',
+    type: 'string',
+    value: '',
+    description: 'Python interpreter to use (empty for auto-detection)'
+)
+
+# Install D-Bus service files
+option('install_dbus',
+    type: 'boolean',
+    value: true,
+    description: 'Install D-Bus service and configuration files'
+)
+
+# Install systemd service files
+option('install_systemd',
+    type: 'boolean',
+    value: true,
+    description: 'Install systemd service files'
+)
+
+# Install polkit policy files
+option('install_polkit',
+    type: 'boolean',
+    value: true,
+    description: 'Install Polkit policy files'
+)
+
+# systemd system unit directory
+option('systemd_system_unit_dir',
+    type: 'string',
+    value: '',
+    description: 'Directory for systemd system units (empty for auto-detection)'
+)
+
+# systemd user unit directory
+option('systemd_user_unit_dir',
+    type: 'string',
+    value: '',
+    description: 'Directory for systemd user units (empty for auto-detection)'
+)
+
+# D-Bus system service directory
+option('dbus_system_services_dir',
+    type: 'string',
+    value: '',
+    description: 'Directory for D-Bus system services (empty for auto-detection)'
+)
