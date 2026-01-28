@@ -2,12 +2,17 @@
 
 set -xe
 
-kde-builder --no-src --build-when-unchanged kapsule
+install_dir=~/src/kde/sysext/kapsule
+sudo rm -rf "$install_dir"
+mkdir -p "$install_dir"
 
-serve_dir=/tmp/kapsule/
+kde-builder --no-src --build-when-unchanged kapsule
+sudo pacstrap -c "$install_dir" incus
+
+serve_dir=/tmp/kapsule
 mkdir -p "$serve_dir"
 
-tar -cf ${serve_dir}/kapsule.tar -C ~/src/kde/sysext/kapsule .
+sudo tar -cf ${serve_dir}/kapsule.tar -C "$install_dir" usr
 
 python -m http.server --directory "$serve_dir" 8000 &
 trap "kill $!" EXIT
