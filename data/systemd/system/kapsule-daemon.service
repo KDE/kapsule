@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2024-2026 KDE Community
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Kapsule D-Bus daemon - system service
+# This runs on the system bus for privileged container operations with Polkit
+
+[Unit]
+Description=Kapsule Container Manager Daemon (System)
+Documentation=https://invent.kde.org/fernando/kapsule
+After=incus.service dbus.service
+Wants=incus.service
+
+[Service]
+Type=dbus
+BusName=org.kde.kapsule
+ExecStart=@PYTHON_EXECUTABLE@ -m daemon --system
+Restart=on-failure
+RestartSec=5
+
+# Run as root for Incus access, Polkit handles authorization
+User=root
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@KAPSULE_VENDOR_DIR@:@KAPSULE_PYTHON_DIR@
+
+# Security hardening (less restrictive than user service due to system bus needs)
+ProtectSystem=strict
+PrivateTmp=true
+
+# Allow access to Incus socket
+ReadWritePaths=/var/lib/incus
+
+[Install]
+WantedBy=multi-user.target

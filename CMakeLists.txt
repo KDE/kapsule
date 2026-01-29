@@ -68,16 +68,27 @@ endif()
 # ============================================================================
 
 if(INSTALL_PYTHON_CLI)
-    # Install kapsule package
+    # Install kapsule CLI package
     install(FILES
         src/cli/__init__.py
         src/cli/main.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule"
     )
 
+    # Install daemon package
+    install(FILES
+        src/daemon/__init__.py
+        src/daemon/__main__.py
+        src/daemon/incus_client.py
+        src/daemon/models_generated.py
+        src/daemon/service.py
+        DESTINATION "${KAPSULE_PYTHON_DIR}/daemon"
+    )
+
     # Configure and install launcher scripts
     set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
 
+    # CLI launcher
     configure_file(
         scripts/kapsule.in
         "${CMAKE_CURRENT_BINARY_DIR}/kapsule"
@@ -172,6 +183,52 @@ if(INSTALL_PYTHON_CLI AND VENDOR_PYTHON_DEPS)
 endif()
 
 # ============================================================================
+# Systemd and D-Bus Service Files
+# ============================================================================
+
+if(INSTALL_PYTHON_CLI)
+    # Full paths for service file variable substitution
+    set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
+    set(KAPSULE_PYTHON_DIR "${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/python")
+    set(KAPSULE_VENDOR_DIR "${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/vendor")
+
+    # Systemd unit directory (relative to CMAKE_INSTALL_PREFIX)
+    set(KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR "${KDE_INSTALL_LIBDIR}/systemd/system")
+
+    # D-Bus directories
+    set(KAPSULE_DBUS_SYSTEM_SERVICE_DIR "share/dbus-1/system-services")
+    set(KAPSULE_DBUS_SYSTEM_POLICY_DIR "share/dbus-1/system.d")
+
+    # Configure systemd system service
+    configure_file(
+        data/systemd/system/kapsule-daemon.service
+        "${CMAKE_CURRENT_BINARY_DIR}/systemd/system/kapsule-daemon.service"
+        @ONLY
+    )
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/systemd/system/kapsule-daemon.service"
+        DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}"
+    )
+
+    # Configure D-Bus system service (auto-activation)
+    configure_file(
+        data/dbus/system/org.kde.kapsule.service
+        "${CMAKE_CURRENT_BINARY_DIR}/dbus/system/org.kde.kapsule.service"
+        @ONLY
+    )
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/dbus/system/org.kde.kapsule.service"
+        DESTINATION "${KAPSULE_DBUS_SYSTEM_SERVICE_DIR}"
+    )
+
+    # D-Bus system bus policy
+    install(FILES
+        data/dbus/system/org.kde.kapsule.conf
+        DESTINATION "${KAPSULE_DBUS_SYSTEM_POLICY_DIR}"
+    )
+endif()
+
+# ============================================================================
 # KDE Components
 # ============================================================================
 
@@ -239,8 +296,9 @@ message(STATUS "  Python CLI:        ${INSTALL_PYTHON_CLI}")
 if(INSTALL_PYTHON_CLI)
     message(STATUS "    Python:          ${Python3_EXECUTABLE} (${Python3_VERSION})")
     message(STATUS "    Vendor deps:     ${VENDOR_PYTHON_DEPS}")
-    message(STATUS "    Install path:    ${CMAKE_INSTALL_PREFIX}/${KAPSULE_PYTHON_DIR}")
-    message(STATUS "    Vendor path:     ${CMAKE_INSTALL_PREFIX}/${KAPSULE_VENDOR_DIR}")
+    message(STATUS "    Install path:    ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/python")
+    message(STATUS "    Vendor path:     ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/vendor")
+    message(STATUS "    Systemd service: ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_LIBDIR}/systemd/system/")
 endif()
 message(STATUS "  KDE components:    ${BUILD_KDE_COMPONENTS}")
 message(STATUS "")

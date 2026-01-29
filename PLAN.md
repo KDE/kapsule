@@ -93,7 +93,7 @@ kapsule/
 │   │
 │   ├── daemon/                     # D-Bus service + Incus client
 │   │   ├── __init__.py
-│   │   ├── __main__.py             # Entry point: python -m src.daemon
+│   │   ├── __main__.py             # Entry point: python -m daemon
 │   │   ├── service.py              # org.kde.kapsule.Manager interface
 │   │   ├── incus_client.py         # Async Incus REST client
 │   │   └── models_generated.py     # Pydantic models from Incus OpenAPI
@@ -109,14 +109,24 @@ kapsule/
 │   └── plasmoid/                   # Plasma widget (planned)
 │
 ├── scripts/
-│   ├── kapsule.in                  # Launcher script template
+│   ├── kapsule.in                  # CLI launcher script template
+│   ├── kapsule-daemon.in           # Daemon launcher script template
 │   └── update_incus_models.py      # Regenerate models from OpenAPI
 │
-├── data/                           # (planned)
-│   ├── profiles/                   # Default Incus profiles (YAML)
-│   ├── dbus/                       # D-Bus service/config files
-│   ├── polkit/                     # Polkit policy
-│   └── systemd/                    # Systemd service files
+├── data/
+│   ├── dbus/
+│   │   ├── session/
+│   │   │   └── org.kde.kapsule.service    # D-Bus session auto-activation
+│   │   └── system/
+│   │       ├── org.kde.kapsule.service    # D-Bus system auto-activation
+│   │       └── org.kde.kapsule.conf       # D-Bus system bus policy
+│   ├── systemd/
+│   │   ├── user/
+│   │   │   └── kapsule-daemon.service     # User session service
+│   │   └── system/
+│   │       └── kapsule-daemon.service     # System service (with Polkit)
+│   ├── profiles/                   # Default Incus profiles (YAML) - planned
+│   └── polkit/                     # Polkit policy - planned
 │
 └── tests/
     └── ...
@@ -434,56 +444,64 @@ devices:
 
 ## KDE Linux Integration
 
-### Build-Time Components (in KDE Linux image)
+### Installed Components
+
+After building and installing, the following files are placed on the system:
 
 ```
-/usr/bin/kapsule                              # CLI (Python)
-/usr/bin/kap                                  # Symlink to kapsule
-/usr/lib/python3.x/site-packages/kapsule/    # Python package
-/usr/lib/kapsule/kapsule-firstboot.sh        # First-boot script
-/usr/share/kapsule/profiles/*.yaml           # Default profiles
-/usr/share/kapsule/images/arch.tar.zst       # Pre-bundled image (~300MB)
-/usr/share/dbus-1/system-services/org.kde.kapsule.service
-/usr/share/polkit-1/actions/org.kde.kapsule.policy
-/usr/lib/systemd/system/kapsule-daemon.service
-/usr/lib/systemd/system/kapsule-init.service
+# CLI and Daemon executables
+/usr/bin/kapsule                              # CLI launcher script
+/usr/bin/kap                                  # Alias for kapsule
+/usr/bin/kapsule-daemon                       # D-Bus daemon launcher script
 
-# KDE components
-/usr/lib/qt6/plugins/kf6/kio/kapsule.so      # KIO worker
-/usr/share/plasma/plasmoids/org.kde.kapsule/ # Plasma widget
-/usr/lib/qt6/plugins/plasma/kcms/kcm_kapsule.so
+# Python packages (vendored dependencies included)
+/usr/share/kapsule/python/kapsule/            # CLI Python package
+/usr/share/kapsule/python/daemon/             # Daemon Python package
+/usr/share/kapsule/vendor/                    # Vendored Python dependencies
+
+# Systemd service files
+/usr/lib/systemd/user/kapsule-daemon.service  # User session service
+/usr/lib/systemd/system/kapsule-daemon.service # System service (with Polkit)
+
+# D-Bus service files
+/usr/share/dbus-1/services/org.kde.kapsule.service        # Session bus auto-activation
+/usr/share/dbus-1/system-services/org.kde.kapsule.service # System bus auto-activation
+/usr/share/dbus-1/system.d/org.kde.kapsule.conf           # System bus policy
+
+# KDE components (when built)
+/usr/lib/libKapsuleQt.so                      # Qt library for D-Bus access
+/usr/include/Kapsule/                         # C++ headers
+
+# Planned components
+/usr/share/kapsule/profiles/*.yaml            # Default Incus profiles
+/usr/share/polkit-1/actions/org.kde.kapsule.policy  # Polkit authorization rules
+/usr/lib/qt6/plugins/kf6/kio/kapsule.so       # KIO worker
+/usr/share/plasma/plasmoids/org.kde.kapsule/  # Plasma widget
+/usr/lib/qt6/plugins/plasma/kcms/kcm_kapsule.so  # System Settings module
 ```
 
-### First-Boot Service
+### Running the Daemon
 
-```ini
-# /usr/lib/systemd/system/kapsule-init.service
-[Unit]
-Description=Initialize Kapsule
-ConditionPathExists=!/var/lib/kapsule/.initialized
-After=incus.socket
-Requires=incus.socket
-Before=display-manager.service
+**For development (session bus):**
+```bash
+# Run directly
+kapsule-daemon
 
-[Service]
-Type=oneshot
-ExecStart=/usr/lib/kapsule/kapsule-firstboot.sh
-ExecStartPost=/usr/bin/touch /var/lib/kapsule/.initialized
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
+# Or via systemd user service
+systemctl --user start kapsule-daemon
+systemctl --user enable kapsule-daemon  # Auto-start on login
 ```
 
-### Runtime Data
+**For production (system bus with Polkit):**
+```bash
+# Requires root, handles authorization via Polkit
+sudo systemctl start kapsule-daemon
+sudo systemctl enable kapsule-daemon
+```
 
-```
-/var/lib/incus/                    # Incus storage, containers
-/var/lib/kapsule/.initialized      # First-boot marker
-~/.config/kapsule/config.yaml      # User preferences
-~/.config/kapsule/profiles/        # Custom profiles
-~/.local/share/kapsule/            # Exported .desktop files
-```
+**D-Bus auto-activation:**
+Both session and system bus are configured for auto-activation. The daemon will
+start automatically when a client (CLI, widget, etc.) calls a D-Bus method.
 
 ---
 
@@ -503,10 +521,12 @@ WantedBy=multi-user.target
 - [x] D-Bus daemon with `dbus-fast`
 - [x] `ListContainers()`, `IsIncusAvailable()`, `GetShellCommand()` methods
 - [x] `Version` property, progress signals defined
+- [x] Systemd service files (user and system)
+- [x] D-Bus service files for auto-activation
+- [x] D-Bus system bus policy configuration
 - [ ] Container lifecycle methods (Create, Delete, Start, Stop)
 - [ ] Polkit integration for authorization
 - [ ] CLI talks to daemon instead of Incus directly
-- [ ] Systemd service file
 
 ### Phase 3: C++ Library (Partial)
 - [x] `libkapsule-qt` library structure

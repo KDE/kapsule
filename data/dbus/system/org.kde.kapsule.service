@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2024-2026 KDE Community
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# D-Bus system service file for Kapsule daemon auto-activation
+# Delegates to systemd to start the actual service
+
+[D-BUS Service]
+Name=org.kde.kapsule
+Exec=/bin/false
+User=root
+SystemdService=kapsule-daemon.service
