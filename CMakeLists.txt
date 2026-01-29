@@ -72,6 +72,7 @@ if(INSTALL_PYTHON_CLI)
     install(FILES
         src/cli/__init__.py
         src/cli/main.py
+        src/cli/async_typer.py
         src/cli/incus_client.py
         src/cli/models_generated.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule"
