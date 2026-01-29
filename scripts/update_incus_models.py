@@ -26,7 +26,7 @@ from datamodel_code_generator.enums import InputFileType, DataModelType
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 OPENAPI_SPEC = PROJECT_ROOT / "data" / "openapi.yaml"
-MODELS_OUTPUT = PROJECT_ROOT / "src" / "daemon" / "models.generated.py"
+MODELS_OUTPUT = PROJECT_ROOT / "src" / "cli" / "models_generated.py"
 
 # URLs
 INCUS_SWAGGER_URL = "https://linuxcontainers.org/incus/docs/main/rest-api.yaml"

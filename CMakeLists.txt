@@ -72,17 +72,9 @@ if(INSTALL_PYTHON_CLI)
     install(FILES
         src/cli/__init__.py
         src/cli/main.py
+        src/cli/incus_client.py
+        src/cli/models_generated.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule"
-    )
-
-    # Install daemon package
-    install(FILES
-        src/daemon/__init__.py
-        src/daemon/__main__.py
-        src/daemon/incus_client.py
-        src/daemon/models_generated.py
-        src/daemon/service.py
-        DESTINATION "${KAPSULE_PYTHON_DIR}/daemon"
     )
 
     # Configure and install launcher scripts
