@@ -110,21 +110,14 @@ kapsule/
 │
 ├── scripts/
 │   ├── kapsule.in                  # CLI launcher script template
-│   ├── kapsule-daemon.in           # Daemon launcher script template
 │   └── update_incus_models.py      # Regenerate models from OpenAPI
 │
 ├── data/
-│   ├── dbus/
-│   │   ├── session/
-│   │   │   └── org.kde.kapsule.service    # D-Bus session auto-activation
-│   │   └── system/
-│   │       ├── org.kde.kapsule.service    # D-Bus system auto-activation
-│   │       └── org.kde.kapsule.conf       # D-Bus system bus policy
-│   ├── systemd/
-│   │   ├── user/
-│   │   │   └── kapsule-daemon.service     # User session service
-│   │   └── system/
-│   │       └── kapsule-daemon.service     # System service (with Polkit)
+│   ├── dbus/system/
+│   │   ├── org.kde.kapsule.service    # D-Bus system auto-activation
+│   │   └── org.kde.kapsule.conf       # D-Bus system bus policy
+│   ├── systemd/system/
+│   │   └── kapsule-daemon.service     # Systemd system service
 │   ├── profiles/                   # Default Incus profiles (YAML) - planned
 │   └── polkit/                     # Polkit policy - planned
 │
@@ -203,7 +196,7 @@ VENDOR_PYTHON_DEPS      # ON by default - vendors Python dependencies
 
 ### Service Definition
 
-**Bus:** Session bus (development) or System bus (production, for Polkit)  
+**Bus:** System bus  
 **Name:** `org.kde.kapsule`  
 **Path:** `/org/kde/kapsule`
 
@@ -449,22 +442,19 @@ devices:
 After building and installing, the following files are placed on the system:
 
 ```
-# CLI and Daemon executables
+# CLI executable
 /usr/bin/kapsule                              # CLI launcher script
 /usr/bin/kap                                  # Alias for kapsule
-/usr/bin/kapsule-daemon                       # D-Bus daemon launcher script
 
 # Python packages (vendored dependencies included)
 /usr/share/kapsule/python/kapsule/            # CLI Python package
 /usr/share/kapsule/python/daemon/             # Daemon Python package
 /usr/share/kapsule/vendor/                    # Vendored Python dependencies
 
-# Systemd service files
-/usr/lib/systemd/user/kapsule-daemon.service  # User session service
-/usr/lib/systemd/system/kapsule-daemon.service # System service (with Polkit)
+# Systemd service file
+/usr/lib/systemd/system/kapsule-daemon.service # System service
 
 # D-Bus service files
-/usr/share/dbus-1/services/org.kde.kapsule.service        # Session bus auto-activation
 /usr/share/dbus-1/system-services/org.kde.kapsule.service # System bus auto-activation
 /usr/share/dbus-1/system.d/org.kde.kapsule.conf           # System bus policy
 
@@ -482,26 +472,17 @@ After building and installing, the following files are placed on the system:
 
 ### Running the Daemon
 
-**For development (session bus):**
 ```bash
-# Run directly
-kapsule-daemon
-
-# Or via systemd user service
-systemctl --user start kapsule-daemon
-systemctl --user enable kapsule-daemon  # Auto-start on login
-```
-
-**For production (system bus with Polkit):**
-```bash
-# Requires root, handles authorization via Polkit
+# Start the daemon
 sudo systemctl start kapsule-daemon
+
+# Enable auto-start at boot
 sudo systemctl enable kapsule-daemon
 ```
 
 **D-Bus auto-activation:**
-Both session and system bus are configured for auto-activation. The daemon will
-start automatically when a client (CLI, widget, etc.) calls a D-Bus method.
+The system bus is configured for auto-activation. The daemon will start
+automatically when a client (CLI, widget, etc.) calls a D-Bus method.
 
 ---
 
@@ -517,12 +498,11 @@ start automatically when a client (CLI, widget, etc.) calls a D-Bus method.
 - [ ] Container CRUD operations in daemon
 - [ ] Test against real Incus instance
 
-### Phase 2: D-Bus Daemon ✅ (Basic)
+### Phase 2: D-Bus Daemon ✅
 - [x] D-Bus daemon with `dbus-fast`
 - [x] `ListContainers()`, `IsIncusAvailable()`, `GetShellCommand()` methods
 - [x] `Version` property, progress signals defined
-- [x] Systemd service files (user and system)
-- [x] D-Bus service files for auto-activation
+- [x] Systemd system service with D-Bus activation
 - [x] D-Bus system bus policy configuration
 - [ ] Container lifecycle methods (Create, Delete, Start, Stop)
 - [ ] Polkit integration for authorization
