@@ -264,7 +264,9 @@ def stop(
 
 def cli() -> None:
     """CLI entry point for setuptools/meson."""
-    app()
+    # Use KAPSULE_PROG_NAME if set (from wrapper script), otherwise default to "kapsule"
+    prog_name = os.environ.get("KAPSULE_PROG_NAME", "kapsule")
+    app(prog_name=prog_name)
 
 
 if __name__ == "__main__":

@@ -16,4 +16,10 @@ else
     export PYTHONPATH="${KAPSULE_VENDOR_PATH}:${KAPSULE_PYTHON_PATH}"
 fi
 
+# Cache bytecode in user's cache directory (since /usr is read-only)
+export PYTHONPYCACHEPREFIX="${XDG_CACHE_HOME:-$HOME/.cache}/kapsule/pycache"
+
+# Set program name for CLI help text
+export KAPSULE_PROG_NAME="${0##*/}"
+
 exec @PYTHON_EXECUTABLE@ -m kapsule.main "$@"
