@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2024-2026 KDE Community
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Systemd preset to enable Incus sockets by default for Kapsule
+
+enable incus.socket
+enable incus-user.socket

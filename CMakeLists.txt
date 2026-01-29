@@ -186,6 +186,7 @@ if(INSTALL_PYTHON_CLI)
 
     # Systemd unit directory (relative to CMAKE_INSTALL_PREFIX)
     set(KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR "${KDE_INSTALL_LIBDIR}/systemd/system")
+    set(KAPSULE_SYSTEMD_PRESET_DIR "${KDE_INSTALL_LIBDIR}/systemd/system-preset")
 
     # D-Bus directories
     set(KAPSULE_DBUS_SYSTEM_SERVICE_DIR "share/dbus-1/system-services")
@@ -206,6 +207,24 @@ if(INSTALL_PYTHON_CLI)
     install(FILES
         data/systemd/system/incus-user.socket.d/kapsule-socket-mode.conf
         DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}/incus-user.socket.d"
+    )
+
+    # Install drop-in for incus.socket to use wheel group
+    install(FILES
+        data/systemd/system/incus.socket.d/kapsule-socket-group.conf
+        DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}/incus.socket.d"
+    )
+
+    # Install drop-in for incus.service (log dir + wheel group)
+    install(FILES
+        data/systemd/system/incus.service.d/kapsule-log-dir.conf
+        DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}/incus.service.d"
+    )
+
+    # Install systemd preset to enable incus sockets by default
+    install(FILES
+        data/systemd/system-preset/50-kapsule.preset
+        DESTINATION "${KAPSULE_SYSTEMD_PRESET_DIR}"
     )
 
     # Configure D-Bus system service (auto-activation)
