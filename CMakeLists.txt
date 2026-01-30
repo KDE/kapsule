@@ -232,6 +232,12 @@ if(INSTALL_PYTHON_CLI)
         DESTINATION "${KAPSULE_SYSTEMD_PRESET_DIR}"
     )
 
+    # Install modules-load.d config for nested container support (Docker/Podman inside containers)
+    install(FILES
+        data/modules-load.d/kapsule.conf
+        DESTINATION "${KDE_INSTALL_LIBDIR}/modules-load.d"
+    )
+
     # Configure D-Bus system service (auto-activation)
     configure_file(
         data/dbus/system/org.kde.kapsule.service

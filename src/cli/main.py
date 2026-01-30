@@ -383,6 +383,22 @@ async def init() -> None:
                 out.failure(f"Failed to reload systemd: {e.stderr.strip()}")
             raise typer.Exit(1)
 
+        # Load kernel modules required for nested containers (Docker/Podman inside containers)
+        out.info("Loading kernel modules for nested container support...")
+        try:
+            subprocess.run(
+                ["systemctl", "restart", "systemd-modules-load"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            with out.indent():
+                out.success("Kernel modules loaded (iptables, overlay, br_netfilter)")
+        except subprocess.CalledProcessError as e:
+            with out.indent():
+                out.warning(f"Failed to load kernel modules: {e.stderr.strip()}")
+                out.dim("Nested containers (Docker inside kapsule) may not work until reboot")
+
         # Restart systemd-sysusers to ensure incus groups are created
         out.info("Running systemd-sysusers...")
         try:
