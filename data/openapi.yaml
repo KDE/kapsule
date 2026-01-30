@@ -31971,8 +31971,7 @@ components:
           x-go-name: MayCancel
         metadata:
           type: object
-          additionalProperties:
-            type: object
+          additionalProperties: true
           description: Operation specific metadata
           example:
             command:

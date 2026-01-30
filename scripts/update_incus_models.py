@@ -66,6 +66,36 @@ def save_openapi_spec(spec: dict, path: Path) -> None:
     print(f"  ✓ Saved {path}")
 
 
+def patch_openapi_spec(spec: dict) -> dict:
+    """Apply patches to fix known issues in the Incus OpenAPI spec.
+    
+    The upstream spec has some inaccuracies that don't match the actual API responses.
+    This function patches those issues before model generation.
+    """
+    print("Applying patches to OpenAPI spec...")
+    patches_applied = 0
+    
+    # Get the schemas section
+    schemas = spec.get("components", {}).get("schemas", {})
+    
+    # Fix Operation.metadata type
+    # The spec says additionalProperties: {type: object} but Incus actually returns
+    # a mix of strings and objects (e.g., 'create_instance_from_image_unpack_progress': 'Unpacking image')
+    if "Operation" in schemas:
+        operation = schemas["Operation"]
+        if "properties" in operation and "metadata" in operation["properties"]:
+            metadata = operation["properties"]["metadata"]
+            # Change from {type: object, additionalProperties: {type: object}}
+            # to just {type: object} which allows any values
+            if metadata.get("additionalProperties") == {"type": "object"}:
+                metadata["additionalProperties"] = True
+                patches_applied += 1
+                print("  • Fixed Operation.metadata to allow any value types")
+    
+    print(f"  ✓ Applied {patches_applied} patch(es)")
+    return spec
+
+
 def generate_models(openapi_path: Path, output_path: Path) -> None:
     """Generate Pydantic models using datamodel-codegen."""
     print("Generating Pydantic models...")
@@ -95,10 +125,13 @@ def main() -> int:
         # Step 2: Convert
         openapi_spec = convert_to_openapi3(swagger_spec)
         
-        # Step 3: Save OpenAPI spec (useful for reference)
+        # Step 3: Patch known issues in the spec
+        openapi_spec = patch_openapi_spec(openapi_spec)
+        
+        # Step 4: Save OpenAPI spec (useful for reference)
         save_openapi_spec(openapi_spec, OPENAPI_SPEC)
         
-        # Step 4: Generate models
+        # Step 5: Generate models
         generate_models(OPENAPI_SPEC, MODELS_OUTPUT)
         
         print("=" * 60)
