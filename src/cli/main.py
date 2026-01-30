@@ -162,7 +162,7 @@ async def create(
         console.print("  Downloading image and creating container...")
         operation = await client.create_instance(instance_config, wait=True)
 
-        if not operation.succeeded:
+        if operation.status != "Success":
             console.print(f"  [red]✗[/red] Creation failed: {operation.err or operation.status}")
             raise typer.Exit(1)
 
@@ -356,7 +356,7 @@ async def rm(
         if is_running and force:
             console.print(f"[bold yellow]Stopping container:[/bold yellow] {name}")
             stop_op = await client.stop_instance(name, force=True, wait=True)
-            if not stop_op.succeeded:
+            if stop_op.status != "Success":
                 console.print(f"  [red]✗[/red] Failed to stop: {stop_op.err or stop_op.status}")
                 raise typer.Exit(1)
             console.print(f"  [green]✓[/green] Container stopped")
@@ -365,7 +365,7 @@ async def rm(
         console.print(f"[bold red]Removing container:[/bold red] {name}")
         operation = await client.delete_instance(name, wait=True)
 
-        if not operation.succeeded:
+        if operation.status != "Success":
             console.print(f"  [red]✗[/red] Removal failed: {operation.err or operation.status}")
             raise typer.Exit(1)
 
@@ -404,7 +404,7 @@ async def start(
         console.print(f"[bold green]Starting container:[/bold green] {name}")
         operation = await client.start_instance(name, wait=True)
 
-        if not operation.succeeded:
+        if operation.status != "Success":
             console.print(f"  [red]✗[/red] Start failed: {operation.err or operation.status}")
             raise typer.Exit(1)
 
@@ -449,7 +449,7 @@ async def stop(
         console.print(f"[bold yellow]Stopping container:[/bold yellow] {name}")
         operation = await client.stop_instance(name, force=force, wait=True)
 
-        if not operation.succeeded:
+        if operation.status != "Success":
             console.print(f"  [red]✗[/red] Stop failed: {operation.err or operation.status}")
             raise typer.Exit(1)
 

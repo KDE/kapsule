@@ -6,33 +6,44 @@ communicating over the Unix socket at /var/lib/incus/unix.socket.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
+from pydantic import BaseModel, RootModel
+
+T = TypeVar("T", bound=BaseModel)
 
 from .models_generated import (
     Instance,
     InstanceSource,
     InstancesPost,
     InstanceStatePut,
+    Operation,
     Profile,
     ProfilesPost,
+    Server,
 )
 
 
-@dataclass
-class OperationResult:
-    """Simplified operation result."""
+# List wrapper models for typed API responses
+class InstanceList(RootModel[list[Instance]]):
+    """List of Instance objects."""
+    pass
 
-    id: str
+
+class StringList(RootModel[list[str]]):
+    """List of string URLs/paths."""
+    pass
+
+
+# Wrapper for async operation responses (the full response, not just metadata)
+class AsyncOperationResponse(BaseModel):
+    """Async operation response wrapper."""
+    type: str
     status: str
-    err: str | None = None
-
-    @property
-    def succeeded(self) -> bool:
-        """Check if operation succeeded."""
-        return self.status == "Success"
+    status_code: int
+    operation: str | None = None
+    metadata: Operation | None = None
 
 
 class IncusError(Exception):
@@ -43,8 +54,7 @@ class IncusError(Exception):
         self.code = code
 
 
-@dataclass
-class ContainerInfo:
+class ContainerInfo(BaseModel):
     """Simplified container information."""
 
     name: str
@@ -78,8 +88,8 @@ class IncusClient:
             self._client = None
 
     async def _request(
-        self, method: str, path: str, **kwargs: Any
-    ) -> dict[str, Any]:
+        self, method: str, path: str, *, response_type: type[T], json: dict[str, Any] | None = None
+    ) -> T:
         """Make request and handle Incus response format.
 
         Incus wraps all responses in:
@@ -92,9 +102,18 @@ class IncusClient:
 
         For async operations, returns the full response (not just metadata)
         so callers can access the operation URL.
+
+        Args:
+            method: HTTP method.
+            path: API path.
+            response_type: Pydantic model to deserialize the response into.
+            json: Optional JSON body for the request.
+
+        Returns:
+            A validated instance of response_type.
         """
         client = await self._get_client()
-        response = await client.request(method, path, **kwargs)
+        response = await client.request(method, path, json=json)
 
         # Handle HTTP errors and convert to IncusError
         if response.status_code >= 400:
@@ -118,25 +137,10 @@ class IncusClient:
 
         # For async operations, return the full response
         if data.get("type") == "async":
-            return data
+            return response_type.model_validate(data)
 
-        return data.get("metadata", data)
-
-    async def get(self, path: str) -> dict[str, Any]:
-        """GET request."""
-        return await self._request("GET", path)
-
-    async def post(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
-        """POST request."""
-        return await self._request("POST", path, json=json)
-
-    async def put(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
-        """PUT request."""
-        return await self._request("PUT", path, json=json)
-
-    async def delete(self, path: str) -> dict[str, Any]:
-        """DELETE request."""
-        return await self._request("DELETE", path)
+        metadata = data.get("metadata", data)
+        return response_type.model_validate(metadata)
 
     # -------------------------------------------------------------------------
     # High-level instance operations
@@ -151,18 +155,16 @@ class IncusClient:
         Returns:
             List of Instance objects.
         """
-        data = await self.get(f"/1.0/instances?recursion={recursion}")
-
         if recursion == 0:
             # Just URLs like ["/1.0/instances/foo", "/1.0/instances/bar"]
             # We'd need to fetch each one - not implemented yet
             raise NotImplementedError("recursion=0 not yet supported")
 
         # With recursion=1, we get full instance objects
-        instances = []
-        for item in data:
-            instances.append(Instance.model_validate(item))
-        return instances
+        result = await self._request(
+            "GET", f"/1.0/instances?recursion={recursion}", response_type=InstanceList
+        )
+        return result.root
 
     async def list_containers(self) -> list[ContainerInfo]:
         """List all containers with simplified info.
@@ -207,8 +209,7 @@ class IncusClient:
         Returns:
             Instance object.
         """
-        data = await self.get(f"/1.0/instances/{name}")
-        return Instance.model_validate(data)
+        return await self._request("GET", f"/1.0/instances/{name}", response_type=Instance)
 
     async def is_available(self) -> bool:
         """Check if Incus is available and responding.
@@ -217,7 +218,7 @@ class IncusClient:
             True if Incus is available.
         """
         try:
-            await self.get("/1.0")
+            await self._request("GET", "/1.0", response_type=Server)
             return True
         except Exception:
             return False
@@ -232,9 +233,9 @@ class IncusClient:
         Returns:
             List of profile names.
         """
-        data = await self.get("/1.0/profiles")
+        result = await self._request("GET", "/1.0/profiles", response_type=StringList)
         # Returns URLs like ["/1.0/profiles/default", "/1.0/profiles/foo"]
-        return [url.split("/")[-1] for url in data]
+        return [url.split("/")[-1] for url in result.root]
 
     async def get_profile(self, name: str) -> Profile:
         """Get a profile by name.
@@ -245,8 +246,7 @@ class IncusClient:
         Returns:
             Profile object.
         """
-        data = await self.get(f"/1.0/profiles/{name}")
-        return Profile.model_validate(data)
+        return await self._request("GET", f"/1.0/profiles/{name}", response_type=Profile)
 
     async def profile_exists(self, name: str) -> bool:
         """Check if a profile exists.
@@ -266,7 +266,11 @@ class IncusClient:
         Args:
             profile: Profile configuration.
         """
-        await self.post("/1.0/profiles", json=profile.model_dump(exclude_none=True))
+        await self._request(
+            "POST", "/1.0/profiles",
+            response_type=StringList,  # Empty response, but typed
+            json=profile.model_dump(exclude_none=True),
+        )
 
     async def ensure_profile(self, name: str, profile_data: ProfilesPost) -> bool:
         """Ensure a profile exists, creating it if necessary.
@@ -288,7 +292,7 @@ class IncusClient:
     # Instance creation
     # -------------------------------------------------------------------------
 
-    async def create_instance(self, instance: InstancesPost, wait: bool = False) -> OperationResult:
+    async def create_instance(self, instance: InstancesPost, wait: bool = False) -> Operation:
         """Create a new instance (container or VM).
 
         Args:
@@ -296,40 +300,37 @@ class IncusClient:
             wait: If True, wait for the operation to complete.
 
         Returns:
-            OperationResult with status info.
+            Operation with status info.
         """
-        response = await self.post("/1.0/instances", json=instance.model_dump(exclude_none=True))
-
-        # For async operations, response contains the full response with operation URL
-        metadata = response.get("metadata", {})
-        operation = OperationResult(
-            id=metadata.get("id", ""),
-            status=metadata.get("status", "Unknown"),
-            err=metadata.get("err") or None,
+        response = await self._request(
+            "POST", "/1.0/instances",
+            response_type=AsyncOperationResponse,
+            json=instance.model_dump(exclude_none=True),
         )
+
+        operation = response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
 
         if wait and operation.id:
             operation = await self.wait_operation(operation.id)
 
         return operation
 
-    async def get_operation(self, operation_id: str) -> OperationResult:
+    async def get_operation(self, operation_id: str) -> Operation:
         """Get an operation by ID.
 
         Args:
             operation_id: Operation UUID.
 
         Returns:
-            OperationResult object.
+            Operation object.
         """
-        data = await self.get(f"/1.0/operations/{operation_id}")
-        return OperationResult(
-            id=data.get("id", operation_id),
-            status=data.get("status", "Unknown"),
-            err=data.get("err") or None,
+        return await self._request(
+            "GET", f"/1.0/operations/{operation_id}", response_type=Operation
         )
 
-    async def wait_operation(self, operation_id: str, timeout: int = 60) -> OperationResult:
+    async def wait_operation(self, operation_id: str, timeout: int = 60) -> Operation:
         """Wait for an operation to complete.
 
         Args:
@@ -337,13 +338,11 @@ class IncusClient:
             timeout: Timeout in seconds.
 
         Returns:
-            OperationResult object with final status.
+            Operation object with final status.
         """
-        data = await self.get(f"/1.0/operations/{operation_id}/wait?timeout={timeout}")
-        return OperationResult(
-            id=data.get("id", operation_id),
-            status=data.get("status", "Unknown"),
-            err=data.get("err") or None,
+        return await self._request(
+            "GET", f"/1.0/operations/{operation_id}/wait?timeout={timeout}",
+            response_type=Operation,
         )
 
     async def instance_exists(self, name: str) -> bool:
@@ -367,7 +366,7 @@ class IncusClient:
 
     async def change_instance_state(
         self, name: str, state: InstanceStatePut, wait: bool = False
-    ) -> OperationResult:
+    ) -> Operation:
         """Change instance state (start, stop, restart, freeze, unfreeze).
 
         Args:
@@ -376,27 +375,24 @@ class IncusClient:
             wait: If True, wait for the operation to complete.
 
         Returns:
-            OperationResult with status info.
+            Operation with status info.
         """
-        response = await self.put(
-            f"/1.0/instances/{name}/state",
+        response = await self._request(
+            "PUT", f"/1.0/instances/{name}/state",
+            response_type=AsyncOperationResponse,
             json=state.model_dump(exclude_none=True),
         )
 
-        # For async operations, response contains the full response with operation URL
-        metadata = response.get("metadata", {})
-        operation = OperationResult(
-            id=metadata.get("id", ""),
-            status=metadata.get("status", "Unknown"),
-            err=metadata.get("err") or None,
-        )
+        operation = response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
 
         if wait and operation.id:
             operation = await self.wait_operation(operation.id)
 
         return operation
 
-    async def start_instance(self, name: str, wait: bool = False) -> OperationResult:
+    async def start_instance(self, name: str, wait: bool = False) -> Operation:
         """Start an instance.
 
         Args:
@@ -404,7 +400,7 @@ class IncusClient:
             wait: If True, wait for the operation to complete.
 
         Returns:
-            OperationResult with status info.
+            Operation with status info.
         """
         state = InstanceStatePut(
             action="start",
@@ -416,7 +412,7 @@ class IncusClient:
 
     async def stop_instance(
         self, name: str, force: bool = False, wait: bool = False
-    ) -> OperationResult:
+    ) -> Operation:
         """Stop an instance.
 
         Args:
@@ -425,7 +421,7 @@ class IncusClient:
             wait: If True, wait for the operation to complete.
 
         Returns:
-            OperationResult with status info.
+            Operation with status info.
         """
         state = InstanceStatePut(
             action="stop",
@@ -439,7 +435,7 @@ class IncusClient:
     # Instance deletion
     # -------------------------------------------------------------------------
 
-    async def delete_instance(self, name: str, wait: bool = False) -> OperationResult:
+    async def delete_instance(self, name: str, wait: bool = False) -> Operation:
         """Delete an instance.
 
         Args:
@@ -447,17 +443,16 @@ class IncusClient:
             wait: If True, wait for the operation to complete.
 
         Returns:
-            OperationResult with status info.
+            Operation with status info.
         """
-        response = await self.delete(f"/1.0/instances/{name}")
-
-        # For async operations, response contains the full response with operation URL
-        metadata = response.get("metadata", {})
-        operation = OperationResult(
-            id=metadata.get("id", ""),
-            status=metadata.get("status", "Unknown"),
-            err=metadata.get("err") or None,
+        response = await self._request(
+            "DELETE", f"/1.0/instances/{name}",
+            response_type=AsyncOperationResponse,
         )
+
+        operation = response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
 
         if wait and operation.id:
             operation = await self.wait_operation(operation.id)
