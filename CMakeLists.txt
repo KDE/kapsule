@@ -71,10 +71,12 @@ if(INSTALL_PYTHON_CLI)
     # Install kapsule CLI package
     install(FILES
         src/cli/__init__.py
-        src/cli/main.py
         src/cli/async_typer.py
+        src/cli/decorators.py
         src/cli/incus_client.py
+        src/cli/main.py
         src/cli/models_generated.py
+        src/cli/output.py
         src/cli/profile.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule"
     )
