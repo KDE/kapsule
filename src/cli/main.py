@@ -12,7 +12,8 @@ with native KDE/Plasma integration.
 import os
 import shlex
 import subprocess
-from typing import Optional
+from functools import wraps
+from typing import Callable, Coroutine, Optional, TypeVar
 
 import typer
 from rich.table import Table
@@ -23,6 +24,32 @@ from .incus_client import IncusClient, IncusError
 from .models_generated import InstanceSource, InstancesPost
 from .output import out
 from .profile import KAPSULE_BASE_PROFILE, KAPSULE_PROFILE_NAME
+
+R = TypeVar("R")
+
+
+def require_incus(func: Callable[..., Coroutine[None, None, R]]) -> Callable[..., Coroutine[None, None, R]]:
+    """Decorator that checks Incus availability and handles IncusError."""
+    @wraps(func)
+    async def wrapper(*args: object, **kwargs: object) -> R:
+        # Quick availability check with throwaway client
+        client = IncusClient()
+        try:
+            if not await client.is_available():
+                out.error("Incus is not available.")
+                out.hint("Run: [bold]sudo kapsule init[/bold]")
+                raise typer.Exit(1)
+        finally:
+            await client.close()
+
+        # Run the actual function (with its own client)
+        try:
+            return await func(*args, **kwargs)
+        except IncusError as e:
+            out.error(str(e))
+            raise typer.Exit(1)
+    return wrapper
+
 
 # Create the main Typer app
 app = AsyncTyper(
@@ -61,6 +88,7 @@ def main(
 
 
 @app.command()
+@require_incus
 async def create(
     name: str = typer.Argument(..., help="Name of the container to create"),
     image: str = typer.Option(
@@ -73,12 +101,6 @@ async def create(
     """Create a new kapsule container."""
     client = IncusClient()
     try:
-        # Check if Incus is available
-        if not await client.is_available():
-            out.error("Cannot connect to Incus.")
-            out.hint("Run [bold]sudo kapsule init[/bold] first.")
-            raise typer.Exit(1)
-
         # Check if container already exists
         if await client.instance_exists(name):
             out.error(f"Container '{name}' already exists.")
@@ -160,9 +182,6 @@ async def create(
 
             out.success(f"Container '{name}' created successfully")
 
-    except IncusError as e:
-        out.error(str(e))
-        raise typer.Exit(1)
     finally:
         await client.close()
 
@@ -184,7 +203,8 @@ _ENTER_ENV_SKIP = frozenset({
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
-def enter(
+@require_incus
+async def enter(
     ctx: typer.Context,
     name: str = typer.Argument(..., help="Name of the container to enter"),
 ) -> None:
@@ -194,116 +214,101 @@ def enter(
 
         kapsule enter mycontainer -- ls -la
     """
-    import asyncio
-
     # Get user info
     uid = os.getuid()
     gid = os.getgid()
     username = os.environ.get("USER") or os.environ.get("LOGNAME") or "root"
     home_dir = os.environ.get("HOME") or f"/home/{username}"
 
-    async def setup_and_enter() -> None:
-        """Check container, map user if needed, then set up runtime dir."""
-        client = IncusClient()
+    client = IncusClient()
+    try:
+        # Get instance and check it's running
         try:
-            # Check Incus is available
-            if not await client.is_available():
-                out.error("Cannot connect to Incus.")
-                raise typer.Exit(1)
-
-            # Get instance and check it's running
-            try:
-                instance = await client.get_instance(name)
-            except IncusError:
-                out.error(f"Container '{name}' does not exist.")
-                raise typer.Exit(1)
-
-            if instance.status != "Running":
-                out.error(
-                    f"Container '{name}' is not running "
-                    f"(status: {instance.status})."
-                )
-                out.hint(f"Start it with: incus start {name}")
-                raise typer.Exit(1)
-
-            # Check if user is already mapped in this container
-            config = instance.config or {}
-            user_mapped_key = f"user.kapsule.host-users.{uid}.mapped"
-
-            if config.get(user_mapped_key) != "true":
-                with out.operation(f"Setting up user '{username}' in container..."):
-                    # Add disk device to mount host home directory into container
-                    home_basename = os.path.basename(home_dir)
-                    container_home = f"/home/{home_basename}"
-                    device_name = f"kapsule-home-{username}"
-
-                    out.info(f"Mounting home directory: {home_dir} -> {container_home}")
-                    await client.add_instance_device(
-                        name,
-                        device_name,
-                        {
-                            "type": "disk",
-                            "source": home_dir,
-                            "path": container_home,
-                        },
-                    )
-
-                    # Create group (allow duplicate GID with -o)
-                    out.info(f"Creating group '{username}' (gid={gid})")
-                    result = subprocess.run(
-                        ["incus", "exec", name, "--", "groupadd", "-o", "-g", str(gid), username],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result.returncode != 0 and "already exists" not in result.stderr:
-                        out.warning(f"groupadd: {result.stderr.strip()}")
-
-                    # Create user (without home directory since we symlinked it, allow duplicate UID with -o)
-                    out.info(f"Creating user '{username}' (uid={uid})")
-                    result = subprocess.run(
-                        [
-                            "incus", "exec", name, "--",
-                            "useradd",
-                            "-o",           # Allow duplicate UID
-                            "-M",           # Don't create home directory
-                            "-u", str(uid),
-                            "-g", str(gid),
-                            "-d", container_home,
-                            "-s", "/bin/bash",
-                            username,
-                        ],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result.returncode != 0 and "already exists" not in result.stderr:
-                        out.warning(f"useradd: {result.stderr.strip()}")
-
-                    # Mark user as mapped in container config
-                    await client.patch_instance_config(name, {user_mapped_key: "true"})
-                    out.success(f"User '{username}' configured")
-
-            # Create symlink for XDG_RUNTIME_DIR: /run/user/{uid} -> /.kapsule/host/run/user/{uid}
-            runtime_dir = f"/run/user/{uid}"
-            host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
-            try:
-                # Ensure /run/user exists
-                await client.mkdir(name, "/run/user", uid=0, gid=0, mode="0755")
-            except IncusError:
-                pass  # Directory might already exist
-
-            try:
-                await client.create_symlink(name, runtime_dir, host_runtime_dir, uid=uid, gid=gid)
-            except IncusError:
-                pass  # Symlink might already exist from previous enter
-
-        except IncusError as e:
-            out.error(str(e))
+            instance = await client.get_instance(name)
+        except IncusError:
+            out.error(f"Container '{name}' does not exist.")
             raise typer.Exit(1)
-        finally:
-            await client.close()
 
-    # Run the async setup
-    asyncio.run(setup_and_enter())
+        if instance.status != "Running":
+            out.error(
+                f"Container '{name}' is not running "
+                f"(status: {instance.status})."
+            )
+            out.hint(f"Start it with: incus start {name}")
+            raise typer.Exit(1)
+
+        # Check if user is already mapped in this container
+        config = instance.config or {}
+        user_mapped_key = f"user.kapsule.host-users.{uid}.mapped"
+
+        if config.get(user_mapped_key) != "true":
+            with out.operation(f"Setting up user '{username}' in container..."):
+                # Add disk device to mount host home directory into container
+                home_basename = os.path.basename(home_dir)
+                container_home = f"/home/{home_basename}"
+                device_name = f"kapsule-home-{username}"
+
+                out.info(f"Mounting home directory: {home_dir} -> {container_home}")
+                await client.add_instance_device(
+                    name,
+                    device_name,
+                    {
+                        "type": "disk",
+                        "source": home_dir,
+                        "path": container_home,
+                    },
+                )
+
+                # Create group (allow duplicate GID with -o)
+                out.info(f"Creating group '{username}' (gid={gid})")
+                result = subprocess.run(
+                    ["incus", "exec", name, "--", "groupadd", "-o", "-g", str(gid), username],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0 and "already exists" not in result.stderr:
+                    out.warning(f"groupadd: {result.stderr.strip()}")
+
+                # Create user (without home directory since we symlinked it, allow duplicate UID with -o)
+                out.info(f"Creating user '{username}' (uid={uid})")
+                result = subprocess.run(
+                    [
+                        "incus", "exec", name, "--",
+                        "useradd",
+                        "-o",           # Allow duplicate UID
+                        "-M",           # Don't create home directory
+                        "-u", str(uid),
+                        "-g", str(gid),
+                        "-d", container_home,
+                        "-s", "/bin/bash",
+                        username,
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0 and "already exists" not in result.stderr:
+                    out.warning(f"useradd: {result.stderr.strip()}")
+
+                # Mark user as mapped in container config
+                await client.patch_instance_config(name, {user_mapped_key: "true"})
+                out.success(f"User '{username}' configured")
+
+        # Create symlink for XDG_RUNTIME_DIR: /run/user/{uid} -> /.kapsule/host/run/user/{uid}
+        runtime_dir = f"/run/user/{uid}"
+        host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
+        try:
+            # Ensure /run/user exists
+            await client.mkdir(name, "/run/user", uid=0, gid=0, mode="0755")
+        except IncusError:
+            pass  # Directory might already exist
+
+        try:
+            await client.create_symlink(name, runtime_dir, host_runtime_dir, uid=uid, gid=gid)
+        except IncusError:
+            pass  # Symlink might already exist from previous enter
+
+    finally:
+        await client.close()
 
     # Build --env arguments from current environment
     env_args: list[str] = []
@@ -413,6 +418,7 @@ def init() -> None:
 
 
 @app.command(name="list")
+@require_incus
 async def list_containers(
     all_containers: bool = typer.Option(
         False,
@@ -424,11 +430,6 @@ async def list_containers(
     """List kapsule containers."""
     client = IncusClient()
     try:
-        if not await client.is_available():
-            out.error("Incus is not available.")
-            out.hint("Run: [bold]sudo kapsule init[/bold] to enable incus sockets.")
-            raise typer.Exit(1)
-
         containers = await client.list_containers()
 
         if not containers:
@@ -460,14 +461,12 @@ async def list_containers(
 
         out.console.print(table)
 
-    except IncusError as e:
-        out.error(f"Incus error: {e}")
-        raise typer.Exit(1)
     finally:
         await client.close()
 
 
 @app.command()
+@require_incus
 async def rm(
     name: str = typer.Argument(..., help="Name of the container to remove"),
     force: bool = typer.Option(
@@ -480,11 +479,6 @@ async def rm(
     """Remove a kapsule container."""
     client = IncusClient()
     try:
-        if not await client.is_available():
-            out.error("Incus is not available.")
-            out.hint("Run: [bold]sudo kapsule init[/bold]")
-            raise typer.Exit(1)
-
         # Check if container exists
         if not await client.instance_exists(name):
             out.error(f"Container '{name}' does not exist.")
@@ -521,25 +515,18 @@ async def rm(
 
             out.success(f"Container '{name}' removed successfully")
 
-    except IncusError as e:
-        out.error(str(e))
-        raise typer.Exit(1)
     finally:
         await client.close()
 
 
 @app.command()
+@require_incus
 async def start(
     name: str = typer.Argument(..., help="Name of the container to start"),
 ) -> None:
     """Start a stopped kapsule container."""
     client = IncusClient()
     try:
-        if not await client.is_available():
-            out.error("Incus is not available.")
-            out.hint("Run: [bold]sudo kapsule init[/bold]")
-            raise typer.Exit(1)
-
         # Check if container exists
         if not await client.instance_exists(name):
             out.error(f"Container '{name}' does not exist.")
@@ -560,14 +547,12 @@ async def start(
 
             out.success(f"Container '{name}' started successfully")
 
-    except IncusError as e:
-        out.error(str(e))
-        raise typer.Exit(1)
     finally:
         await client.close()
 
 
 @app.command()
+@require_incus
 async def stop(
     name: str = typer.Argument(..., help="Name of the container to stop"),
     force: bool = typer.Option(
@@ -580,11 +565,6 @@ async def stop(
     """Stop a running kapsule container."""
     client = IncusClient()
     try:
-        if not await client.is_available():
-            out.error("Incus is not available.")
-            out.hint("Run: [bold]sudo kapsule init[/bold]")
-            raise typer.Exit(1)
-
         # Check if container exists
         if not await client.instance_exists(name):
             out.error(f"Container '{name}' does not exist.")
@@ -605,9 +585,6 @@ async def stop(
 
             out.success(f"Container '{name}' stopped successfully")
 
-    except IncusError as e:
-        out.error(str(e))
-        raise typer.Exit(1)
     finally:
         await client.close()
 
