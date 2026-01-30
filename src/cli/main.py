@@ -322,6 +322,22 @@ async def init() -> None:
         raise typer.Exit(1)
 
     with out.operation("Initializing kapsule..."):
+        # Reload systemd to pick up new unit files (in case sysext was just loaded)
+        out.info("Reloading systemd daemon...")
+        try:
+            subprocess.run(
+                ["systemctl", "daemon-reload"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            with out.indent():
+                out.success("systemd daemon reloaded")
+        except subprocess.CalledProcessError as e:
+            with out.indent():
+                out.failure(f"Failed to reload systemd: {e.stderr.strip()}")
+            raise typer.Exit(1)
+
         # Restart systemd-sysusers to ensure incus groups are created
         out.info("Running systemd-sysusers...")
         try:
