@@ -10,40 +10,19 @@ with native KDE/Plasma integration.
 """
 
 import os
-import shlex
 import subprocess
-from functools import wraps
-from typing import Callable, Coroutine, Optional, TypeVar
+from typing import Optional
 
 import typer
 from rich.table import Table
 
 from . import __version__
 from .async_typer import AsyncTyper
+from .decorators import require_incus
 from .incus_client import IncusError, get_client
 from .models_generated import InstanceSource, InstancesPost
 from .output import out
 from .profile import KAPSULE_BASE_PROFILE, KAPSULE_PROFILE_NAME
-
-R = TypeVar("R")
-
-
-def require_incus(func: Callable[..., Coroutine[None, None, R]]) -> Callable[..., Coroutine[None, None, R]]:
-    """Decorator that checks Incus availability and handles IncusError."""
-    @wraps(func)
-    async def wrapper(*args: object, **kwargs: object) -> R:
-        client = get_client()
-        if not await client.is_available():
-            out.error("Incus is not available.")
-            out.hint("Run: [bold]sudo kapsule init[/bold]")
-            raise typer.Exit(1)
-
-        try:
-            return await func(*args, **kwargs)
-        except IncusError as e:
-            out.error(str(e))
-            raise typer.Exit(1)
-    return wrapper
 
 
 # Create the main Typer app
