@@ -458,3 +458,115 @@ class IncusClient:
             operation = await self.wait_operation(operation.id)
 
         return operation
+
+    # -------------------------------------------------------------------------
+    # File operations
+    # -------------------------------------------------------------------------
+
+    async def push_file(
+        self,
+        instance: str,
+        path: str,
+        content: str | bytes,
+        *,
+        uid: int = 0,
+        gid: int = 0,
+        mode: str = "0644",
+    ) -> None:
+        """Push a file to an instance.
+
+        Args:
+            instance: Instance name.
+            path: Absolute path inside the instance.
+            content: File content (str or bytes).
+            uid: File owner UID.
+            gid: File owner GID.
+            mode: File mode (octal string, e.g., "0644").
+        """
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+
+        client = await self._get_client()
+        response = await client.post(
+            f"/1.0/instances/{instance}/files",
+            params={"path": path},
+            headers={
+                "X-Incus-uid": str(uid),
+                "X-Incus-gid": str(gid),
+                "X-Incus-mode": mode,
+                "X-Incus-type": "file",
+                "X-Incus-write": "overwrite",
+                "Content-Type": "application/octet-stream",
+            },
+            content=content,
+        )
+
+        if response.status_code >= 400:
+            raise IncusError(f"Failed to push file {path}: {response.text}", response.status_code)
+
+    async def create_symlink(
+        self,
+        instance: str,
+        path: str,
+        target: str,
+        *,
+        uid: int = 0,
+        gid: int = 0,
+    ) -> None:
+        """Create a symlink in an instance.
+
+        Args:
+            instance: Instance name.
+            path: Absolute path for the symlink.
+            target: Symlink target (what it points to).
+            uid: Symlink owner UID.
+            gid: Symlink owner GID.
+        """
+        client = await self._get_client()
+        response = await client.post(
+            f"/1.0/instances/{instance}/files",
+            params={"path": path},
+            headers={
+                "X-Incus-uid": str(uid),
+                "X-Incus-gid": str(gid),
+                "X-Incus-type": "symlink",
+            },
+            content=target.encode("utf-8"),
+        )
+
+        if response.status_code >= 400:
+            raise IncusError(f"Failed to create symlink {path}: {response.text}", response.status_code)
+
+    async def mkdir(
+        self,
+        instance: str,
+        path: str,
+        *,
+        uid: int = 0,
+        gid: int = 0,
+        mode: str = "0755",
+    ) -> None:
+        """Create a directory in an instance.
+
+        Args:
+            instance: Instance name.
+            path: Absolute path for the directory.
+            uid: Directory owner UID.
+            gid: Directory owner GID.
+            mode: Directory mode (octal string, e.g., "0755").
+        """
+        client = await self._get_client()
+        response = await client.post(
+            f"/1.0/instances/{instance}/files",
+            params={"path": path},
+            headers={
+                "X-Incus-uid": str(uid),
+                "X-Incus-gid": str(gid),
+                "X-Incus-mode": mode,
+                "X-Incus-type": "directory",
+            },
+            content=b"",
+        )
+
+        if response.status_code >= 400:
+            raise IncusError(f"Failed to create directory {path}: {response.text}", response.status_code)
