@@ -20,6 +20,8 @@ from rich.table import Table
 from . import __version__
 from .async_typer import AsyncTyper
 from .incus_client import IncusClient, IncusError
+from .models_generated import InstanceSource, InstancesPost
+from .profile import KAPSULE_BASE_PROFILE, KAPSULE_PROFILE_NAME
 
 # Create the main Typer app
 app = AsyncTyper(
@@ -60,44 +62,92 @@ def main(
 
 
 @app.command()
-def create(
+async def create(
     name: str = typer.Argument(..., help="Name of the container to create"),
     image: str = typer.Option(
-        "ubuntu:24.04",
+        "images:ubuntu/24.04",
         "--image",
         "-i",
-        help="Base image to use for the container",
-    ),
-    with_docker: bool = typer.Option(
-        False,
-        "--with-docker",
-        help="Enable Docker support inside the container",
-    ),
-    with_graphics: bool = typer.Option(
-        True,
-        "--with-graphics",
-        help="Enable graphics/GPU passthrough",
-    ),
-    with_audio: bool = typer.Option(
-        True,
-        "--with-audio",
-        help="Enable audio (PipeWire/PulseAudio) passthrough",
-    ),
-    with_home: bool = typer.Option(
-        True,
-        "--with-home",
-        help="Mount home directory inside container",
+        help="Base image to use for the container (e.g., images:ubuntu/24.04)",
     ),
 ) -> None:
     """Create a new kapsule container."""
-    console.print(f"[bold green]Creating container:[/bold green] {name}")
-    console.print(f"  Image: {image}")
-    console.print(f"  Docker: {with_docker}")
-    console.print(f"  Graphics: {with_graphics}")
-    console.print(f"  Audio: {with_audio}")
-    console.print(f"  Home mount: {with_home}")
-    # TODO: Implement actual container creation via Incus REST API
-    console.print("[yellow]⚠ Stub implementation - not yet functional[/yellow]")
+    client = IncusClient()
+    try:
+        # Check if Incus is available
+        if not await client.is_available():
+            console.print("[red]Error:[/red] Cannot connect to Incus.")
+            console.print(
+                "[yellow]Hint:[/yellow] Run [bold]sudo kapsule init[/bold] first."
+            )
+            raise typer.Exit(1)
+
+        # Check if container already exists
+        if await client.instance_exists(name):
+            console.print(f"[red]Error:[/red] Container '{name}' already exists.")
+            raise typer.Exit(1)
+
+        # Ensure the kapsule profile exists
+        console.print(f"[bold blue]Ensuring profile:[/bold blue] {KAPSULE_PROFILE_NAME}")
+        created = await client.ensure_profile(KAPSULE_PROFILE_NAME, KAPSULE_BASE_PROFILE)
+        if created:
+            console.print(f"  [green]✓[/green] Created profile '{KAPSULE_PROFILE_NAME}'")
+        else:
+            console.print(
+                f"  [dim]Profile '{KAPSULE_PROFILE_NAME}' already exists[/dim]"
+            )
+
+        # Parse image source
+        # Format: [remote:]image  e.g., "images:ubuntu/24.04" or "ubuntu/24.04"
+        if ":" in image:
+            server_alias, image_alias = image.split(":", 1)
+            # Map common server aliases to URLs
+            server_map = {
+                "images": "https://images.linuxcontainers.org",
+                "ubuntu": "https://cloud-images.ubuntu.com/releases",
+            }
+            server_url = server_map.get(server_alias)
+            if not server_url:
+                console.print(f"[red]Error:[/red] Unknown image server: {server_alias}")
+                console.print(
+                    "[yellow]Hint:[/yellow] Use 'images:' or 'ubuntu:' prefix."
+                )
+                raise typer.Exit(1)
+        else:
+            # Default to linuxcontainers.org
+            server_url = "https://images.linuxcontainers.org"
+            image_alias = image
+
+        # Create the container
+        console.print(f"[bold green]Creating container:[/bold green] {name}")
+        console.print(f"  Image: {image}")
+
+        instance_config = InstancesPost(
+            name=name,
+            profiles=[KAPSULE_PROFILE_NAME],
+            source=InstanceSource(
+                type="image",
+                protocol="simplestreams",
+                server=server_url,
+                alias=image_alias,
+            ),
+            start=True,
+        )
+
+        console.print("  Downloading image and creating container...")
+        operation = await client.create_instance(instance_config, wait=True)
+
+        if not operation.succeeded:
+            console.print(f"  [red]✗[/red] Creation failed: {operation.err or operation.status}")
+            raise typer.Exit(1)
+
+        console.print(f"  [green]✓[/green] Container '{name}' created successfully")
+
+    except IncusError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    finally:
+        await client.close()
 
 
 @app.command()
@@ -163,6 +213,24 @@ def init() -> None:
             console.print(f"    [green]✓[/green] {unit} enabled and started")
         except subprocess.CalledProcessError as e:
             console.print(f"    [red]✗[/red] Failed to enable {unit}: {e.stderr.strip()}")
+            raise typer.Exit(1)
+
+    # Initialize Incus with minimal settings (creates default storage pool)
+    console.print("  Initializing Incus...")
+    try:
+        subprocess.run(
+            ["incus", "admin", "init", "--minimal"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        console.print("    [green]✓[/green] Incus initialized with default storage pool")
+    except subprocess.CalledProcessError as e:
+        # Check if already initialized
+        if "already exists" in e.stderr or "already initialized" in e.stderr.lower():
+            console.print("    [dim]Incus already initialized[/dim]")
+        else:
+            console.print(f"    [red]✗[/red] Failed to initialize Incus: {e.stderr.strip()}")
             raise typer.Exit(1)
 
     console.print("[bold green]✓ Kapsule initialized successfully![/bold green]")

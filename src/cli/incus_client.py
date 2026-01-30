@@ -11,7 +11,27 @@ from typing import Any
 
 import httpx
 
-from .models_generated import Instance
+from .models_generated import (
+    Instance,
+    InstanceSource,
+    InstancesPost,
+    Profile,
+    ProfilesPost,
+)
+
+
+@dataclass
+class OperationResult:
+    """Simplified operation result."""
+
+    id: str
+    status: str
+    err: str | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        """Check if operation succeeded."""
+        return self.status == "Success"
 
 
 class IncusError(Exception):
@@ -68,10 +88,25 @@ class IncusClient:
             "status_code": 200 | ...,
             "metadata": <actual data>
         }
+
+        For async operations, returns the full response (not just metadata)
+        so callers can access the operation URL.
         """
         client = await self._get_client()
         response = await client.request(method, path, **kwargs)
-        response.raise_for_status()
+
+        # Handle HTTP errors and convert to IncusError
+        if response.status_code >= 400:
+            # Try to parse Incus error response
+            try:
+                data = response.json()
+                error_msg = data.get("error", response.reason_phrase)
+                error_code = data.get("error_code", response.status_code)
+            except Exception:
+                error_msg = response.reason_phrase
+                error_code = response.status_code
+            raise IncusError(error_msg, error_code)
+
         data = response.json()
 
         if data.get("type") == "error":
@@ -79,6 +114,10 @@ class IncusClient:
                 data.get("error", "Unknown error"),
                 data.get("error_code"),
             )
+
+        # For async operations, return the full response
+        if data.get("type") == "async":
+            return data
 
         return data.get("metadata", data)
 
@@ -180,4 +219,143 @@ class IncusClient:
             await self.get("/1.0")
             return True
         except Exception:
+            return False
+
+    # -------------------------------------------------------------------------
+    # Profile operations
+    # -------------------------------------------------------------------------
+
+    async def list_profiles(self) -> list[str]:
+        """List all profile names.
+
+        Returns:
+            List of profile names.
+        """
+        data = await self.get("/1.0/profiles")
+        # Returns URLs like ["/1.0/profiles/default", "/1.0/profiles/foo"]
+        return [url.split("/")[-1] for url in data]
+
+    async def get_profile(self, name: str) -> Profile:
+        """Get a profile by name.
+
+        Args:
+            name: Profile name.
+
+        Returns:
+            Profile object.
+        """
+        data = await self.get(f"/1.0/profiles/{name}")
+        return Profile.model_validate(data)
+
+    async def profile_exists(self, name: str) -> bool:
+        """Check if a profile exists.
+
+        Args:
+            name: Profile name.
+
+        Returns:
+            True if the profile exists.
+        """
+        profiles = await self.list_profiles()
+        return name in profiles
+
+    async def create_profile(self, profile: ProfilesPost) -> None:
+        """Create a new profile.
+
+        Args:
+            profile: Profile configuration.
+        """
+        await self.post("/1.0/profiles", json=profile.model_dump(exclude_none=True))
+
+    async def ensure_profile(self, name: str, profile_data: ProfilesPost) -> bool:
+        """Ensure a profile exists, creating it if necessary.
+
+        Args:
+            name: Profile name.
+            profile_data: Profile configuration (used if creating).
+
+        Returns:
+            True if the profile was created, False if it already existed.
+        """
+        if await self.profile_exists(name):
+            return False
+
+        await self.create_profile(profile_data)
+        return True
+
+    # -------------------------------------------------------------------------
+    # Instance creation
+    # -------------------------------------------------------------------------
+
+    async def create_instance(self, instance: InstancesPost, wait: bool = False) -> OperationResult:
+        """Create a new instance (container or VM).
+
+        Args:
+            instance: Instance configuration.
+            wait: If True, wait for the operation to complete.
+
+        Returns:
+            OperationResult with status info.
+        """
+        response = await self.post("/1.0/instances", json=instance.model_dump(exclude_none=True))
+
+        # For async operations, response contains the full response with operation URL
+        metadata = response.get("metadata", {})
+        operation = OperationResult(
+            id=metadata.get("id", ""),
+            status=metadata.get("status", "Unknown"),
+            err=metadata.get("err") or None,
+        )
+
+        if wait and operation.id:
+            operation = await self.wait_operation(operation.id)
+
+        return operation
+
+    async def get_operation(self, operation_id: str) -> OperationResult:
+        """Get an operation by ID.
+
+        Args:
+            operation_id: Operation UUID.
+
+        Returns:
+            OperationResult object.
+        """
+        data = await self.get(f"/1.0/operations/{operation_id}")
+        return OperationResult(
+            id=data.get("id", operation_id),
+            status=data.get("status", "Unknown"),
+            err=data.get("err") or None,
+        )
+
+    async def wait_operation(self, operation_id: str, timeout: int = 60) -> OperationResult:
+        """Wait for an operation to complete.
+
+        Args:
+            operation_id: Operation UUID.
+            timeout: Timeout in seconds.
+
+        Returns:
+            OperationResult object with final status.
+        """
+        data = await self.get(f"/1.0/operations/{operation_id}/wait?timeout={timeout}")
+        return OperationResult(
+            id=data.get("id", operation_id),
+            status=data.get("status", "Unknown"),
+            err=data.get("err") or None,
+        )
+
+    async def instance_exists(self, name: str) -> bool:
+        """Check if an instance exists.
+
+        Args:
+            name: Instance name.
+
+        Returns:
+            True if the instance exists.
+        """
+        try:
+            await self.get_instance(name)
+            return True
+        except IncusError:
             return False
