@@ -62,12 +62,17 @@ def main(
     pass
 
 
-async def _create_container(name: str, image: str) -> None:
+# Config key for session mode
+KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
+
+
+async def _create_container(name: str, image: str, *, session_mode: bool = False) -> None:
     """Create and start a container (internal implementation).
 
     Args:
         name: Name for the container.
         image: Image to use (e.g., 'images:ubuntu/24.04').
+        session_mode: If True, use systemd-run for proper user sessions on enter.
     """
     client = get_client()
 
@@ -121,13 +126,18 @@ async def _create_container(name: str, image: str) -> None:
             source=None,
             **{"base-image": None},
         )
+        # Build instance config with kapsule metadata
+        instance_metadata: dict[str, str] = {}
+        if session_mode:
+            instance_metadata[KAPSULE_SESSION_MODE_KEY] = "true"
+
         instance_config = InstancesPost(
             name=name,
             profiles=[KAPSULE_PROFILE_NAME],
             source=instance_source,
             start=True,
             architecture=None,
-            config=None,
+            config=instance_metadata if instance_metadata else None,
             description=None,
             devices=None,
             ephemeral=None,
@@ -158,8 +168,22 @@ async def create(
         "-i",
         help="Base image to use for the container (e.g., images:ubuntu/24.04)",
     ),
+    session: bool = typer.Option(
+        False,
+        "--session",
+        "-s",
+        help="Enable session mode: use systemd-run for proper user sessions with container D-Bus",
+    ),
 ) -> None:
-    """Create a new kapsule container."""
+    """Create a new kapsule container.
+
+    By default, containers share the host's D-Bus session and runtime directory,
+    allowing seamless integration with the host desktop environment.
+
+    With --session, containers get their own user session via systemd-run,
+    with a separate D-Bus session bus. This is useful for isolated environments
+    or when you need container-local user services.
+    """
     # Use default image from config if not specified
     if image is None:
         config = load_config()
@@ -172,7 +196,7 @@ async def create(
         out.error(f"Container '{name}' already exists.")
         raise typer.Exit(1)
 
-    await _create_container(name, image)
+    await _create_container(name, image, session_mode=session)
 
 
 # Environment variables to skip when passing through to container
@@ -305,23 +329,42 @@ async def enter(
             sudoers_file = f"/etc/sudoers.d/{username}"
             await client.push_file(name, sudoers_file, sudoers_content, uid=0, gid=0, mode="0440")
 
+            # Check if session mode is enabled for this container
+            session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
+
+            # In session mode, enable lingering so systemd --user starts at boot
+            if session_mode:
+                out.info(f"Enabling linger for '{username}' (session mode)")
+                result = subprocess.run(
+                    ["incus", "exec", name, "--", "loginctl", "enable-linger", username],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    out.warning(f"loginctl enable-linger: {result.stderr.strip()}")
+
             # Mark user as mapped in container config
             await client.patch_instance_config(name, {user_mapped_key: "true"})
             out.success(f"User '{username}' configured")
 
-    # Create symlink for XDG_RUNTIME_DIR: /run/user/{uid} -> /.kapsule/host/run/user/{uid}
-    runtime_dir = f"/run/user/{uid}"
-    host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
-    try:
-        # Ensure /run/user exists
-        await client.mkdir(name, "/run/user", uid=0, gid=0, mode="0755")
-    except IncusError:
-        pass  # Directory might already exist
+    # Check if session mode is enabled for this container
+    session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
 
-    try:
-        await client.create_symlink(name, runtime_dir, host_runtime_dir, uid=uid, gid=gid)
-    except IncusError:
-        pass  # Symlink might already exist from previous enter
+    # In non-session mode, symlink XDG_RUNTIME_DIR to host's runtime dir
+    # This allows apps to use the host's D-Bus session
+    if not session_mode:
+        runtime_dir = f"/run/user/{uid}"
+        host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
+        try:
+            # Ensure /run/user exists
+            await client.mkdir(name, "/run/user", uid=0, gid=0, mode="0755")
+        except IncusError:
+            pass  # Directory might already exist
+
+        try:
+            await client.create_symlink(name, runtime_dir, host_runtime_dir, uid=uid, gid=gid)
+        except IncusError:
+            pass  # Symlink might already exist from previous enter
 
     # Build --env arguments from current environment
     env_args: list[str] = []
@@ -336,7 +379,7 @@ async def enter(
     # Build the command to run inside the container
     if ctx.args:
         # User provided a command to run
-        exec_cmd = ctx.args
+        exec_cmd = ["su", "-l", "-c", " ".join(ctx.args), username]
     else:
         # No command - start interactive login shell
         exec_cmd = ["login", "-p", "-f", username]

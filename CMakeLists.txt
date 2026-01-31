@@ -86,8 +86,6 @@ if(INSTALL_PYTHON_CLI)
     install(FILES
         src/daemon/__init__.py
         src/daemon/__main__.py
-        src/daemon/incus_client.py
-        src/daemon/models_generated.py
         src/daemon/service.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon"
     )
