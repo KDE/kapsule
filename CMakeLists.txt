@@ -82,6 +82,16 @@ if(INSTALL_PYTHON_CLI)
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule"
     )
 
+    # Install kapsule daemon package
+    install(FILES
+        src/daemon/__init__.py
+        src/daemon/__main__.py
+        src/daemon/incus_client.py
+        src/daemon/models_generated.py
+        src/daemon/service.py
+        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon"
+    )
+
     # Configure and install launcher scripts
     set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
 
@@ -113,7 +123,7 @@ if(INSTALL_PYTHON_CLI AND VENDOR_PYTHON_DEPS)
     # List of dependencies to vendor (from pyproject.toml)
     set(KAPSULE_PYTHON_DEPENDENCIES
         "httpx>=0.25.0"
-        "dbus-next>=0.2.3"
+        "dbus-fast>=2.0.0"
         "typer>=0.9.0"
         "rich>=13.0.0"
         "pyyaml>=6.0"

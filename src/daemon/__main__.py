@@ -1,8 +1,8 @@
 """Entry point for running the daemon directly.
 
 Usage:
-    python -m daemon
-    python -m daemon --system  # Use system bus (requires root/polkit)
+    python -m kapsule.daemon
+    python -m kapsule.daemon --system  # Use system bus (requires root/polkit)
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ Wants=incus.service
 [Service]
 Type=dbus
 BusName=org.kde.kapsule
-ExecStart=@PYTHON_EXECUTABLE@ -m daemon --system
+ExecStart=@PYTHON_EXECUTABLE@ -m kapsule.daemon --system
 Restart=on-failure
 RestartSec=5
 
