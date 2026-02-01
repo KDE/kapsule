@@ -33,6 +33,10 @@ mkdir -p "$install_dir"
 # Start by building kapsule with kde-builder
 kde-builder --no-src --build-when-unchanged kapsule
 
+# add kapsule-dbus-mux to the sysext
+# this will eventually come from the AUR or something
+cp /home/fernie/src/kapsule-dbus-mux/target/x86_64-unknown-linux-musl/release/kapsule-dbus-mux "$install_dir/usr/lib/kapsule/"
+
 # Create extension-release metadata for the sysext
 # This allows systemd-sysext to recognize and merge the extension
 # Using ID=_any so system updates don't break the extension

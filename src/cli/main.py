@@ -89,6 +89,79 @@ ListenStream={systemd_socket_path}
     )
 
 
+async def _setup_dbus_mux_service(
+    client: IncusClient,
+    container_name: str,
+) -> None:
+    """Set up D-Bus multiplexer service for intelligent bus routing.
+
+    Creates a systemd user service that runs kapsule-dbus-mux to intelligently
+    route D-Bus calls between the host and container session buses. The service
+    runs after dbus.service so the container bus is available.
+
+    The multiplexer listens on a socket at /run/user/UID/bus (the standard
+    D-Bus session bus path) and routes calls to either:
+    - The container's internal D-Bus (for container-local services)
+    - The host's D-Bus session bus (for desktop integration)
+
+    Args:
+        client: Incus client.
+        container_name: Name of the container.
+    """
+    # Create systemd user service directory
+    service_dir = "/etc/systemd/user"
+    try:
+        await client.mkdir(container_name, service_dir, uid=0, gid=0, mode="0755")
+    except IncusError:
+        pass  # Directory might already exist
+
+    # The container's internal D-Bus socket (from the dbus.socket drop-in)
+    # Uses %t which systemd expands to /run/user/UID
+    container_dbus_socket = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=container_name)
+    # Host D-Bus socket (via hostfs mount)
+    host_dbus_socket = "unix:path=/.kapsule/host%t/bus"
+    # Where the mux listens (standard D-Bus session bus path)
+    mux_listen_socket = "%t/bus"
+
+    # Create the kapsule-dbus-mux.service file
+    service_content = f"""[Unit]
+Description=Kapsule D-Bus Multiplexer
+Documentation=man:kapsule(1)
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=simple
+ExecStart={KAPSULE_DBUS_MUX_BIN} \\
+    --listen {mux_listen_socket} \\
+    --container-bus unix:path={container_dbus_socket} \\
+    --host-bus {host_dbus_socket}
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=default.target
+"""
+
+    service_file = f"{service_dir}/kapsule-dbus-mux.service"
+    out.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
+    await client.push_file(
+        container_name,
+        service_file,
+        service_content,
+        uid=0,
+        gid=0,
+        mode="0644",
+    )
+
+    # Enable the service globally (for all users)
+    out.info("Enabling kapsule-dbus-mux.service globally")
+    subprocess.run(
+        ["incus", "exec", container_name, "--", "systemctl", "--user", "--global", "enable", "kapsule-dbus-mux.service"],
+        capture_output=True,
+    )
+
+
 # Create the main Typer app
 app = AsyncTyper(
     name="kapsule",
@@ -128,15 +201,26 @@ def main(
 # Config key for session mode
 KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
 
+# Config key for dbus mux mode
+KAPSULE_DBUS_MUX_KEY = "user.kapsule.dbus-mux"
 
-async def _create_container(name: str, image: str, *, session_mode: bool = False) -> None:
+# Path to kapsule-dbus-mux binary inside container (via hostfs mount)
+KAPSULE_DBUS_MUX_BIN = "/.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux"
+
+
+async def _create_container(name: str, image: str, *, session_mode: bool = False, dbus_mux: bool = False) -> None:
     """Create and start a container (internal implementation).
 
     Args:
         name: Name for the container.
         image: Image to use (e.g., 'images:ubuntu/24.04').
         session_mode: If True, use systemd-run for proper user sessions on enter.
+        dbus_mux: If True, set up D-Bus multiplexer for intelligent host/container routing.
     """
+    # dbus_mux implies session_mode (container needs its own D-Bus session)
+    if dbus_mux:
+        session_mode = True
+
     client = get_client()
 
     # Ensure the kapsule profile exists
@@ -193,6 +277,8 @@ async def _create_container(name: str, image: str, *, session_mode: bool = False
         instance_metadata: dict[str, str] = {}
         if session_mode:
             instance_metadata[KAPSULE_SESSION_MODE_KEY] = "true"
+        if dbus_mux:
+            instance_metadata[KAPSULE_DBUS_MUX_KEY] = "true"
 
         instance_config = InstancesPost(
             name=name,
@@ -224,7 +310,11 @@ async def _create_container(name: str, image: str, *, session_mode: bool = False
             # Use uid 1000 as placeholder - the drop-in uses %t so it works for any user
             await _setup_container_dbus_socket(client, name, uid=1000)
 
-            # Reload systemd to pick up the new drop-in
+            # Set up D-Bus multiplexer if requested
+            if dbus_mux:
+                await _setup_dbus_mux_service(client, name)
+
+            # Reload systemd to pick up the new drop-in and services
             out.info("Reloading systemd user configuration...")
             subprocess.run(
                 ["incus", "exec", name, "--", "systemctl", "--user", "--global", "daemon-reload"],
@@ -250,6 +340,12 @@ async def create(
         "-s",
         help="Enable session mode: use systemd-run for proper user sessions with container D-Bus",
     ),
+    dbus_mux: bool = typer.Option(
+        False,
+        "--dbus-mux",
+        "-m",
+        help="Enable D-Bus multiplexer: intelligently route D-Bus calls between host and container buses (implies --session)",
+    ),
 ) -> None:
     """Create a new kapsule container.
 
@@ -259,6 +355,11 @@ async def create(
     With --session, containers get their own user session via systemd-run,
     with a separate D-Bus session bus. This is useful for isolated environments
     or when you need container-local user services.
+
+    With --dbus-mux, a D-Bus multiplexer service is set up that intelligently
+    routes D-Bus calls between the host and container session buses. This allows
+    applications to transparently access both host desktop services (notifications,
+    file dialogs, etc.) and container-local services. Implies --session.
     """
     # Use default image from config if not specified
     if image is None:
@@ -272,7 +373,7 @@ async def create(
         out.error(f"Container '{name}' already exists.")
         raise typer.Exit(1)
 
-    await _create_container(name, image, session_mode=session)
+    await _create_container(name, image, session_mode=session, dbus_mux=dbus_mux)
 
 
 # Environment variables to skip when passing through to container
@@ -425,6 +526,7 @@ async def enter(
 
     # Check if session mode is enabled for this container
     session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
+    dbus_mux_mode = instance_config.get(KAPSULE_DBUS_MUX_KEY) == "true"
 
     runtime_dir = f"/run/user/{uid}"
     host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
@@ -434,7 +536,7 @@ async def enter(
         # Symlink individual host sockets into it for graphics/audio access
         # Sockets/paths to symlink from host runtime dir
         # Format: (name_or_env_var, is_env_var, subpath_override)
-        runtime_links = [
+        runtime_links: list[tuple[str, bool, str | None]] = [
             # Wayland socket - get from WAYLAND_DISPLAY env var
             ("WAYLAND_DISPLAY", True, None),
             # X11 auth token
@@ -443,9 +545,12 @@ async def enter(
             ("pipewire-0", False, None),
             # PulseAudio socket directory
             ("pulse", False, None),
-            # DBus is set as a subdirectory under kapsule/{container}/dbus.socket
-            ("bus", False, KAPSULE_DBUS_SOCKET_USER_PATH.format(container=name)),
         ]
+        # Only symlink D-Bus if NOT using dbus-mux (mux service manages the bus socket)
+        if not dbus_mux_mode:
+            runtime_links.append(
+                ("bus", False, KAPSULE_DBUS_SOCKET_USER_PATH.format(container=name))
+            )
 
         for item, is_env, subpath in runtime_links:
             if is_env:
