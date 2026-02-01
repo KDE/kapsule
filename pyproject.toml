@@ -102,6 +102,11 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+include = ["src/daemon"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
