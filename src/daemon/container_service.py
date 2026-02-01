@@ -896,9 +896,13 @@ class ContainerService:
 
         progress.info(f"Configuring container D-Bus socket at: {host_socket_path}")
 
-        # Create the directory on host
+        # Create the directory on host with correct ownership
+        kapsule_base_dir = f"/run/user/{uid}/kapsule"
         host_socket_dir = os.path.dirname(host_socket_path)
         os.makedirs(host_socket_dir, exist_ok=True)
+        # Set ownership of both the kapsule base dir and container-specific dir
+        os.chown(kapsule_base_dir, uid, uid)
+        os.chown(host_socket_dir, uid, uid)
 
         # Create systemd user drop-in directory
         dropin_dir = "/etc/systemd/user/dbus.socket.d"
