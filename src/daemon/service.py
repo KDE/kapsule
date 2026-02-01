@@ -8,11 +8,23 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import grp
+from typing import Annotated
 
 from dbus_fast.aio import MessageBus
-from dbus_fast.service import ServiceInterface, method, dbus_property, signal
+from dbus_fast.service import ServiceInterface
 from dbus_fast import BusType, Variant, Message, MessageType
-from dbus_fast.constants import PropertyAccess
+
+from .dbus_types import (
+    DBusStr,
+    DBusBool,
+    DBusUInt32,
+    DBusStrArray,
+    DBusStrDict,
+    dbus_property,
+    method,
+    signal,
+    PropertyAccess,
+)
 
 from . import __version__
 from .container_service import ContainerService
@@ -137,7 +149,7 @@ class KapsuleManagerInterface(ServiceInterface):
     # =========================================================================
 
     @dbus_property(access=PropertyAccess.READ)
-    def Version(self) -> "s":
+    def Version(self) -> DBusStr:
         """Daemon version."""
         return self._version
 
@@ -148,11 +160,11 @@ class KapsuleManagerInterface(ServiceInterface):
     @signal()
     def OperationStarted(
         self,
-        operation_id: str,
-        operation_type: str,
-        description: str,
-        target: str,
-    ) -> "(ssss)":
+        operation_id: DBusStr,
+        operation_type: DBusStr,
+        description: DBusStr,
+        target: DBusStr,
+    ) -> Annotated[tuple[str, str, str, str], "(ssss)"]:
         """Emitted when an operation begins.
 
         Args:
@@ -166,11 +178,11 @@ class KapsuleManagerInterface(ServiceInterface):
     @signal()
     def OperationMessage(
         self,
-        operation_id: str,
+        operation_id: DBusStr,
         message_type: int,
-        message: str,
+        message: DBusStr,
         indent_level: int,
-    ) -> "(sisi)":
+    ) -> Annotated[tuple[str, int, str, int], "(sisi)"]:
         """Emitted for progress messages within an operation.
 
         Args:
@@ -184,10 +196,10 @@ class KapsuleManagerInterface(ServiceInterface):
     @signal()
     def OperationCompleted(
         self,
-        operation_id: str,
-        success: bool,
-        message: str,
-    ) -> "(sbs)":
+        operation_id: DBusStr,
+        success: DBusBool,
+        message: DBusStr,
+    ) -> Annotated[tuple[str, bool, str], "(sbs)"]:
         """Emitted when an operation finishes.
 
         Args:
@@ -200,12 +212,12 @@ class KapsuleManagerInterface(ServiceInterface):
     @signal()
     def ProgressStarted(
         self,
-        operation_id: str,
-        progress_id: str,
-        description: str,
+        operation_id: DBusStr,
+        progress_id: DBusStr,
+        description: DBusStr,
         total: int,
         indent_level: int,
-    ) -> "(sssii)":
+    ) -> Annotated[tuple[str, str, str, int, int], "(sssii)"]:
         """Emitted when a progress bar starts.
 
         Args:
@@ -220,10 +232,10 @@ class KapsuleManagerInterface(ServiceInterface):
     @signal()
     def ProgressUpdate(
         self,
-        progress_id: str,
+        progress_id: DBusStr,
         current: int,
         rate: float,
-    ) -> "(sid)":
+    ) -> Annotated[tuple[str, int, float], "(sid)"]:
         """Emitted to update a progress bar.
 
         Args:
@@ -236,10 +248,10 @@ class KapsuleManagerInterface(ServiceInterface):
     @signal()
     def ProgressCompleted(
         self,
-        progress_id: str,
-        success: bool,
-        message: str,
-    ) -> "(sbs)":
+        progress_id: DBusStr,
+        success: DBusBool,
+        message: DBusStr,
+    ) -> Annotated[tuple[str, bool, str], "(sbs)"]:
         """Emitted when a progress bar completes.
 
         Args:
@@ -256,11 +268,11 @@ class KapsuleManagerInterface(ServiceInterface):
     @method()
     async def CreateContainer(
         self,
-        name: "s",
-        image: "s",
-        session_mode: "b",
-        dbus_mux: "b",
-    ) -> "s":
+        name: DBusStr,
+        image: DBusStr,
+        session_mode: DBusBool,
+        dbus_mux: DBusBool,
+    ) -> DBusStr:
         """Create a new container.
 
         Args:
@@ -296,7 +308,7 @@ class KapsuleManagerInterface(ServiceInterface):
         )
 
     @method()
-    async def DeleteContainer(self, name: "s", force: "b") -> "s":
+    async def DeleteContainer(self, name: DBusStr, force: DBusBool) -> DBusStr:
         """Delete a container.
 
         Args:
@@ -309,7 +321,7 @@ class KapsuleManagerInterface(ServiceInterface):
         return await self._service.delete_container(name=name, force=force)
 
     @method()
-    async def StartContainer(self, name: "s") -> "s":
+    async def StartContainer(self, name: DBusStr) -> DBusStr:
         """Start a stopped container.
 
         Args:
@@ -321,7 +333,7 @@ class KapsuleManagerInterface(ServiceInterface):
         return await self._service.start_container(name=name)
 
     @method()
-    async def StopContainer(self, name: "s", force: "b") -> "s":
+    async def StopContainer(self, name: DBusStr, force: DBusBool) -> DBusStr:
         """Stop a running container.
 
         Args:
@@ -340,12 +352,12 @@ class KapsuleManagerInterface(ServiceInterface):
     @method()
     async def SetupUser(
         self,
-        container_name: "s",
-        uid: "u",
-        gid: "u",
-        username: "s",
-        home_dir: "s",
-    ) -> "s":
+        container_name: DBusStr,
+        uid: DBusUInt32,
+        gid: DBusUInt32,
+        username: DBusStr,
+        home_dir: DBusStr,
+    ) -> DBusStr:
         """Set up a host user in a container.
 
         This mounts the user's home directory and creates a matching
@@ -370,7 +382,7 @@ class KapsuleManagerInterface(ServiceInterface):
         )
 
     @method()
-    async def IsUserSetup(self, container_name: "s", uid: "u") -> "b":
+    async def IsUserSetup(self, container_name: DBusStr, uid: DBusUInt32) -> DBusBool:
         """Check if a user is set up in a container.
 
         Args:
@@ -387,7 +399,7 @@ class KapsuleManagerInterface(ServiceInterface):
     # =========================================================================
 
     @method()
-    async def ListContainers(self) -> "a(sssss)":
+    async def ListContainers(self) -> Annotated[list[tuple[str, str, str, str, str]], "a(sssss)"]:
         """List all containers.
 
         Returns:
@@ -396,7 +408,7 @@ class KapsuleManagerInterface(ServiceInterface):
         return await self._service.list_containers()
 
     @method()
-    async def GetContainerInfo(self, name: "s") -> "a{ss}":
+    async def GetContainerInfo(self, name: DBusStr) -> DBusStrDict:
         """Get detailed information about a container.
 
         Args:
@@ -408,7 +420,7 @@ class KapsuleManagerInterface(ServiceInterface):
         return await self._service.get_container_info(name)
 
     @method()
-    async def GetConfig(self) -> "a{ss}":
+    async def GetConfig(self) -> DBusStrDict:
         """Get user configuration.
 
         Reads configuration using the caller's home directory for
@@ -436,9 +448,9 @@ class KapsuleManagerInterface(ServiceInterface):
     @method()
     async def PrepareEnter(
         self,
-        container_name: "s",
-        command: "as",
-    ) -> "(bsas)":
+        container_name: DBusStr,
+        command: DBusStrArray,
+    ) -> Annotated[tuple[bool, str, list[str]], "(bsas)"]:
         """Prepare to enter a container.
 
         This method handles all setup for entering a container:
