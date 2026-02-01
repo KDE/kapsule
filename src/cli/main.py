@@ -19,147 +19,18 @@ from rich.table import Table
 from . import __version__
 from .async_typer import AsyncTyper
 from .config import KapsuleConfig, get_config_path, get_config_paths, load_config, save_config
+from .daemon_client import get_daemon_client, DaemonClient
 from .decorators import require_incus
 from .incus_client import IncusClient, IncusError, get_client
-from .models_generated import InstanceSource, InstancesPost
 from .output import out
-from .profile import KAPSULE_BASE_PROFILE, KAPSULE_PROFILE_NAME
 
 
-# D-Bus socket path template using %t (systemd specifier for XDG_RUNTIME_DIR)
-# In container drop-in: /.kapsule/host%t/kapsule/{container}/dbus.socket
-# Which expands to: /.kapsule/host/run/user/{uid}/kapsule/{container}/dbus.socket
-# Host sees: /run/user/{uid}/kapsule/{container}/dbus.socket
+# D-Bus socket path template for enter command
 KAPSULE_DBUS_SOCKET_USER_PATH = "kapsule/{container}/dbus.socket"
-KAPSULE_DBUS_SOCKET_SYSTEMD = "/.kapsule/host%t/" + KAPSULE_DBUS_SOCKET_USER_PATH
-KAPSULE_DBUS_SOCKET_HOST = "/run/user/{uid}/" + KAPSULE_DBUS_SOCKET_USER_PATH
 
-
-async def _setup_container_dbus_socket(
-    client: IncusClient,
-    container_name: str,
-    uid: int,
-) -> None:
-    """Set up container's D-Bus session socket on a shared path.
-
-    Creates a systemd user drop-in for dbus.socket that redirects the
-    ListenStream to a path inside /.kapsule/host, making the container's
-    D-Bus session socket accessible from the host.
-
-    Args:
-        client: Incus client.
-        container_name: Name of the container.
-        uid: User ID for the socket path.
-    """
-    # Build the socket paths
-    # Use %t in systemd config (expands to XDG_RUNTIME_DIR inside container)
-    systemd_socket_path = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=container_name)
-    host_socket_path = KAPSULE_DBUS_SOCKET_HOST.format(uid=uid, container=container_name)
-
-    # Create the directory on host (will be visible in container via mount)
-    host_socket_dir = os.path.dirname(host_socket_path)
-    os.makedirs(host_socket_dir, exist_ok=True)
-
-    # Create systemd user drop-in directory
-    dropin_dir = "/etc/systemd/user/dbus.socket.d"
-    try:
-        await client.mkdir(container_name, dropin_dir, uid=0, gid=0, mode="0755")
-    except IncusError:
-        pass  # Directory might already exist
-
-    # Create the drop-in file
-    # Use %t so systemd expands it to the correct user's runtime dir
-    dropin_content = f"""[Socket]
-# Kapsule: redirect D-Bus session socket to shared path
-# This makes the container's D-Bus accessible from the host
-# %t expands to XDG_RUNTIME_DIR (/run/user/UID)
-ListenStream=
-ListenStream={systemd_socket_path}
-"""
-
-    dropin_file = f"{dropin_dir}/kapsule.conf"
-    out.info(f"Configuring container D-Bus socket at: {host_socket_path}")
-    await client.push_file(
-        container_name,
-        dropin_file,
-        dropin_content,
-        uid=0,
-        gid=0,
-        mode="0644",
-    )
-
-
-async def _setup_dbus_mux_service(
-    client: IncusClient,
-    container_name: str,
-) -> None:
-    """Set up D-Bus multiplexer service for intelligent bus routing.
-
-    Creates a systemd user service that runs kapsule-dbus-mux to intelligently
-    route D-Bus calls between the host and container session buses. The service
-    runs after dbus.service so the container bus is available.
-
-    The multiplexer listens on a socket at /run/user/UID/bus (the standard
-    D-Bus session bus path) and routes calls to either:
-    - The container's internal D-Bus (for container-local services)
-    - The host's D-Bus session bus (for desktop integration)
-
-    Args:
-        client: Incus client.
-        container_name: Name of the container.
-    """
-    # Create systemd user service directory
-    service_dir = "/etc/systemd/user"
-    try:
-        await client.mkdir(container_name, service_dir, uid=0, gid=0, mode="0755")
-    except IncusError:
-        pass  # Directory might already exist
-
-    # The container's internal D-Bus socket (from the dbus.socket drop-in)
-    # Uses %t which systemd expands to /run/user/UID
-    container_dbus_socket = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=container_name)
-    # Host D-Bus socket (via hostfs mount)
-    host_dbus_socket = "unix:path=/.kapsule/host%t/bus"
-    # Where the mux listens (standard D-Bus session bus path)
-    mux_listen_socket = "%t/bus"
-
-    # Create the kapsule-dbus-mux.service file
-    service_content = f"""[Unit]
-Description=Kapsule D-Bus Multiplexer
-Documentation=man:kapsule(1)
-After=dbus.service
-Requires=dbus.service
-
-[Service]
-Type=simple
-ExecStart={KAPSULE_DBUS_MUX_BIN} \\
-    --listen {mux_listen_socket} \\
-    --container-bus unix:path={container_dbus_socket} \\
-    --host-bus {host_dbus_socket}
-Restart=on-failure
-RestartSec=1
-
-[Install]
-WantedBy=default.target
-"""
-
-    service_file = f"{service_dir}/kapsule-dbus-mux.service"
-    out.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
-    await client.push_file(
-        container_name,
-        service_file,
-        service_content,
-        uid=0,
-        gid=0,
-        mode="0644",
-    )
-
-    # Enable the service globally (for all users)
-    out.info("Enabling kapsule-dbus-mux.service globally")
-    subprocess.run(
-        ["incus", "exec", container_name, "--", "systemctl", "--user", "--global", "enable", "kapsule-dbus-mux.service"],
-        capture_output=True,
-    )
+# Config keys for kapsule metadata stored in container config
+KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
+KAPSULE_DBUS_MUX_KEY = "user.kapsule.dbus-mux"
 
 
 # Create the main Typer app
@@ -196,132 +67,6 @@ def main(
     with tight KDE/Plasma integration.
     """
     pass
-
-
-# Config key for session mode
-KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
-
-# Config key for dbus mux mode
-KAPSULE_DBUS_MUX_KEY = "user.kapsule.dbus-mux"
-
-# Path to kapsule-dbus-mux binary inside container (via hostfs mount)
-KAPSULE_DBUS_MUX_BIN = "/.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux"
-
-
-async def _create_container(name: str, image: str, *, session_mode: bool = False, dbus_mux: bool = False) -> None:
-    """Create and start a container (internal implementation).
-
-    Args:
-        name: Name for the container.
-        image: Image to use (e.g., 'images:ubuntu/24.04').
-        session_mode: If True, use systemd-run for proper user sessions on enter.
-        dbus_mux: If True, set up D-Bus multiplexer for intelligent host/container routing.
-    """
-    # dbus_mux implies session_mode (container needs its own D-Bus session)
-    if dbus_mux:
-        session_mode = True
-
-    client = get_client()
-
-    # Ensure the kapsule profile exists
-    with out.operation(f"Ensuring profile: {KAPSULE_PROFILE_NAME}"):
-        created = await client.ensure_profile(KAPSULE_PROFILE_NAME, KAPSULE_BASE_PROFILE)
-        if created:
-            out.success(f"Created profile '{KAPSULE_PROFILE_NAME}'")
-        else:
-            out.dim(f"Profile '{KAPSULE_PROFILE_NAME}' already exists")
-
-    # Parse image source
-    # Format: [remote:]image  e.g., "images:ubuntu/24.04" or "ubuntu/24.04"
-    if ":" in image:
-        server_alias, image_alias = image.split(":", 1)
-        # Map common server aliases to URLs
-        server_map = {
-            "images": "https://images.linuxcontainers.org",
-            "ubuntu": "https://cloud-images.ubuntu.com/releases",
-        }
-        server_url = server_map.get(server_alias)
-        if not server_url:
-            out.error(f"Unknown image server: {server_alias}")
-            out.hint("Use 'images:' or 'ubuntu:' prefix.")
-            raise typer.Exit(1)
-    else:
-        # Default to linuxcontainers.org
-        server_url = "https://images.linuxcontainers.org"
-        image_alias = image
-
-    # Create the container
-    with out.operation(f"Creating container: {name}", color="green"):
-        instance_source = InstanceSource(
-            type="image",
-            protocol="simplestreams",
-            server=server_url,
-            alias=image_alias,
-            allow_inconsistent=None,
-            certificate=None,
-            fingerprint=None,
-            instance_only=None,
-            live=None,
-            mode=None,
-            operation=None,
-            project=None,
-            properties=None,
-            refresh=None,
-            refresh_exclude_older=None,
-            secret=None,
-            secrets=None,
-            source=None,
-            **{"base-image": None},
-        )
-        # Build instance config with kapsule metadata
-        instance_metadata: dict[str, str] = {}
-        if session_mode:
-            instance_metadata[KAPSULE_SESSION_MODE_KEY] = "true"
-        if dbus_mux:
-            instance_metadata[KAPSULE_DBUS_MUX_KEY] = "true"
-
-        instance_config = InstancesPost(
-            name=name,
-            profiles=[KAPSULE_PROFILE_NAME],
-            source=instance_source,
-            start=True,
-            architecture=None,
-            config=instance_metadata if instance_metadata else None,
-            description=None,
-            devices=None,
-            ephemeral=None,
-            instance_type=None,
-            restore=None,
-            stateful=None,
-            type=None,
-        )
-
-        out.info(f"Image: {image}")
-        out.info("Downloading image and creating container...")
-        operation = await client.create_instance(instance_config, wait=True)
-
-        if operation.status != "Success":
-            out.failure(f"Creation failed: {operation.err or operation.status}")
-            raise typer.Exit(1)
-
-        # In session mode, add the D-Bus socket drop-in right after creation
-        # This only needs to happen once per container (not per-user)
-        if session_mode:
-            # Use uid 1000 as placeholder - the drop-in uses %t so it works for any user
-            await _setup_container_dbus_socket(client, name, uid=1000)
-
-            # Set up D-Bus multiplexer if requested
-            if dbus_mux:
-                await _setup_dbus_mux_service(client, name)
-
-            # Reload systemd to pick up the new drop-in and services
-            out.info("Reloading systemd user configuration...")
-            subprocess.run(
-                ["incus", "exec", name, "--", "systemctl", "--user", "--global", "daemon-reload"],
-                capture_output=True,
-            )
-
-        out.success(f"Container '{name}' created successfully")
 
 
 @app.command()
@@ -366,14 +111,16 @@ async def create(
         config = load_config()
         image = config.default_image
 
-    client = get_client()
+    daemon = get_daemon_client()
+    success = await daemon.create_container(
+        name=name,
+        image=image,
+        session_mode=session,
+        dbus_mux=dbus_mux,
+    )
 
-    # Check if container already exists
-    if await client.instance_exists(name):
-        out.error(f"Container '{name}' already exists.")
+    if not success:
         raise typer.Exit(1)
-
-    await _create_container(name, image, session_mode=session, dbus_mux=dbus_mux)
 
 
 # Environment variables to skip when passing through to container
@@ -425,106 +172,48 @@ async def enter(
     username = os.environ.get("USER") or os.environ.get("LOGNAME") or "root"
     home_dir = os.environ.get("HOME") or f"/home/{username}"
 
-    client = get_client()
+    daemon = get_daemon_client()
+    await daemon.connect()
 
-    # Get instance - create if it doesn't exist and using default
+    # Get container info from daemon
     try:
-        instance = await client.get_instance(name)
-    except IncusError:
+        info = await daemon.get_container_info(name)
+    except Exception:
         # Container doesn't exist - create it if using default
         if name == config.default_container:
             out.warning(f"Default container '{name}' does not exist, creating it...")
-            await _create_container(name, config.default_image)
-            instance = await client.get_instance(name)
+            success = await daemon.create_container(name, config.default_image)
+            if not success:
+                raise typer.Exit(1)
+            info = await daemon.get_container_info(name)
         else:
             out.error(f"Container '{name}' does not exist.")
             raise typer.Exit(1)
 
-    if instance.status != "Running":
-        out.error(
-            f"Container '{name}' is not running "
-            f"(status: {instance.status})."
-        )
-        out.hint(f"Start it with: incus start {name}")
+    status = info.get("status", "Unknown")
+    if status != "Running":
+        out.error(f"Container '{name}' is not running (status: {status}).")
+        out.hint(f"Start it with: kapsule start {name}")
         raise typer.Exit(1)
 
-    # Check if user is already mapped in this container
+    # Check if user is already set up in this container
+    if not await daemon.is_user_setup(name, uid):
+        success = await daemon.setup_user(
+            container_name=name,
+            uid=uid,
+            gid=gid,
+            username=username,
+            home_dir=home_dir,
+        )
+        if not success:
+            raise typer.Exit(1)
+
+    # Handle runtime directory symlinks (needs to be done on host side)
+    # This part still uses direct Incus access for file operations
+    client = get_client()
+    instance = await client.get_instance(name)
     instance_config = instance.config or {}
-    user_mapped_key = f"user.kapsule.host-users.{uid}.mapped"
 
-    if instance_config.get(user_mapped_key) != "true":
-        with out.operation(f"Setting up user '{username}' in container..."):
-            # Add disk device to mount host home directory into container
-            home_basename = os.path.basename(home_dir)
-            container_home = f"/home/{home_basename}"
-            device_name = f"kapsule-home-{username}"
-
-            out.info(f"Mounting home directory: {home_dir} -> {container_home}")
-            await client.add_instance_device(
-                name,
-                device_name,
-                {
-                    "type": "disk",
-                    "source": home_dir,
-                    "path": container_home,
-                },
-            )
-
-            # Create group (allow duplicate GID with -o)
-            out.info(f"Creating group '{username}' (gid={gid})")
-            result = subprocess.run(
-                ["incus", "exec", name, "--", "groupadd", "-o", "-g", str(gid), username],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0 and "already exists" not in result.stderr:
-                out.warning(f"groupadd: {result.stderr.strip()}")
-
-            # Create user (without home directory since we symlinked it, allow duplicate UID with -o)
-            out.info(f"Creating user '{username}' (uid={uid})")
-            result = subprocess.run(
-                [
-                    "incus", "exec", name, "--",
-                    "useradd",
-                    "-o",           # Allow duplicate UID
-                    "-M",           # Don't create home directory
-                    "-u", str(uid),
-                    "-g", str(gid),
-                    "-d", container_home,
-                    "-s", "/bin/bash",
-                    username,
-                ],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0 and "already exists" not in result.stderr:
-                out.warning(f"useradd: {result.stderr.strip()}")
-
-            # Add sudoers entry for passwordless sudo
-            out.info(f"Configuring passwordless sudo for '{username}'")
-            sudoers_content = f"{username} ALL=(ALL) NOPASSWD:ALL\n"
-            sudoers_file = f"/etc/sudoers.d/{username}"
-            await client.push_file(name, sudoers_file, sudoers_content, uid=0, gid=0, mode="0440")
-
-            # Check if session mode is enabled for this container
-            session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
-
-            # In session mode, enable lingering so systemd --user starts at boot
-            if session_mode:
-                out.info(f"Enabling linger for '{username}' (session mode)")
-                result = subprocess.run(
-                    ["incus", "exec", name, "--", "loginctl", "enable-linger", username],
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode != 0:
-                    out.warning(f"loginctl enable-linger: {result.stderr.strip()}")
-
-            # Mark user as mapped in container config
-            await client.patch_instance_config(name, {user_mapped_key: "true"})
-            out.success(f"User '{username}' configured")
-
-    # Check if session mode is enabled for this container
     session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
     dbus_mux_mode = instance_config.get(KAPSULE_DBUS_MUX_KEY) == "true"
 
@@ -534,19 +223,12 @@ async def enter(
     if session_mode:
         # Session mode: container has its own /run/user/$uid managed by systemd --user
         # Symlink individual host sockets into it for graphics/audio access
-        # Sockets/paths to symlink from host runtime dir
-        # Format: (name_or_env_var, is_env_var, subpath_override)
         runtime_links: list[tuple[str, bool, str | None]] = [
-            # Wayland socket - get from WAYLAND_DISPLAY env var
             ("WAYLAND_DISPLAY", True, None),
-            # X11 auth token
             ("XAUTHORITY", True, None),
-            # PipeWire socket
             ("pipewire-0", False, None),
-            # PulseAudio socket directory
             ("pulse", False, None),
         ]
-        # Only symlink D-Bus if NOT using dbus-mux (mux service manages the bus socket)
         if not dbus_mux_mode:
             runtime_links.append(
                 ("bus", False, KAPSULE_DBUS_SOCKET_USER_PATH.format(container=name))
@@ -554,7 +236,6 @@ async def enter(
 
         for item, is_env, subpath in runtime_links:
             if is_env:
-                # Get socket name from environment variable
                 socket_name = os.environ.get(item)
                 if not socket_name:
                     continue
@@ -570,33 +251,29 @@ async def enter(
                 pass  # Symlink might already exist
     else:
         # Non-session mode: symlink entire runtime dir to host's
-        # This gives full access to host's D-Bus session and all sockets
         try:
             await client.mkdir(name, "/run/user", uid=0, gid=0, mode="0755")
         except IncusError:
-            pass  # Directory might already exist
+            pass
 
         try:
             await client.create_symlink(name, runtime_dir, host_runtime_dir, uid=uid, gid=gid)
         except IncusError:
-            pass  # Symlink might already exist from previous enter
+            pass
 
     # Build --env arguments from current environment
     env_args: list[str] = []
     for key, value in os.environ.items():
         if key in _ENTER_ENV_SKIP:
             continue
-        # Skip variables with problematic characters
         if "\n" in value or "\x00" in value:
             continue
         env_args.extend(["--env", f"{key}={value}"])
 
     # Build the command to run inside the container
     if ctx.args:
-        # User provided a command to run
         exec_cmd = ["su", "-l", "-c", " ".join(ctx.args), username]
     else:
-        # No command - start interactive login shell
         exec_cmd = ["login", "-p", "-f", username]
 
     # Build full incus exec command
@@ -625,7 +302,7 @@ async def init() -> None:
         raise typer.Exit(1)
 
     with out.operation("Initializing kapsule..."):
-        # Reload systemd to pick up new unit files (in case sysext was just loaded)
+        # Reload systemd to pick up new unit files
         out.info("Reloading systemd daemon...")
         try:
             subprocess.run(
@@ -641,7 +318,7 @@ async def init() -> None:
                 out.failure(f"Failed to reload systemd: {e.stderr.strip()}")
             raise typer.Exit(1)
 
-        # Load kernel modules required for nested containers (Docker/Podman inside containers)
+        # Load kernel modules
         out.info("Loading kernel modules for nested container support...")
         try:
             subprocess.run(
@@ -651,13 +328,12 @@ async def init() -> None:
                 text=True,
             )
             with out.indent():
-                out.success("Kernel modules loaded (iptables, overlay, br_netfilter)")
+                out.success("Kernel modules loaded")
         except subprocess.CalledProcessError as e:
             with out.indent():
                 out.warning(f"Failed to load kernel modules: {e.stderr.strip()}")
-                out.dim("Nested containers (Docker inside kapsule) may not work until reboot")
 
-        # Restart systemd-sysusers to ensure incus groups are created
+        # Run systemd-sysusers
         out.info("Running systemd-sysusers...")
         try:
             subprocess.run(
@@ -673,12 +349,8 @@ async def init() -> None:
                 out.failure(f"Failed to run systemd-sysusers: {e.stderr.strip()}")
             raise typer.Exit(1)
 
-        # List of socket/service units to enable
-        units = [
-            "incus.socket",
-            "incus-user.socket",
-        ]
-
+        # Enable and start incus sockets
+        units = ["incus.socket", "incus-user.socket"]
         for unit in units:
             out.info(f"Enabling and starting {unit}...")
             try:
@@ -695,23 +367,20 @@ async def init() -> None:
                     out.failure(f"Failed to enable {unit}: {e.stderr.strip()}")
                 raise typer.Exit(1)
 
-        # Now use the Incus API for remaining configuration
+        # Use the Incus API for storage pool and profile setup
         client = get_client()
 
-        # Create storage pool (we don't use incus admin init --minimal because
-        # it creates a network bridge we don't need - kapsule uses host networking)
+        # Create storage pool
         out.info("Creating storage pool...")
         if await client.storage_pool_exists("default"):
             with out.indent():
                 out.dim("Storage pool 'default' already exists")
         else:
-            # Try btrfs first (supports copy-on-write, snapshots)
             try:
                 await client.create_storage_pool("default", "btrfs")
                 with out.indent():
                     out.success("Storage pool 'default' created (btrfs backend)")
             except IncusError:
-                # Fall back to dir driver (works everywhere)
                 try:
                     await client.create_storage_pool("default", "dir")
                     with out.indent():
@@ -721,7 +390,7 @@ async def init() -> None:
                         out.failure(f"Failed to create storage pool: {e}")
                     raise typer.Exit(1)
 
-        # Disable automatic image updates (saves bandwidth, we don't need it)
+        # Disable automatic image updates
         out.info("Configuring Incus settings...")
         try:
             await client.set_server_config("images.auto_update_interval", "0")
@@ -731,7 +400,7 @@ async def init() -> None:
             with out.indent():
                 out.warning(f"Failed to set config: {e}")
 
-        # Add root device to default profile (for compatibility with other tools)
+        # Configure default profile
         out.info("Configuring default profile...")
         try:
             profile = await client.get_profile("default")
@@ -765,8 +434,10 @@ async def list_containers(
     ),
 ) -> None:
     """List kapsule containers."""
-    client = get_client()
-    containers = await client.list_containers()
+    daemon = get_daemon_client()
+    await daemon.connect()
+
+    containers = await daemon.list_containers()
 
     if not containers:
         out.dim("No containers found.")
@@ -774,7 +445,7 @@ async def list_containers(
 
     # Filter stopped containers if --all not specified
     if not all_containers:
-        containers = [c for c in containers if c.status.lower() == "running"]
+        containers = [c for c in containers if c[1].lower() == "running"]
         if not containers:
             out.dim("No running containers. Use --all to see stopped containers.")
             return
@@ -784,15 +455,17 @@ async def list_containers(
     table.add_column("Name", style="cyan", no_wrap=True)
     table.add_column("Status", style="green")
     table.add_column("Image", style="yellow")
+    table.add_column("Mode", style="magenta")
     table.add_column("Created", style="dim")
 
-    for c in containers:
-        status_style = "green" if c.status.lower() == "running" else "red"
+    for name, status, image, created, mode in containers:
+        status_style = "green" if status.lower() == "running" else "red"
         table.add_row(
-            c.name,
-            f"[{status_style}]{c.status}[/{status_style}]",
-            c.image,
-            c.created[:10] if c.created else "",  # Just the date part
+            name,
+            f"[{status_style}]{status}[/{status_style}]",
+            image,
+            mode,
+            created[:10] if created else "",
         )
 
     out.console.print(table)
@@ -810,43 +483,11 @@ async def rm(
     ),
 ) -> None:
     """Remove a kapsule container."""
-    client = get_client()
+    daemon = get_daemon_client()
+    success = await daemon.delete_container(name=name, force=force)
 
-    # Check if container exists
-    if not await client.instance_exists(name):
-        out.error(f"Container '{name}' does not exist.")
+    if not success:
         raise typer.Exit(1)
-
-    # Get container status
-    instance = await client.get_instance(name)
-    is_running = instance.status and instance.status.lower() == "running"
-
-    # If running and force not specified, error out
-    if is_running and not force:
-        out.error(
-            f"Container '{name}' is running. "
-            "Use --force to remove it anyway."
-        )
-        raise typer.Exit(1)
-
-    # If running and force specified, stop first
-    if is_running and force:
-        with out.operation(f"Stopping container: {name}", color="yellow"):
-            stop_op = await client.stop_instance(name, force=True, wait=True)
-            if stop_op.status != "Success":
-                out.failure(f"Failed to stop: {stop_op.err or stop_op.status}")
-                raise typer.Exit(1)
-            out.success("Container stopped")
-
-    # Delete the container
-    with out.operation(f"Removing container: {name}", color="red"):
-        operation = await client.delete_instance(name, wait=True)
-
-        if operation.status != "Success":
-            out.failure(f"Removal failed: {operation.err or operation.status}")
-            raise typer.Exit(1)
-
-        out.success(f"Container '{name}' removed successfully")
 
 
 @app.command()
@@ -855,27 +496,11 @@ async def start(
     name: str = typer.Argument(..., help="Name of the container to start"),
 ) -> None:
     """Start a stopped kapsule container."""
-    client = get_client()
+    daemon = get_daemon_client()
+    success = await daemon.start_container(name=name)
 
-    # Check if container exists
-    if not await client.instance_exists(name):
-        out.error(f"Container '{name}' does not exist.")
+    if not success:
         raise typer.Exit(1)
-
-    # Check current status
-    instance = await client.get_instance(name)
-    if instance.status and instance.status.lower() == "running":
-        out.styled(f"[yellow]Container '{name}' is already running.[/yellow]")
-        return
-
-    with out.operation(f"Starting container: {name}", color="green"):
-        operation = await client.start_instance(name, wait=True)
-
-        if operation.status != "Success":
-            out.failure(f"Start failed: {operation.err or operation.status}")
-            raise typer.Exit(1)
-
-        out.success(f"Container '{name}' started successfully")
 
 
 @app.command()
@@ -890,27 +515,11 @@ async def stop(
     ),
 ) -> None:
     """Stop a running kapsule container."""
-    client = get_client()
+    daemon = get_daemon_client()
+    success = await daemon.stop_container(name=name, force=force)
 
-    # Check if container exists
-    if not await client.instance_exists(name):
-        out.error(f"Container '{name}' does not exist.")
+    if not success:
         raise typer.Exit(1)
-
-    # Check current status
-    instance = await client.get_instance(name)
-    if instance.status and instance.status.lower() != "running":
-        out.styled(f"[yellow]Container '{name}' is not running.[/yellow]")
-        return
-
-    with out.operation(f"Stopping container: {name}", color="yellow"):
-        operation = await client.stop_instance(name, force=force, wait=True)
-
-        if operation.status != "Success":
-            out.failure(f"Stop failed: {operation.err or operation.status}")
-            raise typer.Exit(1)
-
-        out.success(f"Container '{name}' stopped successfully")
 
 
 @app.command(name="config")
@@ -963,11 +572,9 @@ def config_cmd(
         raise typer.Exit(1)
 
     if value is None:
-        # Get value
         current_value = getattr(config, key)
         out.info(f"{key} = {current_value}")
     else:
-        # Set value
         new_config = KapsuleConfig(
             default_container=(
                 value if key == "default_container" else config.default_container
@@ -980,7 +587,6 @@ def config_cmd(
 
 def cli() -> None:
     """CLI entry point for setuptools/meson."""
-    # Use KAPSULE_PROG_NAME if set (from wrapper script), otherwise default to "kapsule"
     prog_name = os.environ.get("KAPSULE_PROG_NAME", "kapsule")
     app(prog_name=prog_name)
 

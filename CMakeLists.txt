@@ -73,6 +73,7 @@ if(INSTALL_PYTHON_CLI)
         src/cli/__init__.py
         src/cli/async_typer.py
         src/cli/config.py
+        src/cli/daemon_client.py
         src/cli/decorators.py
         src/cli/incus_client.py
         src/cli/main.py
