@@ -85,6 +85,7 @@ if(INSTALL_PYTHON_CLI)
         src/daemon/__main__.py
         src/daemon/config.py
         src/daemon/container_service.py
+        src/daemon/dbus_types.py
         src/daemon/incus_client.py
         src/daemon/models_generated.py
         src/daemon/operations.py
@@ -302,6 +303,12 @@ if(INSTALL_PYTHON_CLI)
     # Kapsule default configuration
     install(FILES
         data/kapsule.conf
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
+    )
+
+    # Kapsule init script
+    install(PROGRAMS
+        scripts/kapsule-init.sh
         DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
     )
 endif()

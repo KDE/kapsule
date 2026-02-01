@@ -18,15 +18,9 @@ from rich.table import Table
 
 from . import __version__
 from .async_typer import AsyncTyper
-from .daemon_client import get_daemon_client, DaemonClient
+from .daemon_client import get_daemon_client
 from .decorators import require_incus
 from .output import out
-
-# Import Incus client from daemon package (still needed for init command)
-try:
-    from .daemon.incus_client import IncusError, get_client
-except ImportError:
-    from ..daemon.incus_client import IncusError, get_client
 
 
 # Create the main Typer app
@@ -173,8 +167,12 @@ async def enter(
     os.execvp(exec_args[0], exec_args)
 
 
+# Path to the init script installed by CMake
+_KAPSULE_INIT_SCRIPT = "/usr/lib/kapsule/kapsule-init.sh"
+
+
 @app.command()
-async def init() -> None:
+def init() -> None:
     """Initialize kapsule by enabling and starting incus sockets.
 
     This command must be run as root (sudo).
@@ -184,141 +182,25 @@ async def init() -> None:
         out.hint("Run: [bold]sudo kapsule init[/bold]")
         raise typer.Exit(1)
 
-    with out.operation("Initializing kapsule..."):
-        # Reload systemd to pick up new unit files
-        out.info("Reloading systemd daemon...")
-        try:
-            subprocess.run(
-                ["systemctl", "daemon-reload"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            with out.indent():
-                out.success("systemd daemon reloaded")
-        except subprocess.CalledProcessError as e:
-            with out.indent():
-                out.failure(f"Failed to reload systemd: {e.stderr.strip()}")
-            raise typer.Exit(1)
+    # Find the init script - check installed location first, then development location
+    script_paths = [
+        _KAPSULE_INIT_SCRIPT,
+        os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "kapsule-init.sh"),
+    ]
+    
+    init_script = None
+    for path in script_paths:
+        if os.path.isfile(path):
+            init_script = path
+            break
+    
+    if not init_script:
+        out.error(f"Init script not found. Looked in: {script_paths}")
+        raise typer.Exit(1)
 
-        # Reload D-Bus to pick up new policy files
-        out.info("Reloading D-Bus configuration...")
-        try:
-            subprocess.run(
-                ["systemctl", "reload", "dbus"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            with out.indent():
-                out.success("D-Bus configuration reloaded")
-        except subprocess.CalledProcessError as e:
-            with out.indent():
-                out.warning(f"Failed to reload D-Bus: {e.stderr.strip()}")
-
-        # Load kernel modules
-        out.info("Loading kernel modules for nested container support...")
-        try:
-            subprocess.run(
-                ["systemctl", "restart", "systemd-modules-load"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            with out.indent():
-                out.success("Kernel modules loaded")
-        except subprocess.CalledProcessError as e:
-            with out.indent():
-                out.warning(f"Failed to load kernel modules: {e.stderr.strip()}")
-
-        # Run systemd-sysusers
-        out.info("Running systemd-sysusers...")
-        try:
-            subprocess.run(
-                ["systemd-sysusers"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            with out.indent():
-                out.success("systemd-sysusers completed")
-        except subprocess.CalledProcessError as e:
-            with out.indent():
-                out.failure(f"Failed to run systemd-sysusers: {e.stderr.strip()}")
-            raise typer.Exit(1)
-
-        # Enable and start incus sockets
-        units = ["incus.socket", "incus-user.socket"]
-        for unit in units:
-            out.info(f"Enabling and starting {unit}...")
-            try:
-                subprocess.run(
-                    ["systemctl", "enable", "--now", unit],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                with out.indent():
-                    out.success(f"{unit} enabled and started")
-            except subprocess.CalledProcessError as e:
-                with out.indent():
-                    out.failure(f"Failed to enable {unit}: {e.stderr.strip()}")
-                raise typer.Exit(1)
-
-        # Use the Incus API for storage pool and profile setup
-        client = get_client()
-
-        # Create storage pool
-        out.info("Creating storage pool...")
-        if await client.storage_pool_exists("default"):
-            with out.indent():
-                out.dim("Storage pool 'default' already exists")
-        else:
-            try:
-                await client.create_storage_pool("default", "btrfs")
-                with out.indent():
-                    out.success("Storage pool 'default' created (btrfs backend)")
-            except IncusError:
-                try:
-                    await client.create_storage_pool("default", "dir")
-                    with out.indent():
-                        out.success("Storage pool 'default' created (dir backend)")
-                except IncusError as e:
-                    with out.indent():
-                        out.failure(f"Failed to create storage pool: {e}")
-                    raise typer.Exit(1)
-
-        # Disable automatic image updates
-        out.info("Configuring Incus settings...")
-        try:
-            await client.set_server_config("images.auto_update_interval", "0")
-            with out.indent():
-                out.success("Disabled automatic image updates")
-        except IncusError as e:
-            with out.indent():
-                out.warning(f"Failed to set config: {e}")
-
-        # Configure default profile
-        out.info("Configuring default profile...")
-        try:
-            profile = await client.get_profile("default")
-            if profile.devices and "root" in profile.devices:
-                with out.indent():
-                    out.dim("Default profile already configured")
-            else:
-                await client.add_profile_device(
-                    "default",
-                    "root",
-                    {"type": "disk", "path": "/", "pool": "default"},
-                )
-                with out.indent():
-                    out.success("Added root device to default profile")
-        except IncusError as e:
-            with out.indent():
-                out.warning(f"Failed to configure default profile: {e}")
-
-    out.section("✓ Kapsule initialized successfully!", color="green")
-    out.dim("You can now use kapsule commands as a regular user.")
+    # Execute the init script directly
+    result = subprocess.run(["bash", init_script])
+    raise typer.Exit(result.returncode)
 
 
 @app.command(name="list")
