@@ -265,26 +265,28 @@ class KapsuleManagerInterface(ServiceInterface):
 
         Args:
             name: Container name
-            image: Image to use (e.g., "archlinux"), empty for default
+            image: Image to use (e.g., "archlinux"), empty for default from config
             session_mode: Enable session mode with container D-Bus
             dbus_mux: Enable D-Bus multiplexer (implies session_mode)
 
         Returns:
-            Operation ID for tracking progress
+            Operation ID for tracking progress, or error message if image not specified
         """
         # If no image specified, look up default from caller's config
         actual_image = image
         if not image:
             sender = _current_sender.get()
-            if sender:
-                try:
-                    uid, gid, pid = await self._get_caller_credentials(sender)
-                    config = await self._service.get_config(uid)
-                    actual_image = config.get("default_image", "images:ubuntu/24.04")
-                except RuntimeError:
-                    actual_image = "images:ubuntu/24.04"
-            else:
-                actual_image = "images:ubuntu/24.04"
+            if not sender:
+                raise Exception("No image specified and could not determine caller identity")
+
+            try:
+                uid, gid, pid = await self._get_caller_credentials(sender)
+                config = await self._service.get_config(uid)
+                actual_image = config.get("default_image", "")
+                if not actual_image:
+                    raise Exception("No image specified and no default_image in config")
+            except RuntimeError as e:
+                raise Exception(f"No image specified and failed to read config: {e}")
 
         return await self._service.create_container(
             name=name,
