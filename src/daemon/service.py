@@ -5,14 +5,12 @@ Provides the org.kde.kapsule.Manager interface for container management.
 
 from __future__ import annotations
 
-import asyncio
 import contextvars
-import grp
 from typing import Annotated
 
 from dbus_fast.aio import MessageBus
 from dbus_fast.service import ServiceInterface
-from dbus_fast import BusType, Variant, Message, MessageType
+from dbus_fast import BusType, Message, MessageType
 
 from .dbus_types import (
     DBusStr,
@@ -56,6 +54,25 @@ class KapsuleManagerInterface(ServiceInterface):
         self._service = container_service
         self._version = __version__
         self._bus = bus
+
+    @classmethod
+    def create_deferred(cls, bus: MessageBus) -> "KapsuleManagerInterface":
+        """Create an interface with deferred service initialization.
+
+        Used when the container service needs a reference to this interface.
+        Call set_service() after creating the ContainerService.
+        """
+        # Create instance without calling __init__
+        instance = cls.__new__(cls)
+        ServiceInterface.__init__(instance, "org.kde.kapsule.Manager")
+        instance._version = __version__
+        instance._bus = bus
+        instance._service = None  # type: ignore[assignment]
+        return instance
+
+    def set_service(self, service: ContainerService) -> None:
+        """Set the container service (for deferred initialization)."""
+        self._service = service
 
     def set_bus(self, bus: MessageBus) -> None:
         """Set the message bus for credential lookups."""
@@ -128,7 +145,7 @@ class KapsuleManagerInterface(ServiceInterface):
         Returns:
             Dictionary of environment variables
         """
-        env = {}
+        env: dict[str, str] = {}
         try:
             with open(f"/proc/{pid}/environ", "rb") as f:
                 data = f.read()
@@ -292,7 +309,7 @@ class KapsuleManagerInterface(ServiceInterface):
                 raise Exception("No image specified and could not determine caller identity")
 
             try:
-                uid, gid, pid = await self._get_caller_credentials(sender)
+                uid, _gid, _pid = await self._get_caller_credentials(sender)
                 config = await self._service.get_config(uid)
                 actual_image = config.get("default_image", "")
                 if not actual_image:
@@ -435,7 +452,7 @@ class KapsuleManagerInterface(ServiceInterface):
             return {"error": "Could not determine caller identity"}
 
         try:
-            uid, gid, pid = await self._get_caller_credentials(sender)
+            uid, _gid, _pid = await self._get_caller_credentials(sender)
         except RuntimeError as e:
             return {"error": f"Failed to get caller credentials: {e}"}
 
@@ -528,14 +545,11 @@ class KapsuleService:
 
         # Create the interface and container service
         # The interface needs the service, and the service needs the interface
-        # So we create them in two steps using __new__
-        temp_interface = KapsuleManagerInterface.__new__(KapsuleManagerInterface)
-        ServiceInterface.__init__(temp_interface, "org.kde.kapsule.Manager")
-        temp_interface._version = __version__
-        temp_interface._bus = self._bus  # Set bus for credential lookups
+        # So we use deferred initialization
+        temp_interface = KapsuleManagerInterface.create_deferred(self._bus)
 
         self._container_service = ContainerService(temp_interface, self._incus)
-        temp_interface._service = self._container_service
+        temp_interface.set_service(self._container_service)
 
         self._interface = temp_interface
 
