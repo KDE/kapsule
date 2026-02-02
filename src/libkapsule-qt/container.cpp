@@ -103,38 +103,38 @@ bool Container::operator!=(const Container &other) const
 }
 
 // ============================================================================
-// Factory method for internal use
+// D-Bus streaming operators
 // ============================================================================
 
-Container Container::fromData(const QString &name, const QString &status,
-                               const QString &image, const QString &created,
-                               const QString &mode)
+QDBusArgument &operator<<(QDBusArgument &arg, const Container &container)
 {
-    Container c;
-    c.d->name = name;
-    c.d->image = image;
-    c.d->mode = containerModeFromString(mode);
+    arg.beginStructure();
+    arg << container.d->name
+        << QString::fromLatin1(QMetaEnum::fromType<Container::State>().valueToKey(static_cast<int>(container.d->state)))
+        << container.d->image
+        << container.d->created.toString(Qt::ISODate)
+        << containerModeToString(container.d->mode);
+    arg.endStructure();
+    return arg;
+}
 
-    // Parse created timestamp
-    c.d->created = QDateTime::fromString(created, Qt::ISODate);
+const QDBusArgument &operator>>(const QDBusArgument &arg, Container &container)
+{
+    QString name, status, image, created, mode;
+    arg.beginStructure();
+    arg >> name >> status >> image >> created >> mode;
+    arg.endStructure();
 
-    // Parse status to state
-    QString statusLower = status.toLower();
-    if (statusLower == QLatin1String("running")) {
-        c.d->state = State::Running;
-    } else if (statusLower == QLatin1String("stopped")) {
-        c.d->state = State::Stopped;
-    } else if (statusLower == QLatin1String("starting")) {
-        c.d->state = State::Starting;
-    } else if (statusLower == QLatin1String("stopping")) {
-        c.d->state = State::Stopping;
-    } else if (statusLower == QLatin1String("error")) {
-        c.d->state = State::Error;
-    } else {
-        c.d->state = State::Unknown;
-    }
+    container.d->name = name;
+    container.d->image = image;
+    container.d->mode = containerModeFromString(mode);
+    container.d->created = QDateTime::fromString(created, Qt::ISODate);
 
-    return c;
+    bool ok = false;
+    int value = QMetaEnum::fromType<Container::State>().keyToValue(status.toLatin1().constData(), &ok);
+    container.d->state = ok ? static_cast<Container::State>(value) : Container::State::Unknown;
+
+    return arg;
 }
 
 } // namespace Kapsule

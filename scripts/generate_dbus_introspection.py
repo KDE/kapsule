@@ -234,6 +234,15 @@ DBUS_TO_CPP_TYPE = {
     "a{sv}": "QVariantMap",
 }
 
+# Map specific D-Bus signatures to Kapsule library types
+# These types have proper QDBusArgument streaming operators defined
+# Note: Values must be XML-escaped (use &lt; and &gt; for angle brackets)
+KAPSULE_TYPE_MAP = {
+    "(sssss)": "Kapsule::Container",                  # Container class with D-Bus streaming
+    "a(sssss)": "QList&lt;Kapsule::Container&gt;",   # List of containers (Qt handles QList<T> automatically)
+    "(bsas)": "Kapsule::EnterResult",                 # PrepareEnter result
+}
+
 
 def dbus_sig_to_cpp_type(sig: str) -> str:
     """Convert a D-Bus signature to a C++ type string.
@@ -338,12 +347,16 @@ def dbus_type_to_qt_type(dbus_sig: str) -> str | None:
     """Convert a D-Bus signature to a Qt/C++ type name for annotations.
     
     Returns None for basic types that don't need annotations.
-    Uses std::tuple for struct types and QList for arrays.
+    Uses Kapsule library types where defined, otherwise std::tuple.
     """
     # Basic types that don't need annotations
     basic_types = {"s", "b", "y", "n", "q", "i", "u", "x", "t", "d", "o", "g", "h"}
     if dbus_sig in basic_types:
         return None
+    
+    # Check for Kapsule library types first
+    if dbus_sig in KAPSULE_TYPE_MAP:
+        return KAPSULE_TYPE_MAP[dbus_sig]
     
     # Generate the C++ type
     cpp_type = dbus_sig_to_cpp_type(dbus_sig)

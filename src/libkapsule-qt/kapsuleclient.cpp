@@ -6,6 +6,7 @@
 #include "kapsuleclient.h"
 #include "kapsule_debug.h"
 #include "kapsulemanagerinterface.h"
+#include "types.h"
 
 #include <QDBusConnection>
 #include <QDBusPendingReply>
@@ -37,6 +38,8 @@ public:
 KapsuleClientPrivate::KapsuleClientPrivate(KapsuleClient *q)
     : q_ptr(q)
 {
+    // Register D-Bus types before any D-Bus operations
+    registerDBusTypes();
     connectToDaemon();
 }
 
@@ -144,31 +147,14 @@ QCoro::Task<QList<Container>> KapsuleClient::listContainers()
         co_return {};
     }
 
-    // Call D-Bus method
+    // Call D-Bus method - Container is marshalled directly
     auto reply = co_await d->interface->ListContainers();
     if (reply.isError()) {
         qCWarning(KAPSULE_LOG) << "ListContainers failed:" << reply.error().message();
         co_return {};
     }
 
-    // Parse response: array of (name, status, image, created, mode)
-    QList<Container> result;
-    const auto &containers = reply.value();
-    for (const auto &c : containers) {
-        Container container;
-        // Use the private data to construct - we'll need a factory method
-        // For now, create with the data we have
-        container = Container::fromData(
-            std::get<0>(c),  // name
-            std::get<1>(c),  // status
-            std::get<2>(c),  // image
-            std::get<3>(c),  // created
-            std::get<4>(c)   // mode
-        );
-        result.append(container);
-    }
-
-    co_return result;
+    co_return reply.value();
 }
 
 QCoro::Task<Container> KapsuleClient::container(const QString &name)
@@ -183,14 +169,7 @@ QCoro::Task<Container> KapsuleClient::container(const QString &name)
         co_return Container{};
     }
 
-    const auto &info = reply.value();
-    co_return Container::fromData(
-        info.value(QStringLiteral("name")).toString(),
-        info.value(QStringLiteral("status")).toString(),
-        info.value(QStringLiteral("image")).toString(),
-        info.value(QStringLiteral("created")).toString(),
-        info.value(QStringLiteral("mode")).toString()
-    );
+    co_return reply.value();
 }
 
 QCoro::Task<QVariantMap> KapsuleClient::config()
@@ -302,12 +281,8 @@ QCoro::Task<EnterResult> KapsuleClient::prepareEnter(
         co_return {false, reply.error().message(), {}};
     }
 
-    const auto &result = reply.value();
-    co_return EnterResult{
-        std::get<0>(result),  // success
-        std::get<1>(result),  // error
-        std::get<2>(result)   // execArgs
-    };
+    // EnterResult is directly returned from D-Bus now
+    co_return reply.value();
 }
 
 } // namespace Kapsule

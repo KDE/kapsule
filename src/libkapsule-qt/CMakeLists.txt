@@ -12,6 +12,10 @@ set(DBUS_INTROSPECTION_XML "${CMAKE_BINARY_DIR}/org.kde.kapsule.xml")
 
 # Generate Qt D-Bus interface from the introspection XML
 # This creates kapsulemanagerinterface.h and kapsulemanagerinterface.cpp
+# Include container.h header for the Kapsule::Container type (which also includes types.h)
+set_source_files_properties("${DBUS_INTROSPECTION_XML}" PROPERTIES
+    INCLUDE "container.h"
+)
 qt_add_dbus_interface(kapsule_dbus_SRCS
     "${DBUS_INTROSPECTION_XML}"
     kapsulemanagerinterface

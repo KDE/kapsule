@@ -11,6 +11,7 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QSharedDataPointer>
+#include <QDBusArgument>
 
 #include "kapsule_export.h"
 #include "types.h"
@@ -141,20 +142,18 @@ public:
      */
     bool operator!=(const Container &other) const;
 
-    /**
-     * @brief Factory method to create a Container from D-Bus data.
-     * @internal
-     */
-    static Container fromData(const QString &name, const QString &status,
-                               const QString &image, const QString &created,
-                               const QString &mode);
-
 private:
     QSharedDataPointer<ContainerData> d;
 
     friend class KapsuleClient;
     friend class KapsuleClientPrivate;
+    friend KAPSULE_EXPORT QDBusArgument &operator<<(QDBusArgument &arg, const Container &container);
+    friend KAPSULE_EXPORT const QDBusArgument &operator>>(const QDBusArgument &arg, Container &container);
 };
+
+// D-Bus argument streaming operators for Container (sssss)
+KAPSULE_EXPORT QDBusArgument &operator<<(QDBusArgument &arg, const Container &container);
+KAPSULE_EXPORT const QDBusArgument &operator>>(const QDBusArgument &arg, Container &container);
 
 } // namespace Kapsule
 

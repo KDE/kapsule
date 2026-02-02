@@ -425,14 +425,14 @@ class KapsuleManagerInterface(ServiceInterface):
         return await self._service.list_containers()
 
     @method()
-    async def GetContainerInfo(self, name: DBusStr) -> DBusStrDict:
-        """Get detailed information about a container.
+    async def GetContainerInfo(self, name: DBusStr) -> Annotated[tuple[str, str, str, str, str], "(sssss)"]:
+        """Get information about a container.
 
         Args:
             name: Container name
 
         Returns:
-            Dictionary with container details
+            Tuple of (name, status, image, created, mode)
         """
         return await self._service.get_container_info(name)
 

@@ -23,6 +23,7 @@ target_link_libraries(kapsule
     PRIVATE
         Kapsule::KapsuleQt
         Qt6::Core
+        Qt6::DBus
         QCoro6::Core
 )
 

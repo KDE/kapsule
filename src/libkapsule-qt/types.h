@@ -10,12 +10,27 @@
 #include <QStringList>
 #include <QMetaType>
 #include <QMetaEnum>
+#include <QDBusArgument>
 #include <functional>
 
 #include "kapsule_export.h"
 
 namespace Kapsule {
 Q_NAMESPACE_EXPORT(KAPSULE_EXPORT)
+
+/**
+ * @brief Result of prepareEnter() - D-Bus signature (bsas)
+ */
+struct KAPSULE_EXPORT EnterResult {
+    bool success = false;
+    QString error;
+    QStringList execArgs;
+};
+
+/**
+ * @brief Register D-Bus metatypes. Call once at startup.
+ */
+KAPSULE_EXPORT void registerDBusTypes();
 
 /**
  * @enum ContainerMode
@@ -53,15 +68,6 @@ struct KAPSULE_EXPORT OperationResult {
 };
 
 /**
- * @brief Result of prepareEnter().
- */
-struct KAPSULE_EXPORT EnterResult {
-    bool success = false;
-    QString error;
-    QStringList execArgs;
-};
-
-/**
  * @brief Progress callback for long-running operations.
  *
  * @param type The message type
@@ -87,6 +93,10 @@ inline ContainerMode containerModeFromString(const QString &str)
     int value = QMetaEnum::fromType<ContainerMode>().keyToValue(str.toLatin1().constData(), &ok);
     return ok ? static_cast<ContainerMode>(value) : ContainerMode::Default;
 }
+
+// D-Bus argument streaming operators
+KAPSULE_EXPORT QDBusArgument &operator<<(QDBusArgument &arg, const EnterResult &result);
+KAPSULE_EXPORT const QDBusArgument &operator>>(const QDBusArgument &arg, EnterResult &result);
 
 } // namespace Kapsule
 

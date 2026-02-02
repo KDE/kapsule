@@ -431,14 +431,14 @@ class ContainerService:
             result.append((c.name, c.status, c.image, c.created, mode))
         return result
 
-    async def get_container_info(self, name: str) -> dict[str, str]:
-        """Get detailed container information.
+    async def get_container_info(self, name: str) -> tuple[str, str, str, str, str]:
+        """Get container information.
 
         Args:
             name: Container name
 
         Returns:
-            Dictionary with container details
+            Tuple of (name, status, image, created, mode)
         """
         try:
             instance = await self._incus.get_instance(name)
@@ -446,13 +446,24 @@ class ContainerService:
             raise OperationError(f"Container '{name}' not found: {e}")
 
         config = instance.config or {}
-        return {
-            "name": instance.name or name,
-            "status": instance.status or "Unknown",
-            "session_mode": config.get(KAPSULE_SESSION_MODE_KEY, "false"),
-            "dbus_mux": config.get(KAPSULE_DBUS_MUX_KEY, "false"),
-            "image": config.get("image.description", config.get("image.os", "unknown")),
-        }
+        
+        # Determine kapsule mode
+        if config.get(KAPSULE_DBUS_MUX_KEY) == "true":
+            mode = "DbusMux"
+        elif config.get(KAPSULE_SESSION_MODE_KEY) == "true":
+            mode = "Session"
+        else:
+            mode = "Default"
+        
+        image = config.get("image.description", config.get("image.os", "unknown"))
+        
+        return (
+            instance.name or name,
+            instance.status or "Unknown",
+            image,
+            instance.created or "",
+            mode,
+        )
 
     async def is_user_setup(self, container_name: str, uid: int) -> bool:
         """Check if a user is already set up in a container.
