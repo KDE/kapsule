@@ -17,7 +17,7 @@ project(Kapsule
 # ============================================================================
 
 option(BUILD_KDE_COMPONENTS "Build KDE components (libkapsule-qt, plasmoid, KIO, KCM)" ON)
-option(INSTALL_PYTHON_CLI "Install Python CLI and vendored dependencies" ON)
+option(INSTALL_PYTHON_DAEMON "Install Python daemon and vendored dependencies" ON)
 option(VENDOR_PYTHON_DEPS "Download and vendor Python dependencies" ON)
 
 # ============================================================================
@@ -54,7 +54,7 @@ ecm_setup_version(${KAPSULE_VERSION}
 # Find Python
 # ============================================================================
 
-if(INSTALL_PYTHON_CLI)
+if(INSTALL_PYTHON_DAEMON)
     find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
     message(STATUS "Found Python ${Python3_VERSION} at ${Python3_EXECUTABLE}")
 
@@ -64,21 +64,10 @@ if(INSTALL_PYTHON_CLI)
 endif()
 
 # ============================================================================
-# Python CLI Installation
+# Python Daemon Installation
 # ============================================================================
 
-if(INSTALL_PYTHON_CLI)
-    # Install kapsule CLI package
-    install(FILES
-        src/cli/__init__.py
-        src/cli/async_typer.py
-        src/cli/daemon_client.py
-        src/cli/decorators.py
-        src/cli/main.py
-        src/cli/output.py
-        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule"
-    )
-
+if(INSTALL_PYTHON_DAEMON)
     # Install kapsule daemon package
     install(FILES
         src/daemon/__init__.py
@@ -93,48 +82,20 @@ if(INSTALL_PYTHON_CLI)
         src/daemon/service.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon"
     )
-
-    # Configure and install launcher scripts
-    set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
-
-    # CLI launcher
-    configure_file(
-        scripts/kapsule.in
-        "${CMAKE_CURRENT_BINARY_DIR}/kapsule"
-        @ONLY
-    )
-
-    configure_file(
-        scripts/kapsule.in
-        "${CMAKE_CURRENT_BINARY_DIR}/kap"
-        @ONLY
-    )
-
-    install(PROGRAMS
-        "${CMAKE_CURRENT_BINARY_DIR}/kapsule"
-        "${CMAKE_CURRENT_BINARY_DIR}/kap"
-        DESTINATION "${KDE_INSTALL_BINDIR}"
-    )
 endif()
 
 # ============================================================================
 # Vendor Python Dependencies
 # ============================================================================
 
-if(INSTALL_PYTHON_CLI AND VENDOR_PYTHON_DEPS)
+if(INSTALL_PYTHON_DAEMON AND VENDOR_PYTHON_DEPS)
     # List of dependencies to vendor (from pyproject.toml)
     set(KAPSULE_PYTHON_DEPENDENCIES
         "httpx>=0.25.0"
         "dbus-fast>=2.0.0"
-        "typer>=0.9.0"
-        "rich>=13.0.0"
         "pyyaml>=6.0"
         "pydantic>=2.0"
         # Transitive dependencies that need to be included
-        "click"
-        "shellingham"
-        "markdown-it-py"
-        "pygments"
         "httpcore"
         "anyio"
         "sniffio"
@@ -195,7 +156,7 @@ endif()
 # D-Bus Introspection XML Generation
 # ============================================================================
 
-if(INSTALL_PYTHON_CLI)
+if(INSTALL_PYTHON_DAEMON)
     # Generate D-Bus introspection XML from Python service at build time
     set(DBUS_INTROSPECTION_XML "${CMAKE_CURRENT_BINARY_DIR}/org.kde.kapsule.xml")
     
@@ -228,7 +189,7 @@ endif()
 # Systemd and D-Bus Service Files
 # ============================================================================
 
-if(INSTALL_PYTHON_CLI)
+if(INSTALL_PYTHON_DAEMON)
     # Full paths for service file variable substitution
     set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
     set(KAPSULE_PYTHON_DIR "${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/python")
@@ -388,8 +349,8 @@ feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
 
 message(STATUS "")
 message(STATUS "Kapsule ${PROJECT_VERSION} configuration:")
-message(STATUS "  Python CLI:        ${INSTALL_PYTHON_CLI}")
-if(INSTALL_PYTHON_CLI)
+message(STATUS "  Python daemon:     ${INSTALL_PYTHON_DAEMON}")
+if(INSTALL_PYTHON_DAEMON)
     message(STATUS "    Python:          ${Python3_EXECUTABLE} (${Python3_VERSION})")
     message(STATUS "    Vendor deps:     ${VENDOR_PYTHON_DEPS}")
     message(STATUS "    Install path:    ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/python")

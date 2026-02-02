@@ -12,6 +12,7 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QFileInfo>
 
 #include <qcoro/qcorotask.h>
 #include <qcoro/qcorocore.h>
@@ -23,6 +24,9 @@
 #include <iostream>
 
 using namespace Kapsule;
+
+// Program name (kap or kapsule) - set at startup
+static QString programName;
 
 // Forward declarations for command handlers
 QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args);
@@ -36,7 +40,7 @@ QCoro::Task<int> cmdConfig(KapsuleClient &client, const QStringList &args);
 void printUsage()
 {
     auto &o = out();
-    o.info("Usage: kapsule <command> [options]");
+    o.info(QStringLiteral("Usage: %1 <command> [options]").arg(programName).toStdString());
     o.info("");
     o.section("Commands:");
     {
@@ -50,7 +54,7 @@ void printUsage()
         o.info("config           Show configuration");
     }
     o.info("");
-    o.dim("Run 'kapsule <command> --help' for command-specific help.");
+    o.dim(QStringLiteral("Run '%1 <command> --help' for command-specific help.").arg(programName).toStdString());
 }
 
 QCoro::Task<int> asyncMain(const QStringList &args)
@@ -71,7 +75,7 @@ QCoro::Task<int> asyncMain(const QStringList &args)
     }
 
     if (command == QStringLiteral("--version") || command == QStringLiteral("-V")) {
-        o.info(QStringLiteral("kapsule version %1").arg(QCoreApplication::applicationVersion()).toStdString());
+        o.info(QStringLiteral("%1 version %2").arg(programName, QCoreApplication::applicationVersion()).toStdString());
         co_return 0;
     }
 
@@ -132,8 +136,8 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
          QStringLiteral("Enable D-Bus multiplexer (implies --session)")},
     });
 
-    // Parse with "kapsule create" as program name for help text
-    QStringList fullArgs = QStringList{QStringLiteral("kapsule create")} + args;
+    // Parse with program name for help text
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" create")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
         co_return 1;
@@ -148,7 +152,7 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
     QStringList positional = parser.positionalArguments();
     if (positional.isEmpty()) {
         o.error("Container name required");
-        o.hint("Usage: kapsule create <name> [--image <image>]");
+        o.hint(QStringLiteral("Usage: %1 create <name> [--image <image>]").arg(programName).toStdString());
         co_return 1;
     }
 
@@ -195,7 +199,7 @@ QCoro::Task<int> cmdEnter(KapsuleClient &client, const QStringList &args)
     parser.addPositionalArgument(QStringLiteral("name"), QStringLiteral("Container name (optional, uses default)"));
     parser.addPositionalArgument(QStringLiteral("command"), QStringLiteral("Command to run (optional)"));
 
-    QStringList fullArgs = QStringList{QStringLiteral("kapsule enter")} + args;
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" enter")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
         co_return 1;
@@ -267,7 +271,7 @@ QCoro::Task<int> cmdList(KapsuleClient &client, const QStringList &args)
          QStringLiteral("Show all containers including stopped")},
     });
 
-    QStringList fullArgs = QStringList{QStringLiteral("kapsule list")} + args;
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" list")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
         co_return 1;
@@ -359,7 +363,7 @@ QCoro::Task<int> cmdStart(KapsuleClient &client, const QStringList &args)
     parser.addHelpOption();
     parser.addPositionalArgument(QStringLiteral("name"), QStringLiteral("Container name"));
 
-    QStringList fullArgs = QStringList{QStringLiteral("kapsule start")} + args;
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" start")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
         co_return 1;
@@ -411,7 +415,7 @@ QCoro::Task<int> cmdStop(KapsuleClient &client, const QStringList &args)
          QStringLiteral("Force stop the container")},
     });
 
-    QStringList fullArgs = QStringList{QStringLiteral("kapsule stop")} + args;
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" stop")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
         co_return 1;
@@ -464,7 +468,7 @@ QCoro::Task<int> cmdRm(KapsuleClient &client, const QStringList &args)
          QStringLiteral("Force removal even if running")},
     });
 
-    QStringList fullArgs = QStringList{QStringLiteral("kapsule rm")} + args;
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" rm")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
         co_return 1;
@@ -513,7 +517,7 @@ QCoro::Task<int> cmdConfig(KapsuleClient &client, const QStringList &args)
     parser.addHelpOption();
     parser.addPositionalArgument(QStringLiteral("key"), QStringLiteral("Config key to display (optional)"));
 
-    QStringList fullArgs = QStringList{QStringLiteral("kapsule config")} + args;
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" config")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
         co_return 1;
@@ -567,7 +571,16 @@ QCoro::Task<int> cmdConfig(KapsuleClient &client, const QStringList &args)
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
-    app.setApplicationName(QStringLiteral("kapsule"));
+    
+    // Detect program name from argv[0] (kap or kapsule)
+    QString argv0 = QString::fromLocal8Bit(argv[0]);
+    programName = QFileInfo(argv0).fileName();
+    // Normalize to either "kap" or "kapsule"
+    if (programName != QStringLiteral("kap")) {
+        programName = QStringLiteral("kapsule");
+    }
+    
+    app.setApplicationName(programName);
     app.setApplicationVersion(QStringLiteral("0.1.0"));  // TODO: Get from build
     app.setOrganizationDomain(QStringLiteral("kde.org"));
     app.setOrganizationName(QStringLiteral("KDE"));

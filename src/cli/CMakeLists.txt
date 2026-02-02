@@ -3,25 +3,34 @@
 
 # kapsule CLI - C++ command-line interface
 
-add_executable(kapsule-cli
+add_executable(kapsule
     main.cpp
     output.cpp
 )
 
-target_include_directories(kapsule-cli
+target_include_directories(kapsule
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(kapsule-cli
+target_link_libraries(kapsule
     PRIVATE
         Kapsule::KapsuleQt
         Qt6::Core
         QCoro6::Core
 )
 
-# Install
-install(TARGETS kapsule-cli
+# Install kapsule executable
+install(TARGETS kapsule
     DESTINATION ${KDE_INSTALL_BINDIR}
-    RENAME kapsule
 )
+
+# Create 'kap' symlink to kapsule
+install(CODE "
+    execute_process(
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            kapsule
+            \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_BINDIR}/kap\"
+    )
+    message(STATUS \"Created symlink: kap -> kapsule\")
+")
