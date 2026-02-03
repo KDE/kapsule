@@ -11,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import argparse
 import signal
-import sys
 
 
 async def run_daemon(bus_type: str = "system") -> None:
@@ -35,7 +34,7 @@ async def run_daemon(bus_type: str = "system") -> None:
         await service.start()
 
         # Wait for either disconnect or shutdown signal
-        done, pending = await asyncio.wait(
+        _, pending = await asyncio.wait(
             [
                 asyncio.create_task(service.run()),
                 asyncio.create_task(shutdown_event.wait()),

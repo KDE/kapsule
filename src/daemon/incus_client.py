@@ -16,7 +16,6 @@ T = TypeVar("T", bound=BaseModel)
 from .models_generated import (
     Instance,
     InstancePut,
-    InstanceSource,
     InstancesPost,
     InstanceStatePut,
     Operation,
