@@ -37,6 +37,7 @@ void registerDBusTypes()
     qDBusRegisterMetaType<Container>();
     qDBusRegisterMetaType<QList<Container>>();
     qDBusRegisterMetaType<EnterResult>();
+    qDBusRegisterMetaType<QMap<QString, QString>>();
 }
 
 } // namespace Kapsule

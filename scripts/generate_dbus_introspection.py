@@ -302,7 +302,7 @@ DBUS_TO_CPP_TYPE = {
     "v": "QDBusVariant",
     "h": "QDBusUnixFileDescriptor",
     "as": "QStringList",
-    "a{ss}": "QVariantMap",
+    "a{ss}": "QMap<QString, QString>",
     "a{sv}": "QVariantMap",
 }
 
@@ -311,10 +311,13 @@ def dbus_sig_to_cpp_type(sig: str) -> str:
     """Convert a D-Bus signature to a C++ type string.
     
     Handles basic types, arrays, and structs (tuples).
+    Returns XML-escaped type names (with &lt; and &gt;).
     """
     # Check for direct mapping first
     if sig in DBUS_TO_CPP_TYPE:
-        return DBUS_TO_CPP_TYPE[sig]
+        result = DBUS_TO_CPP_TYPE[sig]
+        # Escape < and > for XML attribute values
+        return result.replace("<", "&lt;").replace(">", "&gt;")
     
     # Handle struct (tuple) types: (...)
     if sig.startswith("(") and sig.endswith(")"):
