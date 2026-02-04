@@ -25,22 +25,10 @@ Look at the wild success of Docker and Kubernetes. Their container-based approac
 
 ### Containers for CLI Tools???
 
-As crazy as it sounds, that's the logical next step. Let's look look at the candidates to base our solution on top of:
+As crazy as it sounds, that's the logical next step. Let's look at the candidates to base our solution on top of:
 
-- distrobox/toolbox
-  - based on docker/podman
-  - designed for ephemeral containers
-  - not good for long term containers with lots of mutations (updating major os releases)
+**distrobox/toolbox** are built on docker/podman and work great for ephemeral containers—spin one up, do some work, tear it down. But they're not ideal for long-term containers that accumulate lots of state over time, like when you're doing major OS upgrades or maintaining persistent development environments. They'll do it, but it feels like you're fighting against the design.
 
-- systemd-nspawn
-  - designed for long term containers
-  - persistent by default, has init system
-  - permissions model too restrictive
-    - can't easily run docker/podman inside nspawn
-    - can't easily expose all host resources (like hardware devices)
+**systemd-nspawn** takes the opposite approach. It's designed for persistent, long-lived containers from the ground up—has a proper init system, manages services, the whole nine yards. But the permissions model is restrictive by design. Want to run docker or podman inside your nspawn container? That's going to take some work. Need to expose arbitrary hardware devices? You're in for manual configuration. It's secure, which is great, but sometimes you need more flexibility than safety.
 
-- devcontainers
-  - works great for development
-  - not very popular in the Linux community
-    - possibly because it was invented by Microsoft?
-    - requires VSCode or compatible editor
+**devcontainers** are Microsoft's answer to development environments, and they honestly work great for what they do. The tooling is solid, the integration is smooth. But they haven't caught on in the Linux community—maybe because Microsoft invented them (the irony isn't lost on me, given how many Linux folks use VS Code), or maybe because they require VS Code or a compatible editor. Whatever the reason, they're not getting the adoption they probably deserve in Linux circles.
