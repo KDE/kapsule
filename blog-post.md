@@ -33,3 +33,14 @@ As crazy as it sounds, that's the logical next step. Let's look at the candidate
 
 **devcontainers** nail the developer experience—they're polished, well-integrated, and they just work. The limitation is that they're designed to be used from an IDE like VS Code, not as a system-wide solution. We need something that integrates with the OS itself, not just with your editor. That said, there's definitely lessons to learn from how well they've executed on the developer workflow.
 
+### Our knight in shining armor:
+
+![Inucs](incus-hero3.png)
+
+- incus is great
+- has API
+- nested containers worked out of the box
+- has privileged container mode with access to everything
+- LXC under the hood for container
+- allows for VMs in future if people want to run less trusted workloads
+    - don't get why but people on matrix said it's desired
