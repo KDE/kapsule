@@ -145,7 +145,7 @@ class OperationInterface(ServiceInterface):
         message_type: int,
         message: DBusStr,
         indent_level: int,
-    ) -> Annotated[tuple[int, str, int], "isi"]:
+    ) -> Annotated[list[int | str], "isi"]:
         """Emitted for progress messages.
 
         Args:
@@ -162,7 +162,7 @@ class OperationInterface(ServiceInterface):
         description: DBusStr,
         total: int,
         indent_level: int,
-    ) -> Annotated[tuple[str, str, int, int], "ssii"]:
+    ) -> Annotated[list[str | int], "ssii"]:
         """Emitted when a progress bar starts.
 
         Args:
@@ -179,7 +179,7 @@ class OperationInterface(ServiceInterface):
         progress_id: DBusStr,
         current: int,
         rate: float,
-    ) -> Annotated[tuple[str, int, float], "sid"]:
+    ) -> Annotated[list[str | int | float], "sid"]:
         """Emitted to update a progress bar.
 
         Args:
@@ -195,7 +195,7 @@ class OperationInterface(ServiceInterface):
         progress_id: DBusStr,
         success: DBusBool,
         message: DBusStr,
-    ) -> Annotated[tuple[str, bool, str], "sbs"]:
+    ) -> Annotated[list[str | bool], "sbs"]:
         """Emitted when a progress bar completes.
 
         Args:
@@ -210,7 +210,7 @@ class OperationInterface(ServiceInterface):
         self,
         success: DBusBool,
         message: DBusStr,
-    ) -> Annotated[tuple[bool, str], "bs"]:
+    ) -> Annotated[list[bool | str], "bs"]:
         """Emitted when this operation finishes.
 
         Args:
