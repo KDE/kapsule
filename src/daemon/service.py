@@ -188,7 +188,7 @@ class KapsuleManagerInterface(ServiceInterface):
         object_path: DBusObjectPath,
         operation_type: DBusStr,
         target: DBusStr,
-    ) -> Annotated[tuple[str, str, str], "oss"]:
+    ) -> Annotated[list[str], "oss"]:
         """Emitted when a new operation is created.
 
         Clients can use the object_path to subscribe to the operation's
@@ -206,7 +206,7 @@ class KapsuleManagerInterface(ServiceInterface):
         self,
         object_path: DBusObjectPath,
         success: DBusBool,
-    ) -> Annotated[tuple[str, bool], "ob"]:
+    ) -> Annotated[list[str | bool], "ob"]:
         """Emitted when an operation is removed (after completion + cleanup delay).
 
         Args:

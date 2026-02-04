@@ -16,6 +16,7 @@ from .operations import OperationError, OperationReporter, OperationTracker, ope
 
 if TYPE_CHECKING:
     from .service import KapsuleManagerInterface
+    from dbus_fast.aio import MessageBus
 
 # Import Incus client and models from local modules
 from .incus_client import IncusClient, IncusError
@@ -71,12 +72,11 @@ class ContainerService:
         self._incus = incus
         self._tracker = OperationTracker()
 
-    def set_bus(self, bus: "MessageBus") -> None:
+    def set_bus(self, bus: MessageBus) -> None:
         """Set the message bus for operation object export.
 
         Must be called after initialization to enable D-Bus operation objects.
         """
-        from dbus_fast.aio import MessageBus as MB
         self._tracker.set_bus(bus)
 
     def list_operations(self) -> list[str]:
