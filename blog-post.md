@@ -37,10 +37,14 @@ As crazy as it sounds, that's the logical next step. Let's look at the candidate
 
 ![Inucs](incus-hero3.png)
 
-- incus is great
-- has API
-- nested containers worked out of the box
-- has privileged container mode with access to everything
-- LXC under the hood for container
-- allows for VMs in future if people want to run less trusted workloads
-    - don't get why but people on matrix said it's desired
+Enter **Incus**. And honestly, it checks all the boxes.
+
+First off, it has a proper API—not some bolted-on afterthought, but a well-designed interface that lets us build tooling on top of it. That's crucial when you're trying to integrate container management into a larger system like KDE Linux.
+
+Nested containers? They just work. Out of the box. No fighting with permissions, no arcane configuration files. Want to run docker inside your Incus container? Go for it. This is exactly the kind of flexibility we need.
+
+It also has a privileged container mode that gives you access to everything—the full system, all the hardware, all the devices. When you need that level of integration (and for a development environment, you often do), it's there. No hoops to jump through.
+
+Under the hood, Incus uses LXC for containers, which means it's built on battle-tested technology designed for exactly this use case: long-lived, system-level containers. Not retrofitted, not adapted—designed for it from day one.
+
+And here's a bonus: it supports VMs too. Apparently people on Matrix want the option to run less trusted workloads in full VMs instead of containers. I don't fully get the use case for a development environment, but the flexibility is there if we need it down the road.
