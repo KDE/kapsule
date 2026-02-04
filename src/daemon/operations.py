@@ -145,7 +145,7 @@ class OperationInterface(ServiceInterface):
         message_type: int,
         message: DBusStr,
         indent_level: int,
-    ) -> Annotated[tuple[int, str, int], "(isi)"]:
+    ) -> Annotated[tuple[int, str, int], "isi"]:
         """Emitted for progress messages.
 
         Args:
@@ -153,7 +153,7 @@ class OperationInterface(ServiceInterface):
             message: The message text
             indent_level: Indentation level for hierarchical display
         """
-        return (message_type, message, indent_level)
+        return [message_type, message, indent_level]
 
     @signal()
     def ProgressStarted(
@@ -162,7 +162,7 @@ class OperationInterface(ServiceInterface):
         description: DBusStr,
         total: int,
         indent_level: int,
-    ) -> Annotated[tuple[str, str, int, int], "(ssii)"]:
+    ) -> Annotated[tuple[str, str, int, int], "ssii"]:
         """Emitted when a progress bar starts.
 
         Args:
@@ -171,7 +171,7 @@ class OperationInterface(ServiceInterface):
             total: Total units (-1 for indeterminate)
             indent_level: Indentation level
         """
-        return (progress_id, description, total, indent_level)
+        return [progress_id, description, total, indent_level]
 
     @signal()
     def ProgressUpdate(
@@ -179,7 +179,7 @@ class OperationInterface(ServiceInterface):
         progress_id: DBusStr,
         current: int,
         rate: float,
-    ) -> Annotated[tuple[str, int, float], "(sid)"]:
+    ) -> Annotated[tuple[str, int, float], "sid"]:
         """Emitted to update a progress bar.
 
         Args:
@@ -187,7 +187,7 @@ class OperationInterface(ServiceInterface):
             current: Current progress value
             rate: Rate of progress (for ETA calculation)
         """
-        return (progress_id, current, rate)
+        return [progress_id, current, rate]
 
     @signal()
     def ProgressCompleted(
@@ -195,7 +195,7 @@ class OperationInterface(ServiceInterface):
         progress_id: DBusStr,
         success: DBusBool,
         message: DBusStr,
-    ) -> Annotated[tuple[str, bool, str], "(sbs)"]:
+    ) -> Annotated[tuple[str, bool, str], "sbs"]:
         """Emitted when a progress bar completes.
 
         Args:
@@ -203,21 +203,21 @@ class OperationInterface(ServiceInterface):
             success: Whether it succeeded
             message: Optional completion message (replaces bar)
         """
-        return (progress_id, success, message)
+        return [progress_id, success, message]
 
     @signal()
     def Completed(
         self,
         success: DBusBool,
         message: DBusStr,
-    ) -> Annotated[tuple[bool, str], "(bs)"]:
+    ) -> Annotated[tuple[bool, str], "bs"]:
         """Emitted when this operation finishes.
 
         Args:
             success: Whether the operation succeeded
             message: Error message if failed, empty if succeeded
         """
-        return (success, message)
+        return [success, message]
 
     # -------------------------------------------------------------------------
     # Methods
@@ -581,9 +581,6 @@ def operation(
 
             # Run the operation in a task so we return the path immediately
             async def run_operation() -> None:
-                # Small delay to allow client to subscribe to signals before we start
-                print(f"[Operation {op_id}] Waiting for client to subscribe...")
-                await asyncio.sleep(0.1)
                 print(f"[Operation {op_id}] Starting execution of {operation_type}")
                 try:
                     await func(self, reporter, *args, **kwargs)

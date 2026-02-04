@@ -188,7 +188,7 @@ class KapsuleManagerInterface(ServiceInterface):
         object_path: DBusObjectPath,
         operation_type: DBusStr,
         target: DBusStr,
-    ) -> Annotated[tuple[str, str, str], "(oss)"]:
+    ) -> Annotated[tuple[str, str, str], "oss"]:
         """Emitted when a new operation is created.
 
         Clients can use the object_path to subscribe to the operation's
@@ -199,21 +199,21 @@ class KapsuleManagerInterface(ServiceInterface):
             operation_type: Type of operation (create, delete, start, stop, setup_user)
             target: Target of the operation (usually container name)
         """
-        return (object_path, operation_type, target)
+        return [object_path, operation_type, target]
 
     @signal()
     def OperationRemoved(
         self,
         object_path: DBusObjectPath,
         success: DBusBool,
-    ) -> Annotated[tuple[str, bool], "(ob)"]:
+    ) -> Annotated[tuple[str, bool], "ob"]:
         """Emitted when an operation is removed (after completion + cleanup delay).
 
         Args:
             object_path: D-Bus path to the operation that was removed
             success: Whether the operation succeeded
         """
-        return (object_path, success)
+        return [object_path, success]
 
     # =========================================================================
     # Methods - Operations Query
