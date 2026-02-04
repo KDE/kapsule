@@ -21,3 +21,26 @@ There's also a deeper inconsistency here. One of the stated goals is making the 
 ![whale](whale.jpg)
 
 Look at the wild success of Docker and Kubernetes. Their container-based approach proved that immutable infrastructure actually works at scale. That success paved the way for Flatpak and Snap to become the de facto solution for GUI apps, and now we're seeing immutable base systems everywhere. The lesson is clear: containers aren't just one solution among many—they're the foundation that makes immutable systems viable.
+
+
+### Containers for CLI Tools???
+
+As crazy as it sounds, that's the logical next step. Let's look look at the candidates to base our solution on top of:
+
+- distrobox/toolbox
+  - based on docker/podman
+  - designed for ephemeral containers
+  - not good for long term containers with lots of mutations (updating major os releases)
+
+- systemd-nspawn
+  - designed for long term containers
+  - persistent by default, has init system
+  - permissions model too restrictive
+    - can't easily run docker/podman inside nspawn
+    - can't easily expose all host resources (like hardware devices)
+
+- devcontainers
+  - works great for development
+  - not very popular in the Linux community
+    - possibly because it was invented by Microsoft?
+    - requires VSCode or compatible editor
