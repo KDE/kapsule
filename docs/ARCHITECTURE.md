@@ -4,53 +4,49 @@ Kapsule is an Incus-based container manager with native KDE/Plasma integration, 
 
 ## Overview
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                         User Applications (C++)                              │
-│                                                                              │
-│   ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────────┐  │
-│   │  kapsule CLI    │    │    Konsole      │    │ KCM / KIO (planned)     │  │
-│   │  (main.cpp)     │    │  Integration    │    │                         │  │
-│   └────────┬────────┘    └────────┬────────┘    └────────────┬────────────┘  │
-│            │                      │                          │               │
-│            └──────────────────────┼──────────────────────────┘               │
-│                                   │                                          │
-│                          ┌────────▼────────┐                                 │
-│                          │  libkapsule-qt  │                                 │
-│                          │  KapsuleClient  │                                 │
-│                          └────────┬────────┘                                 │
-└───────────────────────────────────┼──────────────────────────────────────────┘
-                                    │ D-Bus (system bus)
-                                    │ org.kde.kapsule
-┌───────────────────────────────────▼─────────────────────────────────────────┐
-│                        kapsule-daemon (Python)                              │
-│                                                                             │
-│   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │ org.kde.kapsule.Manager                                             │   │
-│   │ ├── Properties: Version                                             │   │
-│   │ ├── Methods: CreateContainer, DeleteContainer, StartContainer, ...  │   │
-│   │ └── Signals: OperationCreated, OperationRemoved                     │   │
-│   └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │ org.kde.kapsule.Operation (per-operation objects)                   │   │
-│   │ Path: /org/kde/kapsule/operations/{id}                              │   │
-│   │ ├── Properties: Id, Type, Description, Target, Status               │   │
-│   │ ├── Signals: Message, ProgressStarted, ProgressUpdate, ...          │   │
-│   │ └── Methods: Cancel                                                 │   │
-│   └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-│   ┌─────────────────┐    ┌─────────────────┐    ┌────────────────────────┐  │
-│   │ ContainerService│──▶│  IncusClient    │    │  OperationTracker      │  │
-│   │ (operations)    │    │  (REST client)  │    │  (D-Bus objects)       │  │
-│   └─────────────────┘    └────────┬────────┘    └────────────────────────┘  │
-└───────────────────────────────────┼─────────────────────────────────────────┘
-                                    │ HTTP over Unix socket
-                                    │ /var/lib/incus/unix.socket
-┌───────────────────────────────────▼──────────────────────────────────────────┐
-│                            Incus Daemon                                      │
-│                    (container lifecycle, images, storage)                    │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph UserApps["User Applications (C++)"]
+        CLI["kapsule CLI<br/>(main.cpp)"]
+        Konsole["Konsole<br/>Integration"]
+        KCM["KCM / KIO<br/>(planned)"]
+    end
+
+    subgraph LibKapsule["libkapsule-qt"]
+        KapsuleClient["KapsuleClient"]
+    end
+
+    CLI --> KapsuleClient
+    Konsole --> KapsuleClient
+    KCM --> KapsuleClient
+
+    KapsuleClient -->|"D-Bus (system bus)<br/>org.kde.kapsule"| Daemon
+
+    subgraph Daemon["kapsule-daemon (Python)"]
+        subgraph Manager["org.kde.kapsule.Manager"]
+            ManagerProps["Properties: Version"]
+            ManagerMethods["Methods: CreateContainer,<br/>DeleteContainer, StartContainer, ..."]
+            ManagerSignals["Signals: OperationCreated,<br/>OperationRemoved"]
+        end
+
+        subgraph Operation["org.kde.kapsule.Operation<br/>/org/kde/kapsule/operations/{id}"]
+            OpProps["Properties: Id, Type,<br/>Description, Target, Status"]
+            OpSignals["Signals: Message, ProgressStarted,<br/>ProgressUpdate, ..."]
+            OpMethods["Methods: Cancel"]
+        end
+
+        ContainerService["ContainerService<br/>(operations)"]
+        IncusClient["IncusClient<br/>(REST client)"]
+        OperationTracker["OperationTracker<br/>(D-Bus objects)"]
+
+        ContainerService --> IncusClient
+    end
+
+    IncusClient -->|"HTTP over Unix socket<br/>/var/lib/incus/unix.socket"| Incus
+
+    subgraph Incus["Incus Daemon"]
+        IncusDesc["container lifecycle, images, storage"]
+    end
 ```
 
 ## Component Summary
