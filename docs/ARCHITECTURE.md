@@ -6,10 +6,10 @@ Kapsule is an Incus-based container manager with native KDE/Plasma integration, 
 
 ```mermaid
 flowchart TB
-    subgraph UserApps["User Applications (C++)"]
-        CLI["kapsule CLI<br/>(main.cpp)"]
-        Konsole["Konsole<br/>Integration"]
-        KCM["KCM / KIO<br/>(planned)"]
+    subgraph UserApps["User Applications - C++"]
+        CLI["kapsule CLI\n(main.cpp)"]
+        Konsole["Konsole\nIntegration"]
+        KCM["KCM / KIO\n(planned)"]
     end
 
     subgraph LibKapsule["libkapsule-qt"]
@@ -20,29 +20,29 @@ flowchart TB
     Konsole --> KapsuleClient
     KCM --> KapsuleClient
 
-    KapsuleClient -->|"D-Bus (system bus)<br/>org.kde.kapsule"| Daemon
+    KapsuleClient -->|"D-Bus system bus\norg.kde.kapsule"| Daemon
 
-    subgraph Daemon["kapsule-daemon (Python)"]
+    subgraph Daemon["kapsule-daemon - Python"]
         subgraph Manager["org.kde.kapsule.Manager"]
             ManagerProps["Properties: Version"]
-            ManagerMethods["Methods: CreateContainer,<br/>DeleteContainer, StartContainer, ..."]
-            ManagerSignals["Signals: OperationCreated,<br/>OperationRemoved"]
+            ManagerMethods["Methods: CreateContainer,\nDeleteContainer, StartContainer, ..."]
+            ManagerSignals["Signals: OperationCreated,\nOperationRemoved"]
         end
 
-        subgraph Operation["org.kde.kapsule.Operation<br/>/org/kde/kapsule/operations/{id}"]
-            OpProps["Properties: Id, Type,<br/>Description, Target, Status"]
-            OpSignals["Signals: Message, ProgressStarted,<br/>ProgressUpdate, ..."]
+        subgraph Operation["org.kde.kapsule.Operation\n/org/kde/kapsule/operations/id"]
+            OpProps["Properties: Id, Type,\nDescription, Target, Status"]
+            OpSignals["Signals: Message, ProgressStarted,\nProgressUpdate, ..."]
             OpMethods["Methods: Cancel"]
         end
 
-        ContainerService["ContainerService<br/>(operations)"]
-        IncusClient["IncusClient<br/>(REST client)"]
-        OperationTracker["OperationTracker<br/>(D-Bus objects)"]
+        ContainerService["ContainerService\n(operations)"]
+        IncusClient["IncusClient\n(REST client)"]
+        OperationTracker["OperationTracker\n(D-Bus objects)"]
 
         ContainerService --> IncusClient
     end
 
-    IncusClient -->|"HTTP over Unix socket<br/>/var/lib/incus/unix.socket"| Incus
+    IncusClient -->|"HTTP over Unix socket\n/var/lib/incus/unix.socket"| Incus
 
     subgraph Incus["Incus Daemon"]
         IncusDesc["container lifecycle, images, storage"]
