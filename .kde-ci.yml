@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 KDE Contributors
+# SPDX-License-Identifier: CC0-1.0
+
+Dependencies:
+- 'on': ['Linux/Qt6']
+  'require':
+    'frameworks/extra-cmake-modules': '@latest-kf6'
+    'frameworks/kcoreaddons': '@latest-kf6'
+    'frameworks/kdbusaddons': '@latest-kf6'
+    'frameworks/ki18n': '@latest-kf6'
+
+Options:
+  setup-dbus-session: true
+  run-tests: true
+  per-test-timeout: 180
+  require-passing-tests-on: []

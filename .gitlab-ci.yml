@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 KDE Contributors
+# SPDX-License-Identifier: CC0-1.0
+
+include:
+  - project: sysadmin/ci-utilities
+    file:
+      - /gitlab-templates/reuse-lint.yml
+      - /gitlab-templates/linux-qt6.yml
+
+# Test if Incus can run in the KDE CI VM
+incus_test:
+  stage: test
+  script:
+    # Check what we're running on
+    - echo "=== System Info ==="
+    - uname -a
+    - cat /etc/os-release
+    - id
+    
+    # Check for virtualization support
+    - echo "=== Virtualization Check ==="
+    - cat /proc/cpuinfo | grep -E "(vmx|svm)" | head -1 || echo "No nested virt in CPU flags"
+    - ls -la /dev/kvm 2>/dev/null || echo "No /dev/kvm"
+    
+    # Check kernel namespaces (needed for unprivileged containers)
+    - echo "=== Namespace Support ==="
+    - cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo "unprivileged_userns_clone not found"
+    - sysctl kernel.unprivileged_userns_clone 2>/dev/null || true
+    
+    # Try to install Incus
+    - echo "=== Installing Incus ==="
+    - sudo zypper --non-interactive install incus incus-client || echo "Incus not in default repos"
+    
+    # If not in repos, try the OBS package
+    - |
+      if ! command -v incus &> /dev/null; then
+        echo "Trying OBS repo..."
+        sudo zypper --non-interactive addrepo --priority 50 --refresh obs://system:GVFS/openSUSE_Tumbleweed incus-obs || true
+        sudo zypper --non-interactive --gpg-auto-import-keys refresh || true
+        sudo zypper --non-interactive install incus || echo "Still failed to install"
+      fi
+    
+    # Check if incus binary exists
+    - which incus || echo "incus binary not found"
+    
+    # Try to start the daemon
+    - echo "=== Starting Incus ==="
+    - sudo systemctl start incus.socket || echo "Failed to start incus.socket"
+    - sudo systemctl start incus || echo "Failed to start incus"
+    - sudo systemctl status incus || true
+    
+    # Try minimal init
+    - echo "=== Initializing Incus ==="
+    - sudo incus admin init --minimal || echo "incus init failed"
+    
+    # Add user to incus-admin group
+    - sudo usermod -aG incus-admin $USER || true
+    
+    # Try listing (to verify daemon is working)
+    - echo "=== Testing Incus ==="
+    - sudo incus list || echo "incus list failed"
+    
+    # Try creating a simple container (unprivileged)
+    - echo "=== Creating Test Container ==="
+    - sudo incus launch images:alpine/edge test-ci --config security.privileged=false || echo "Container creation failed"
+    - sudo incus list || true
+    - sudo incus delete test-ci --force 2>/dev/null || true
+    
+  rules:
+    # Only run on MR or when explicitly triggered
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  allow_failure: true  # Don't block other jobs while we experiment
