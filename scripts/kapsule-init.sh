@@ -1,10 +1,10 @@
 #!/bin/bash
+
 # SPDX-FileCopyrightText: 2024-2026 KDE Community
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
 # SPDX-License-Identifier: BSD-3-Clause
-#
-# kapsule-init.sh - Initialize kapsule by enabling and starting incus sockets
-#
-# This script must be run as root (sudo kapsule init).
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 set -e
 

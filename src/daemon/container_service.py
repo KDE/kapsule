@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Container lifecycle operations for the Kapsule daemon.
 
 This module implements the core container management operations,

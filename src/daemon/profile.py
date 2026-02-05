@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Kapsule profile definitions.
 
 This module contains the profile configurations applied to Kapsule containers.

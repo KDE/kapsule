@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
 # Kapsule Architecture
 
 Kapsule is an Incus-based container manager with native KDE/Plasma integration, designed for KDE Linux. It provides a distrobox-like experience with emphasis on nested containerization and seamless desktop integration.

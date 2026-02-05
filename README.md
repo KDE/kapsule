@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
 # Kapsule
 
 Incus-based container management with native KDE/Plasma integration.

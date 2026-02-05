@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """High-level Incus REST API client.
 
 This module provides a typed async client for the Incus REST API,

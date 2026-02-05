@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Test: Container lifecycle operations (create, start, stop, delete)
 #
 # Tests the basic container lifecycle through the kapsule CLI.

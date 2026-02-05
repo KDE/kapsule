@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Custom D-Bus type aliases for Kapsule.
 
 This module provides Kapsule-specific D-Bus types with C++ metadata for

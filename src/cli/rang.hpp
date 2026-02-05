@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Abhijeet Gaikwad <agauniyal@gmail.com>
+//
+// SPDX-License-Identifier: Unlicense
+
 // Version: c5850a0c76d11eb6334b4f9d7799bcaf71231340
 // https://github.com/agauniyal/rang/blob/c5850a0c76d11eb6334b4f9d7799bcaf71231340/include/rang.hpp
 

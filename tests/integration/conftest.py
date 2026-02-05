@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Pytest configuration for Kapsule integration tests."""
 
 from __future__ import annotations

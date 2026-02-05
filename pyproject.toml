@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 none
+#
+# SPDX-License-Identifier: CC0-1.0
+
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"

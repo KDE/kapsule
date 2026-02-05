@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Generate D-Bus introspection XML from the Kapsule service interface.
 
 This script creates the introspection XML by parsing the Python source files

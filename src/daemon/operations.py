@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Operation framework for the Kapsule daemon.
 
 Provides decorators and utilities for daemon operations that emit
