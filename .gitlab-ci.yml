@@ -9,7 +9,11 @@ include:
 
 # Test if Incus can run in the KDE CI VM
 incus_test:
-  stage: test
+  stage: build  # Run in build stage so it doesn't depend on other jobs
+  image: storage.kde.org/vm-images/suse-qt610  # Use the KDE CI VM image
+  tags:
+    - amd64
+    - VM
   script:
     # Check what we're running on
     - echo "=== System Info ==="
