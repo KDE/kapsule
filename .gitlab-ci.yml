@@ -7,43 +7,58 @@ include:
       - /gitlab-templates/reuse-lint.yml
       - /gitlab-templates/linux-qt6.yml
 
-# Test if LXD/Incus can run in the KDE CI VM
-# Uses snap-builder image which has LXD pre-configured
-container_test:
+# Integration tests using Incus on snap-builder VM
+# Tests container creation/deletion via Kapsule's D-Bus interface
+integration_test:
   stage: build
   image: storage.kde.org/vm-images/snap-builder
   tags:
     - amd64
     - VM
   script:
-    # Check what we're running on
+    # System info
     - echo "=== System Info ==="
     - uname -a
     - cat /etc/os-release
-    - id
-    - groups
+    - id && groups
     
-    # Check LXD status (should be pre-configured on snap-builder)
+    # Verify LXD works (pre-installed)
     - echo "=== LXD Status ==="
-    - which lxd lxc || echo "LXD not found"
-    - lxc version || echo "lxc version failed"
+    - lxc version
     
-    # Try listing (to verify daemon is working)
-    - echo "=== Testing LXD ==="
-    - lxc list || echo "lxc list failed"
+    # Install Incus via Zabbly repo (official Incus packages for Ubuntu)
+    - echo "=== Installing Incus ==="
+    - |
+      sudo mkdir -p /etc/apt/keyrings
+      sudo curl -fsSL https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc
+      echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/incus/stable $(. /etc/os-release && echo ${VERSION_CODENAME}) main" | sudo tee /etc/apt/sources.list.d/zabbly-incus-stable.list
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq incus
     
-    # Try creating a simple container
-    - echo "=== Creating Test Container ==="
-    - lxc launch images:alpine/edge test-ci || echo "Container creation failed"
-    - lxc list || true
+    # Initialize Incus
+    - echo "=== Setting up Incus ==="
+    - sudo systemctl start incus || sudo incusd &
+    - sleep 2
+    - sudo incus admin init --minimal
     
-    # Run a command in the container
-    - echo "=== Running Command in Container ==="
-    - lxc exec test-ci -- cat /etc/os-release || echo "exec failed"
+    # Verify Incus works
+    - echo "=== Testing Incus ==="
+    - sudo incus list
     
-    # Cleanup
-    - lxc delete test-ci --force 2>/dev/null || true
+    # Install Python test dependencies
+    - echo "=== Installing Python Dependencies ==="
+    - pip install --quiet pytest pytest-asyncio dbus-fast httpx pydantic rich typer pyyaml
+    
+    # Start Kapsule daemon on system bus (requires root)
+    - echo "=== Starting Kapsule Daemon ==="
+    - export PYTHONPATH="${CI_PROJECT_DIR}/src"
+    - sudo -E python -m daemon --system &
+    - sleep 3
+    
+    # Run integration tests (need root to access system bus as owner)
+    - echo "=== Running Integration Tests ==="
+    - sudo -E PYTHONPATH="${CI_PROJECT_DIR}/src" pytest tests/integration/ -v --tb=short || true
     
   rules:
-    - when: always  # Run on all pipelines for now
-  allow_failure: true  # Don't block other jobs while we experiment
+    - when: always
+  allow_failure: true  # Don't block while experimenting
