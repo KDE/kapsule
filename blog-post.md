@@ -46,3 +46,19 @@ Enter **Incus**. It checks all the boxes:
 
 Bonus: it supports VMs too, for running less trusted workloads. People on Matrix said they want this option. I don't fully get the use case for a development environment, but the flexibility is there if we need it.
 
+# Architecture
+### Architecture
+
+Incus exposes a REST API with full OpenAPI specs—great for interoperability, but dealing with REST/OpenAPI in C++ is not something I'm eager to take on.
+
+My first choice would be C#—it's a language I actually enjoy, and it handles this kind of API work beautifully. But I suspect the likelihood of KDE developers accepting C# code into the project is... low.
+
+Languages that already build in kde-builder and CMake will probably have the least friction for acceptance, and of those, Python is the best fit for this job.
+The type system isn't as mature as I'd like (though at least it exists now with type hints), and the libraries for OpenAPI and D-Bus are... okay-ish. Not amazing, but workable.
+
+Here's the plan:
+- **Daemon in Python** to handle all the Incus API interaction
+- **CLI, KCM, and Konsole plugin in C++** for the user-facing pieces that integrate with the rest of KDE
+
+This way we keep the REST/OpenAPI complexity in Python where it's manageable, and the KDE integration in C++ where it belongs.
+
