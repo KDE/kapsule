@@ -86,40 +86,34 @@ And here's chromium running inside the container, screencasting the host's deskt
 
 ### Deeper integration
 
-Right now, it's a cli that you have to manually invoke, and lives kind of separately from the rest of the system. 
+Right now, Kapsule is a CLI that you have to manually invoke, and it lives kind of separately from the rest of the system. That's fine for a proof of concept, but the real value comes from making it invisible to users who just want things to work.
 
 #### Konsole
 
-Since Konsole gained container integration in [!1171](https://invent.kde.org/utilities/konsole/-/merge_requests/1171), I just need to create and add a `IContainerDetector` for Kapsule.
+Konsole gained container integration in [!1171](https://invent.kde.org/utilities/konsole/-/merge_requests/1171), so I just need to create and add an `IContainerDetector` for Kapsule. Once that's wired up, I'll add a per-distro configurable option to open terminals in the designated container by default. 
 
-Once that's done, I'll add a per-distro configurable option to open terminals in the designated container by default. Once Kapsule is stable enough, I'll make that the default.
-Then users won't have to know or care about Kapsule, unless they break their container.
-That leads nicely to the next point...
+When Kapsule is stable enough, that becomes the default behavior. Users won't have to know or care about Kapsule—they just open a terminal and their tools are there. Unless they break their container, which leads nicely to the next point...
 
 #### KCM
 
-- container management UI for container create/delete/start/stop
-- can easily reset if they ran something that broke the container
-- for advanced users
-    - configuration options for the container (e.g. which distro to use, resource limits, etc)
+A System Settings module for container management:
+- Create, delete, start, stop containers
+- Easy reset if you ran something that broke things
+- For advanced users: configuration options like which distro to use, resource limits, etc.
 
 #### Discover
 
-- these containers need to be kept up to date
-- most likely have packagekit inside them
-- can create discover plugin that connects to container's dbus session to talk to packagekit and show updates for the container's packages
+These containers need to be kept up to date. Most will have PackageKit inside them, so we can create a Discover plugin that connects to the container's D-Bus session and shows updates for the container's packages alongside the host's updates. Seamless.
 
 ### Moving dev tools out of the base image
 
-- Long term goal: get this stable and good enough
-- Remove ZSH, git, clang, gcc, docker, podman, distrobox, toolbox, etc from the base image
-    - all of those work in kapsule already
+This is the long-term goal: get Kapsule stable and good enough that we can remove ZSH, git, clang, gcc, docker, podman, distrobox, toolbox, and the rest of the dev tools from the base image entirely. All of those already work in Kapsule. 
+
+Once that happens, we're eating our own dog food. The extensibility model we're asking users to adopt is the same one we're using ourselves.
 
 ### Pimped out container images
 
-- we maintain our own image repo
-  - no real limit to images
-  - everyone in the #kde-linux channel can show off their style
+We'll maintain our own image repository. There's no real limit to the number of images we can offer, and everyone in the [#kde-linux](https://matrix.to/#/#kde-linux:kde.org) channel can show off their style. Want a minimal Arch-based dev container? A fully-loaded Fedora workstation? A niche distro for embedded development? A Nix-based image (I'm looking at you, Hadi Chokr)? All possible.
 
 ## Trying it out
 
