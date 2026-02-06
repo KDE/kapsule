@@ -46,8 +46,7 @@ Enter **Incus**. It checks all the boxes:
 
 Bonus: it supports VMs too, for running less trusted workloads. People on Matrix said they want this option. I don't fully get the use case for a development environment, but the flexibility is there if we need it.
 
-# Architecture
-### Architecture
+## Architecture
 
 Incus exposes a REST API with full OpenAPI specs—great for interoperability, but dealing with REST/OpenAPI in C++ is not something I'm eager to take on.
 
@@ -62,3 +61,67 @@ Here's the plan:
 
 This way we keep the REST/OpenAPI complexity in Python where it's manageable, and the KDE integration in C++ where it belongs.
 
+
+## Current Status
+
+Look, the KDE "K" naming thing is awesome. I'm not going to pretend otherwise. My first instinct was "Kontainer"—obvious, descriptive, checks the K box. Unfortunately, it was already taken.
+
+So I went with **Kapsule**. It's a container. It encapsulates things. The K is there. Works for me.
+
+The implementation is currently in a repo under my user namespace at [fernando/kapsule](https://invent.kde.org/fernando/kapsule). But I have a ticket open with the sysadmin team to move this into `kde-linux/kapsule`. Once that's done I'll be able to add it to kde-builder and start integrating it into the KDE Linux packages pipeline.
+
+The daemon and CLI are functional. Since a picture is worth a thousand words, here's a screenshot of the CLI in action:
+
+![kap cli screenshot](kap_cli_screenshot.png)
+
+Here's docker and podman running inside ubuntu and fedora containers, respectively:
+
+![docker and podman](docker_podman.png)
+
+And here's chromium running inside the container, screencasting the host's desktop:
+
+![chromium screencasting in container](./chromium_screen_sharing.png)
+
+## Next Steps
+
+### Deeper integration
+
+Right now, it's a cli that you have to manually invoke, and lives kind of separately from the rest of the system. 
+
+#### Konsole
+
+Since Konsole gained container integration in [!1171](https://invent.kde.org/utilities/konsole/-/merge_requests/1171), I just need to create and add a `IContainerDetector` for Kapsule.
+
+Once that's done, I'll add a per-distro configurable option to open terminals in the designated container by default. Once Kapsule is stable enough, I'll make that the default.
+Then users won't have to know or care about Kapsule, unless they break their container.
+That leads nicely to the next point...
+
+#### KCM
+
+- container management UI for container create/delete/start/stop
+- can easily reset if they ran something that broke the container
+- for advanced users
+    - configuration options for the container (e.g. which distro to use, resource limits, etc)
+
+#### Discover
+
+- these containers need to be kept up to date
+- most likely have packagekit inside them
+- can create discover plugin that connects to container's dbus session to talk to packagekit and show updates for the container's packages
+
+### Moving dev tools out of the base image
+
+- Long term goal: get this stable and good enough
+- Remove ZSH, git, clang, gcc, docker, podman, distrobox, toolbox, etc from the base image
+    - all of those work in kapsule already
+
+### Pimped out container images
+
+- we maintain our own image repo
+  - no real limit to images
+  - everyone in the #kde-linux channel can show off their style
+
+## Trying it out
+
+Honestly, the best way to try it out is to wait for me to get it integrated into the KDE Linux packages pipeline and into the base image itself.
+Hopefully that'll be in the next few days.
