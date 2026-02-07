@@ -810,7 +810,6 @@ class ContainerService:
         instance_config = instance.config or {}
 
         session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
-        dbus_mux_mode = instance_config.get(KAPSULE_DBUS_MUX_KEY) == "true"
 
         runtime_dir = f"/run/user/{uid}"
         host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
@@ -832,16 +831,13 @@ class ContainerService:
             ("pipewire-0", False, None),
         ]
 
-        # In session mode, skip the dbus socket (container has its own D-Bus)
-        # unless dbus_mux is enabled, in which case the mux handles it
+        # D-Bus socket handling:
+        # - Default mode: symlink to host's session bus so container sees host services
+        # - Session mode (any): no symlink — container has its own D-Bus session.
+        #   Without mux, systemd's dbus.socket creates /run/user/$uid/bus natively.
+        #   With mux, the mux service listens at /run/user/$uid/bus.
         if not session_mode:
-            # Non-session mode: symlink host dbus socket directly
             runtime_links.append(("bus", False, None))
-        elif not dbus_mux_mode:
-            # Session mode without mux: symlink to container's exposed socket
-            runtime_links.append(
-                ("bus", False, KAPSULE_DBUS_SOCKET_USER_PATH.format(container=container_name))
-            )
 
         for item, is_env, subpath in runtime_links:
             if is_env:
@@ -997,11 +993,23 @@ class ContainerService:
     ) -> None:
         """Set up session mode for a container.
 
+        Without D-Bus mux, the container's own systemd dbus.socket creates
+        /run/user/$uid/bus natively — no extra setup is needed (loginctl
+        enable-linger is handled by _setup_user_sync).
+
+        With D-Bus mux, we redirect the container's dbus.socket to a hostfs
+        path so the mux process can reach it from the host, then install the
+        kapsule-dbus-mux.service that listens at the normal /run/user/$uid/bus.
+
         Args:
             progress: Operation reporter
             name: Container name
             dbus_mux: Whether to set up D-Bus multiplexer
         """
+        if not dbus_mux:
+            progress.info("Session mode: container will use its own D-Bus session bus")
+            return
+
         # Use uid 1000 as placeholder - the drop-in uses %t so it works for any user
         uid = 1000
         host_socket_path = f"/run/user/{uid}/kapsule/{name}/dbus.socket"
