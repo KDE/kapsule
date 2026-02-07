@@ -177,6 +177,10 @@ class ContainerService:
         # Set up session mode if enabled
         if session_mode:
             await self._setup_session_mode(progress, name, dbus_mux)
+        else:
+            # Non-session containers lack a systemd user instance, so
+            # rootless Podman's default cgroup_manager=systemd will fail.
+            await self._configure_rootless_podman(progress, name)
 
         progress.success(f"Container '{name}' created successfully")
 
@@ -1074,6 +1078,53 @@ class ContainerService:
         except IncusError as e:
             # Not fatal - some images may not have systemd
             progress.warning(f"Could not mask systemd-networkd-wait-online: {e}")
+
+    async def _configure_rootless_podman(
+        self,
+        progress: OperationReporter,
+        name: str,
+    ) -> None:
+        """Configure rootless Podman for non-session containers.
+
+        Kapsule's default (non-session) containers forward the host's D-Bus
+        session bus rather than running their own systemd user instance.
+        Podman defaults to ``cgroup_manager = "systemd"`` which asks systemd
+        to create a transient scope via sd-bus, but the host's systemd cannot
+        manage the container's PIDs so this fails with "No such process".
+
+        Dropping a config file into ``/etc/containers/containers.conf.d/``
+        switches rootless Podman to the ``cgroupfs`` cgroup manager which
+        writes cgroup entries directly instead of going through sd-bus.
+
+        Args:
+            progress: Operation reporter
+            name: Container name
+        """
+        dropin_dir = "/etc/containers/containers.conf.d"
+        dropin_file = f"{dropin_dir}/50-kapsule-cgroupfs.conf"
+        dropin_content = (
+            "# Installed by Kapsule – non-session containers lack a systemd\n"
+            "# user instance, so the default systemd cgroup manager fails.\n"
+            "[engine]\n"
+            'cgroup_manager = "cgroupfs"\n'
+        )
+
+        try:
+            await self._incus.mkdir(name, dropin_dir, uid=0, gid=0, mode="0755")
+        except IncusError:
+            pass  # Directory might already exist
+
+        try:
+            await self._incus.push_file(
+                name, dropin_file, dropin_content,
+                uid=0, gid=0, mode="0644",
+            )
+        except IncusError as e:
+            # Not fatal – Podman may not be installed
+            progress.warning(f"Could not configure rootless Podman: {e}")
+            return
+
+        progress.dim("Configured rootless Podman (cgroup_manager=cgroupfs)")
 
     async def _setup_session_mode(
         self,
