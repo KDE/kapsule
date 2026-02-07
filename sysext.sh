@@ -92,4 +92,5 @@ trap "kill $!" EXIT
 ssh root@192.168.100.157 \
     "importctl pull-tar --class=sysext --verify=no --force http://192.168.100.1:8000/kapsule.tar && \
      systemd-sysext refresh && \
-     systemctl daemon-reload"
+     systemctl daemon-reload && \
+     systemctl restart kapsule-daemon.service"
