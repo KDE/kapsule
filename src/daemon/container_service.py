@@ -612,16 +612,23 @@ class ContainerService:
 
         # Build environment arguments
         env_args: list[str] = []
+        whitelist_keys: list[str] = []
         for key, value in env.items():
             if key in _ENTER_ENV_SKIP:
                 continue
             if "\n" in value or "\x00" in value:
                 continue
             env_args.extend(["--env", f"{key}={value}"])
+            whitelist_keys.append(key)
 
         # Build the command to run inside the container
+        # Use -l (login) for proper shell setup, but -w to whitelist
+        # env vars passed via incus exec --env. Without -w, su -l
+        # would clear vars like XDG_RUNTIME_DIR that are needed for
+        # PulseAudio/PipeWire socket discovery.
+        whitelist_arg = ",".join(whitelist_keys) if whitelist_keys else ""
         if command:
-            exec_cmd = ["su", "-l", "-c", " ".join(command), username]
+            exec_cmd = ["su", "-l", "-w", whitelist_arg, "-c", " ".join(command), username]
         else:
             exec_cmd = ["login", "-p", "-f", username]
 
@@ -820,7 +827,6 @@ class ContainerService:
             ("WAYLAND_DISPLAY", True, None),
             ("XAUTHORITY", True, None),
             ("pipewire-0", False, None),
-            ("pulse", False, None),
         ]
 
         # In session mode, skip the dbus socket (container has its own D-Bus)
@@ -849,6 +855,21 @@ class ContainerService:
                 await self._incus.create_symlink(container_name, target, source, uid=uid, gid=gid)
             except IncusError:
                 pass  # Symlink might already exist
+
+        # PulseAudio: create a real pulse/ directory and symlink native inside.
+        # PulseAudio refuses to use pulse/ if it's itself a symlink (security check).
+        pulse_dir = f"{runtime_dir}/pulse"
+        host_pulse_native = f"{host_runtime_dir}/pulse/native"
+        try:
+            await self._incus.mkdir(container_name, pulse_dir, uid=uid, gid=gid, mode="0700")
+        except IncusError:
+            pass
+        try:
+            await self._incus.create_symlink(
+                container_name, f"{pulse_dir}/native", host_pulse_native, uid=uid, gid=gid,
+            )
+        except IncusError:
+            pass
 
     # -------------------------------------------------------------------------
     # Private Helper Methods
