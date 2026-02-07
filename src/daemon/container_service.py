@@ -785,6 +785,10 @@ class ContainerService:
     ) -> None:
         """Set up runtime directory symlinks for graphics/audio access.
 
+        Symlinks individual sockets from the host's /run/user/$uid into the
+        container's /run/user/$uid directory. In session mode, the dbus socket
+        is not symlinked (the container has its own D-Bus session).
+
         Args:
             container_name: Container name
             uid: User ID
@@ -800,46 +804,51 @@ class ContainerService:
         runtime_dir = f"/run/user/{uid}"
         host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
 
-        if session_mode:
-            # Session mode: container has its own /run/user/$uid managed by systemd --user
-            # Symlink individual host sockets into it for graphics/audio access
-            runtime_links: list[tuple[str, bool, str | None]] = [
-                ("WAYLAND_DISPLAY", True, None),
-                ("XAUTHORITY", True, None),
-                ("pipewire-0", False, None),
-                ("pulse", False, None),
-            ]
-            if not dbus_mux_mode:
-                runtime_links.append(
-                    ("bus", False, KAPSULE_DBUS_SOCKET_USER_PATH.format(container=container_name))
-                )
+        # Ensure container runtime dir exists
+        try:
+            await self._incus.mkdir(container_name, "/run/user", uid=0, gid=0, mode="0755")
+        except IncusError:
+            pass
+        try:
+            await self._incus.mkdir(container_name, runtime_dir, uid=uid, gid=gid, mode="0700")
+        except IncusError:
+            pass
 
-            for item, is_env, subpath in runtime_links:
-                if is_env:
-                    socket_name = env.get(item)
-                    if not socket_name:
-                        continue
-                else:
-                    socket_name = item
+        # Symlink individual sockets from host runtime dir
+        # Format: (item, is_env_var, source_subpath_override)
+        runtime_links: list[tuple[str, bool, str | None]] = [
+            ("WAYLAND_DISPLAY", True, None),
+            ("XAUTHORITY", True, None),
+            ("pipewire-0", False, None),
+            ("pulse", False, None),
+        ]
 
-                source = f"{host_runtime_dir}/{subpath if subpath else socket_name}"
-                target = f"{runtime_dir}/{socket_name}"
+        # In session mode, skip the dbus socket (container has its own D-Bus)
+        # unless dbus_mux is enabled, in which case the mux handles it
+        if not session_mode:
+            # Non-session mode: symlink host dbus socket directly
+            runtime_links.append(("bus", False, None))
+        elif not dbus_mux_mode:
+            # Session mode without mux: symlink to container's exposed socket
+            runtime_links.append(
+                ("bus", False, KAPSULE_DBUS_SOCKET_USER_PATH.format(container=container_name))
+            )
 
-                try:
-                    await self._incus.create_symlink(container_name, target, source, uid=uid, gid=gid)
-                except IncusError:
-                    pass  # Symlink might already exist
-        else:
-            # Non-session mode: symlink entire runtime dir to host's
+        for item, is_env, subpath in runtime_links:
+            if is_env:
+                socket_name = env.get(item)
+                if not socket_name:
+                    continue
+            else:
+                socket_name = item
+
+            source = f"{host_runtime_dir}/{subpath if subpath else socket_name}"
+            target = f"{runtime_dir}/{socket_name}"
+
             try:
-                await self._incus.mkdir(container_name, "/run/user", uid=0, gid=0, mode="0755")
+                await self._incus.create_symlink(container_name, target, source, uid=uid, gid=gid)
             except IncusError:
-                pass
-
-            try:
-                await self._incus.create_symlink(container_name, runtime_dir, host_runtime_dir, uid=uid, gid=gid)
-            except IncusError:
-                pass
+                pass  # Symlink might already exist
 
     # -------------------------------------------------------------------------
     # Private Helper Methods
