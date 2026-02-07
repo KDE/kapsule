@@ -25,7 +25,11 @@ if TYPE_CHECKING:
 # Import Incus client and models from local modules
 from .incus_client import IncusClient, IncusError
 from .models_generated import InstanceSource, InstancesPost
-from .profile import KAPSULE_BASE_PROFILE, KAPSULE_PROFILE_NAME
+from .profile import (
+    KAPSULE_PROFILE_NAME,
+    ProfileSyncResult,
+    ensure_kapsule_profile,
+)
 
 
 # Config keys for kapsule metadata stored in container config
@@ -653,7 +657,7 @@ class ContainerService:
         """
         # Ensure profile exists
         try:
-            await self._incus.ensure_profile(KAPSULE_PROFILE_NAME, KAPSULE_BASE_PROFILE)
+            await ensure_kapsule_profile(self._incus)
         except IncusError as e:
             raise OperationError(f"Failed to ensure profile: {e}")
 
@@ -912,18 +916,32 @@ class ContainerService:
     # -------------------------------------------------------------------------
 
     async def _ensure_profile(self, progress: OperationReporter) -> None:
-        """Ensure the kapsule profile exists."""
+        """Ensure the kapsule profile exists and is up to date."""
         progress.info(f"Ensuring profile: {KAPSULE_PROFILE_NAME}")
         sub = progress.indented()
 
         try:
-            created = await self._incus.ensure_profile(KAPSULE_PROFILE_NAME, KAPSULE_BASE_PROFILE)
-            if created:
-                sub.success(f"Created profile '{KAPSULE_PROFILE_NAME}'")
-            else:
-                sub.dim(f"Profile '{KAPSULE_PROFILE_NAME}' already exists")
+            result = await ensure_kapsule_profile(self._incus)
+            match result:
+                case ProfileSyncResult.CREATED:
+                    sub.success(f"Created profile '{KAPSULE_PROFILE_NAME}'")
+                case ProfileSyncResult.UPDATED:
+                    sub.success(f"Updated profile '{KAPSULE_PROFILE_NAME}'")
+                case ProfileSyncResult.UNCHANGED:
+                    sub.dim(f"Profile '{KAPSULE_PROFILE_NAME}' is up to date")
         except IncusError as e:
             raise OperationError(f"Failed to ensure profile: {e}")
+
+    async def sync_profile(self) -> ProfileSyncResult:
+        """Sync the kapsule profile on daemon startup.
+
+        Creates the profile if missing, or updates it if the content
+        hash differs from the current profile definition.
+
+        Returns:
+            ProfileSyncResult indicating what action was taken.
+        """
+        return await ensure_kapsule_profile(self._incus)
 
     def _parse_image_source(self, image: str) -> InstanceSource | None:
         """Parse an image string into an InstanceSource.

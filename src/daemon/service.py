@@ -31,6 +31,7 @@ from .container_service import ContainerService
 
 # Re-export IncusClient for use in __main__ and CLI
 from .incus_client import IncusClient
+from .profile import ProfileSyncResult
 
 # Context variable to store the current D-Bus message sender
 # This is set by a message handler before method dispatch
@@ -516,6 +517,19 @@ class KapsuleService:
 
         # Request the well-known name
         await self._bus.request_name("org.kde.kapsule")
+
+        # Sync the kapsule-base profile so upgrades take effect immediately
+        try:
+            result = await self._container_service.sync_profile()
+            match result:
+                case ProfileSyncResult.CREATED:
+                    print("Profile 'kapsule-base': created")
+                case ProfileSyncResult.UPDATED:
+                    print("Profile 'kapsule-base': updated to match current version")
+                case ProfileSyncResult.UNCHANGED:
+                    pass  # Normal case, no need to log
+        except Exception as e:
+            print(f"Warning: failed to sync kapsule-base profile: {e}")
 
         bus_name = "system" if self._bus_type == BusType.SYSTEM else "session"
         print(f"Kapsule daemon v{__version__} running on {bus_name} bus")

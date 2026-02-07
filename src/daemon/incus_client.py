@@ -308,21 +308,18 @@ class IncusClient:
             json=profile.model_dump(exclude_none=True),
         )
 
-    async def ensure_profile(self, name: str, profile_data: ProfilesPost) -> bool:
-        """Ensure a profile exists, creating it if necessary.
+    async def update_profile(self, name: str, profile_put: ProfilePut) -> None:
+        """Update an existing profile.
 
         Args:
             name: Profile name.
-            profile_data: Profile configuration (used if creating).
-
-        Returns:
-            True if the profile was created, False if it already existed.
+            profile_put: New profile configuration.
         """
-        if await self.profile_exists(name):
-            return False
-
-        await self.create_profile(profile_data)
-        return True
+        await self._request(
+            "PUT", f"/1.0/profiles/{name}",
+            response_type=EmptyResponse,
+            json=profile_put.model_dump(exclude_none=True),
+        )
 
     # -------------------------------------------------------------------------
     # Instance creation
