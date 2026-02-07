@@ -168,6 +168,9 @@ class ContainerService:
         except IncusError as e:
             raise OperationError(f"Failed to create container: {e}")
 
+        # Apply host-networking fixups (mask services that don't work with lxc.net.0.type=none)
+        await self._apply_host_network_fixups(progress, name)
+
         # Set up session mode if enabled
         if session_mode:
             await self._setup_session_mode(progress, name, dbus_mux)
@@ -984,6 +987,39 @@ class ContainerService:
             source=None,
             **{"base-image": None},
         )
+
+    async def _apply_host_network_fixups(
+        self,
+        progress: OperationReporter,
+        name: str,
+    ) -> None:
+        """Apply fixups for containers using host networking (lxc.net.0.type=none).
+
+        Kapsule containers share the host's network namespace, so there are no
+        network interfaces for systemd-networkd to manage inside the container.
+        This causes systemd-networkd-wait-online.service to wait for a timeout
+        (~30s) before services like Docker can start.
+
+        We mask that service since the host network is already online.
+
+        Args:
+            progress: Operation reporter
+            name: Container name
+        """
+        # Mask systemd-networkd-wait-online.service by symlinking to /dev/null
+        # This is what `systemctl mask` does
+        progress.info("Masking systemd-networkd-wait-online.service (host networking)")
+        try:
+            await self._incus.create_symlink(
+                name,
+                "/etc/systemd/system/systemd-networkd-wait-online.service",
+                "/dev/null",
+                uid=0,
+                gid=0,
+            )
+        except IncusError as e:
+            # Not fatal - some images may not have systemd
+            progress.warning(f"Could not mask systemd-networkd-wait-online: {e}")
 
     async def _setup_session_mode(
         self,
