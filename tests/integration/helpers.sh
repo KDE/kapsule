@@ -108,14 +108,14 @@ cleanup_container() {
 dbus_call() {
     local method="$1"
     shift
-    ssh_vm "busctl call org.kde.kapsule /org/kde/kapsule/Manager org.kde.kapsule.Manager '$method' $*"
+    ssh_vm "busctl call org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager '$method' $*"
 }
 
 # Get a D-Bus property
 # Usage: dbus_get_property PROPERTY
 dbus_get_property() {
     local property="$1"
-    ssh_vm "busctl get-property org.kde.kapsule /org/kde/kapsule/Manager org.kde.kapsule.Manager '$property'"
+    ssh_vm "busctl get-property org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager '$property'"
 }
 
 # ============================================================================
