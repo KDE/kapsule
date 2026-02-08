@@ -6,28 +6,7 @@
 
 set -xe
 
-# Parse CLI options
-clean=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --clean)
-            clean=true
-            shift
-            ;;
-        -h|--help)
-            echo "Usage: $0 [--clean]"
-            echo "  --clean    Force re-run pacstrap even if cache exists"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
-    esac
-done
-
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-pacstrap_dir=~/src/kde/sysext/kapsule-pacstrap
 install_dir=~/src/kde/sysext/kapsule
 
 # Clean and recreate install directory
@@ -54,32 +33,6 @@ VERSION_ID="2026-01-27"
 IMAGE_ID="kde-linux"
 IMAGE_VERSION="202601271004"
 EOF
-
-# Clean pacstrap cache if requested
-if [[ "$clean" == true ]] && [[ -d "$pacstrap_dir" ]]; then
-    echo "Cleaning pacstrap cache..."
-    sudo rm -rf "$pacstrap_dir"
-fi
-
-# Run pacstrap only if cache doesn't exist
-if [[ ! -d "$pacstrap_dir" ]]; then
-    echo "Running pacstrap..."
-    mkdir -p "$pacstrap_dir"
-    sudo pacstrap -c "$pacstrap_dir" incus
-    
-    # Remove files that already exist in the KDE Linux base system
-    if [[ -f "$script_dir/kde-linux-file-list.txt" ]]; then
-        echo "Removing base system files from pacstrap cache..."
-        sed "s|^|${pacstrap_dir}|" "$script_dir/kde-linux-file-list.txt" | xargs -d '\n' sudo rm -f 2>/dev/null || true
-        sudo find "$pacstrap_dir" -type d -empty -delete 2>/dev/null || true
-    fi
-else
-    echo "Using cached pacstrap directory..."
-fi
-
-# Hardlink files from pacstrap cache to install directory
-echo "Hardlinking files to install directory..."
-sudo cp -al "$pacstrap_dir/usr/." "$install_dir/usr/"
 
 serve_dir=/tmp/kapsule
 mkdir -p "$serve_dir"
