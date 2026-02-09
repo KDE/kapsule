@@ -108,8 +108,10 @@ integration_test:
     # ---- Install runtime dependencies ----
     # incus pulls in iptables-nft which conflicts with iptables on the base image;
     # --ask 4 tells pacman to auto-resolve conflicts by replacing the old package.
+    # Runtime libs needed by the kapsule CLI (linked against Qt6, KF6, QCoro).
     - sudo pacman -Syu --noconfirm --ask 4
         incus openssh
+        qt6-base ki18n kcoreaddons kconfig qcoro-qt6
         python python-pip python-pytest python-pytest-asyncio
     - pip install --break-system-packages
         dbus-fast pydantic pyyaml httpx
@@ -124,7 +126,9 @@ integration_test:
     # ---- Start incus ----
     - sudo systemctl enable --now incus.socket incus.service
     - sudo incus admin init --minimal
-    - sudo usermod -aG incus "$(whoami)"
+    # Grant the CI user access to the incus socket directly (usermod -aG
+    # does not take effect until a new login session).
+    - sudo chmod 0666 /var/lib/incus/unix.socket
 
     # ---- Start kapsule daemon ----
     - sudo systemctl start kapsule-daemon.service
@@ -138,12 +142,16 @@ integration_test:
       busctl status org.kde.kapsule
 
     # ---- Set up SSH to localhost for the test harness ----
+    # Tests SSH as current user and some tests SSH as root.
     - sudo systemctl enable --now sshd
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     - ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
     - cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
     - chmod 600 ~/.ssh/authorized_keys
     - ssh-keyscan -H localhost >> ~/.ssh/known_hosts 2>/dev/null
+    - sudo mkdir -p /root/.ssh && sudo chmod 700 /root/.ssh
+    - sudo cp ~/.ssh/id_ed25519.pub /root/.ssh/authorized_keys
+    - sudo chmod 600 /root/.ssh/authorized_keys
 
     # ---- Run integration tests ----
     - ./tests/integration/run-tests.sh --no-deploy
