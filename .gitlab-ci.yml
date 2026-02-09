@@ -119,6 +119,7 @@ integration_test:
     - sudo tar -xf kapsule.sysext.tar -C /var/lib/extensions/kapsule
     - sudo systemd-sysext refresh
     - sudo systemctl daemon-reload
+    - sudo systemctl reload dbus.service
 
     # ---- Start incus ----
     - sudo systemctl enable --now incus.socket incus.service
