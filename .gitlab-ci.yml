@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: None
+# SPDX-License-Identifier: CC0-1.0
+
+include:
+  - project: sysadmin/ci-utilities
+    file:
+      - /gitlab-templates/reuse-lint.yml
+      - /gitlab-templates/linux-qt6.yml
+      - /gitlab-templates/linux-qt6-next.yml
+
+# ============================================================================
+# Python Daemon CI
+# ============================================================================
+# The KDE CI templates handle the C++ build (libkapsule-qt, kapsule CLI).
+# These custom jobs handle the Python daemon (src/daemon/).
+
+.python_base:
+  image: python:3.14-slim
+  stage: test
+  tags:
+    - Linux
+  interruptible: true
+  before_script:
+    - pip install --quiet --upgrade pip
+    - pip install --quiet .[dev]
+
+python_lint:
+  extends: .python_base
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  script:
+    - ruff check src/daemon/ tests/
+    - ruff format --check src/daemon/ tests/
+
+python_typecheck:
+  extends: .python_base
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  script:
+    - mypy src/daemon/
