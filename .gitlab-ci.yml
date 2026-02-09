@@ -194,7 +194,11 @@ integration_test:
     - echo "--- incus container list ---"
     - incus list 2>&1 || echo "(incus list failed: $?)"
     - echo "--- test container logs (if any) ---"
-    - for c in $(incus list -c n -f csv 2>/dev/null | grep "^test-"); do echo "=== incus info $c ==="; incus info "$c" 2>&1 || true; done
+    - |
+      for c in $(incus list -c n -f csv 2>/dev/null | grep "^test-"); do
+        echo "=== incus info $c ==="
+        incus info "$c" 2>&1 || true
+      done
     - echo "--- dmesg (last 30 lines) ---"
     - sudo -n dmesg --time-format=iso | tail -30 2>&1 || echo "(dmesg failed: $?)"
     - echo "--- sysext status ---"
