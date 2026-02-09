@@ -133,17 +133,55 @@ integration_test:
     - 'kapsule --help 2>&1 | head -5 || echo "WARNING: kapsule CLI not working"'
 
     # ---- Start incus ----
-    - sudo systemctl enable --now incus.socket incus.service
-    - sudo incus admin init --minimal
+    - echo "$(date -Iseconds) [DEBUG] Checking incus binary..."
+    - which incus && incus --version
+    - echo "$(date -Iseconds) [DEBUG] Checking kernel modules for incus..."
+    - lsmod | grep -E 'btrfs|zfs|loop|overlay|br_netfilter|nf_nat' || echo "(no matching kernel modules loaded)"
+    - echo "$(date -Iseconds) [DEBUG] Checking available storage backends..."
+    - 'ls -la /dev/loop* 2>/dev/null | head -5 || echo "(no loop devices)"'
+    - echo "$(date -Iseconds) [DEBUG] Starting incus.socket..."
+    - sudo systemctl start incus.socket
+    - echo "$(date -Iseconds) [DEBUG] incus.socket started (exit=$?)"
+    - sudo systemctl status incus.socket --no-pager || true
+    - echo "$(date -Iseconds) [DEBUG] Starting incus.service..."
+    - sudo systemctl start incus.service &
+    - |
+      INCUS_PID=$!
+      for i in $(seq 1 30); do
+        if ! kill -0 "$INCUS_PID" 2>/dev/null; then
+          echo "$(date -Iseconds) [DEBUG] incus.service start command finished after ${i}s"
+          wait "$INCUS_PID" || true
+          break
+        fi
+        echo "$(date -Iseconds) [DEBUG] Waiting for incus.service to start (${i}/30)..."
+        sleep 1
+      done
+      if kill -0 "$INCUS_PID" 2>/dev/null; then
+        echo "$(date -Iseconds) [WARNING] incus.service start still running after 30s, continuing..."
+      fi
+    - echo "$(date -Iseconds) [DEBUG] incus.service unit state:"
+    - sudo systemctl status incus.service --no-pager || true
+    - echo "$(date -Iseconds) [DEBUG] incus.service journal (last 30 lines):"
+    - 'sudo journalctl -u incus.service --no-pager -n 30 2>&1 || echo "(journalctl failed)"'
+    - echo "$(date -Iseconds) [DEBUG] Checking incus socket file..."
+    - 'ls -la /var/lib/incus/unix.socket 2>/dev/null || echo "WARNING: socket does not exist yet"'
+    - echo "$(date -Iseconds) [DEBUG] Running incus admin init --minimal..."
+    - timeout 30 sudo incus admin init --minimal || { echo "$(date -Iseconds) [ERROR] incus admin init timed out or failed (exit=$?)"; sudo journalctl -u incus.service --no-pager -n 50; }
+    - echo "$(date -Iseconds) [DEBUG] incus admin init completed"
     # Grant the CI user access to the incus socket directly (usermod -aG
     # does not take effect until a new login session).
     - sudo chmod 0666 /var/lib/incus/unix.socket
 
     # ---- Verify incus ----
-    - echo "=== Incus status ==="
-    - incus version
-    - incus list
+    - echo "$(date -Iseconds) [DEBUG] === Incus status ==="
+    - timeout 10 incus version || echo "$(date -Iseconds) [ERROR] incus version timed out"
+    - timeout 10 incus list || echo "$(date -Iseconds) [ERROR] incus list timed out"
     - ls -la /var/lib/incus/unix.socket
+    - echo "$(date -Iseconds) [DEBUG] Incus storage pools:"
+    - timeout 10 incus storage list || echo "(no storage pools)"
+    - echo "$(date -Iseconds) [DEBUG] Incus networks:"
+    - timeout 10 incus network list || echo "(no networks)"
+    - echo "$(date -Iseconds) [DEBUG] Incus verification complete"
 
     # ---- Start kapsule daemon ----
     - sudo systemctl start kapsule-daemon.service
