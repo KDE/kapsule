@@ -11,6 +11,4 @@ Dependencies:
       'libraries/qcoro': '@latest'
 
 Options:
-  run-tests: True
-  setup-dbus-session: True
-  require-passing-tests-on: ['Linux']
+  run-tests: False

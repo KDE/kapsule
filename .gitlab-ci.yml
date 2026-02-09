@@ -9,14 +9,14 @@ include:
       - /gitlab-templates/linux-qt6-next.yml
 
 # ============================================================================
-# Python Daemon CI
+# Python Daemon Linting
 # ============================================================================
 # The KDE CI templates handle the C++ build (libkapsule-qt, kapsule CLI).
-# These custom jobs handle the Python daemon (src/daemon/).
+# These custom jobs lint/typecheck the Python daemon (src/daemon/).
 
 .python_base:
   image: python:3.14-slim
-  stage: test
+  stage: validate
   tags:
     - Linux
   interruptible: true
@@ -40,3 +40,110 @@ python_typecheck:
     - if: $CI_COMMIT_BRANCH
   script:
     - mypy src/daemon/
+
+# ============================================================================
+# Sysext Build (KDE Linux VM)
+# ============================================================================
+# Builds the full kapsule sysext (C++ components + Python daemon + vendored
+# deps) on an Arch Linux VM and uploads it as an artifact for integration tests.
+
+build_sysext:
+  stage: build
+  tags:
+    - VM
+    - amd64
+  image: storage.kde.org/vm-images/kde-linux-builder
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  script:
+    # Install build dependencies
+    - sudo pacman -Syu --noconfirm
+        base-devel cmake ninja extra-cmake-modules
+        python python-pip
+        qt6-base ki18n kcoreaddons kconfig qcoro-qt6
+    - pip install --break-system-packages
+        dbus-fast pydantic pyyaml httpx
+
+    # Build and install to staging directory
+    - cmake -B build -G Ninja
+        -DCMAKE_INSTALL_PREFIX=/usr
+        -DBUILD_KDE_COMPONENTS=ON
+        -DINSTALL_PYTHON_DAEMON=ON
+        -DVENDOR_PYTHON_DEPS=ON
+    - cmake --build build
+    - DESTDIR="${CI_PROJECT_DIR}/sysext" cmake --install build
+
+    # Extension-release metadata (ID=_any so any base OS accepts it)
+    - mkdir -p sysext/usr/lib/extension-release.d
+    - echo "ID=_any" > sysext/usr/lib/extension-release.d/extension-release.kapsule
+
+    # Package as a sysext tarball
+    - tar -cf kapsule.sysext.tar -C sysext usr
+  artifacts:
+    paths:
+      - kapsule.sysext.tar
+    expire_in: 1 week
+
+# ============================================================================
+# Integration Tests (KDE Linux VM)
+# ============================================================================
+# Boots a KDE Linux builder VM, deploys the sysext, sets up incus, and runs
+# the full integration test suite.
+
+integration_test:
+  stage: test
+  tags:
+    - VM
+    - amd64
+  image: storage.kde.org/vm-images/kde-linux-builder
+  needs:
+    - build_sysext
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+  variables:
+    KAPSULE_TEST_VM: localhost
+  script:
+    # ---- Install runtime dependencies ----
+    - sudo pacman -Syu --noconfirm
+        incus openssh
+        python python-pip python-pytest python-pytest-asyncio
+    - pip install --break-system-packages
+        dbus-fast pydantic pyyaml httpx
+
+    # ---- Deploy sysext from build artifact ----
+    - sudo mkdir -p /var/lib/extensions/kapsule
+    - sudo tar -xf kapsule.sysext.tar -C /var/lib/extensions/kapsule
+    - sudo systemd-sysext refresh
+    - sudo systemctl daemon-reload
+
+    # ---- Start incus ----
+    - sudo systemctl enable --now incus.socket incus.service
+    - sudo incus admin init --minimal
+    - sudo usermod -aG incus "$(whoami)"
+
+    # ---- Start kapsule daemon ----
+    - sudo systemctl start kapsule-daemon.service
+
+    # Wait for the daemon to register on D-Bus
+    - |
+      for i in $(seq 1 15); do
+        busctl status org.kde.kapsule &>/dev/null && break
+        sleep 1
+      done
+      busctl status org.kde.kapsule
+
+    # ---- Set up SSH to localhost for the test harness ----
+    - sudo systemctl enable --now sshd
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+    - cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
+    - chmod 600 ~/.ssh/authorized_keys
+    - ssh-keyscan -H localhost >> ~/.ssh/known_hosts 2>/dev/null
+
+    # ---- Run integration tests ----
+    - ./tests/integration/run-tests.sh --no-deploy
+  after_script:
+    - sudo journalctl -u kapsule-daemon.service --no-pager -n 200 || true
+    - sudo journalctl -u incus.service --no-pager -n 50 || true
