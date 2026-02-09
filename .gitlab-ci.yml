@@ -106,7 +106,9 @@ integration_test:
     KAPSULE_TEST_VM: localhost
   script:
     # ---- Install runtime dependencies ----
-    - sudo pacman -Syu --noconfirm
+    # incus pulls in iptables-nft which conflicts with iptables on the base image;
+    # --ask 4 tells pacman to auto-resolve conflicts by replacing the old package.
+    - sudo pacman -Syu --noconfirm --ask 4
         incus openssh
         python python-pip python-pytest python-pytest-asyncio
     - pip install --break-system-packages
