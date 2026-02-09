@@ -127,10 +127,10 @@ integration_test:
     - echo "=== Sysext status ==="
     - systemd-sysext status
     - echo "=== Kapsule files installed ==="
-    - ls -la /usr/lib/systemd/system/kapsule-daemon.service || echo "WARNING: daemon service file missing"
-    - ls -la /usr/share/dbus-1/system.d/org.kde.kapsule.conf || echo "WARNING: D-Bus policy file missing"
-    - which kapsule || echo "WARNING: kapsule CLI not on PATH"
-    - kapsule --help 2>&1 | head -5 || echo "WARNING: kapsule CLI not working"
+    - 'ls -la /usr/lib/systemd/system/kapsule-daemon.service || echo "WARNING: daemon service file missing"'
+    - 'ls -la /usr/share/dbus-1/system.d/org.kde.kapsule.conf || echo "WARNING: D-Bus policy file missing"'
+    - 'which kapsule || echo "WARNING: kapsule CLI not on PATH"'
+    - 'kapsule --help 2>&1 | head -5 || echo "WARNING: kapsule CLI not working"'
 
     # ---- Start incus ----
     - sudo systemctl enable --now incus.socket incus.service
@@ -186,13 +186,13 @@ integration_test:
     - set +e
     - echo "=== Collecting diagnostic logs ==="
     - echo "--- kapsule-daemon.service journal ---"
-    - sudo -n journalctl -u kapsule-daemon.service --no-pager -n 200 2>&1 || echo "(journalctl for kapsule-daemon failed: $?)"
+    - 'sudo -n journalctl -u kapsule-daemon.service --no-pager -n 200 2>&1 || echo "(journalctl for kapsule-daemon failed)"'
     - echo "--- incus.service journal ---"
-    - sudo -n journalctl -u incus.service --no-pager -n 50 2>&1 || echo "(journalctl for incus failed: $?)"
+    - 'sudo -n journalctl -u incus.service --no-pager -n 50 2>&1 || echo "(journalctl for incus failed)"'
     - echo "--- systemctl status kapsule-daemon ---"
-    - sudo -n systemctl status kapsule-daemon.service --no-pager 2>&1 || echo "(systemctl status failed: $?)"
+    - 'sudo -n systemctl status kapsule-daemon.service --no-pager 2>&1 || echo "(systemctl status failed)"'
     - echo "--- incus container list ---"
-    - incus list 2>&1 || echo "(incus list failed: $?)"
+    - 'incus list 2>&1 || echo "(incus list failed)"'
     - echo "--- test container logs (if any) ---"
     - |
       for c in $(incus list -c n -f csv 2>/dev/null | grep "^test-"); do
@@ -200,7 +200,7 @@ integration_test:
         incus info "$c" 2>&1 || true
       done
     - echo "--- dmesg (last 30 lines) ---"
-    - sudo -n dmesg --time-format=iso | tail -30 2>&1 || echo "(dmesg failed: $?)"
+    - 'sudo -n dmesg --time-format=iso | tail -30 2>&1 || echo "(dmesg failed)"'
     - echo "--- sysext status ---"
-    - systemd-sysext status 2>&1 || echo "(sysext status failed: $?)"
+    - 'systemd-sysext status 2>&1 || echo "(sysext status failed)"'
     - echo "=== End diagnostic logs ==="
