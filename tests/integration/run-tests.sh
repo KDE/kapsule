@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Test VM configuration
-TEST_VM="${KAPSULE_TEST_VM:-192.168.100.157}"
+TEST_VM="${KAPSULE_TEST_VM:-192.168.100.129}"
 SSH_OPTS="-o ConnectTimeout=5 -o StrictHostKeyChecking=no"
 
 # Colors
@@ -202,7 +202,7 @@ Options:
     -k, --keep          Don't cleanup test containers after tests
 
 Environment:
-    KAPSULE_TEST_VM     Test VM address (default: 192.168.100.157)
+    KAPSULE_TEST_VM     Test VM address (default: 192.168.100.129)
 
 Examples:
     $0                  Deploy and run all tests
