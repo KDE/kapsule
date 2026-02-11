@@ -275,6 +275,12 @@ if(INSTALL_PYTHON_DAEMON)
         DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
     )
 
+    # NVIDIA container hook for LXC (lxc.hook.mount)
+    install(PROGRAMS
+        data/nvidia-container-hook.sh
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
+    )
+
 endif()
 
 # ============================================================================
