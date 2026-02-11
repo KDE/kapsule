@@ -114,6 +114,7 @@ public:
      * @param image The base image to use (e.g., "ubuntu:24.04"), empty for default.
      * @param mode The D-Bus integration mode.
      * @param hostRootfs Mount entire host filesystem at /.kapsule/host.
+     * @param nvidia Enable NVIDIA runtime (auto-detected based on hardware).
      * @param progress Optional callback for progress messages.
      * @return Operation result with success/error info.
      */
@@ -122,6 +123,7 @@ public:
         const QString &image,
         ContainerMode mode = ContainerMode::Default,
         bool hostRootfs = true,
+        bool nvidia = true,
         ProgressHandler progress = {});
 
     /**

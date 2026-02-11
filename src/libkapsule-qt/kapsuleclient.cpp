@@ -195,6 +195,7 @@ QCoro::Task<OperationResult> KapsuleClient::createContainer(
     const QString &image,
     ContainerMode mode,
     bool hostRootfs,
+    bool nvidia,
     ProgressHandler progress)
 {
     if (!d->connected) {
@@ -204,7 +205,7 @@ QCoro::Task<OperationResult> KapsuleClient::createContainer(
     bool sessionMode = (mode == ContainerMode::Session || mode == ContainerMode::DbusMux);
     bool dbusMux = (mode == ContainerMode::DbusMux);
 
-    auto reply = co_await d->interface->CreateContainer(name, image, sessionMode, dbusMux, hostRootfs);
+    auto reply = co_await d->interface->CreateContainer(name, image, sessionMode, dbusMux, hostRootfs, nvidia);
     if (reply.isError()) {
         co_return {false, reply.error().message()};
     }

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import pwd
+import shutil
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -31,6 +32,7 @@ from .models_generated import InstanceSource, InstancesPost
 KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
 KAPSULE_DBUS_MUX_KEY = "user.kapsule.dbus-mux"
 KAPSULE_HOST_ROOTFS_KEY = "user.kapsule.host-rootfs"
+KAPSULE_NVIDIA_KEY = "user.kapsule.nvidia"
 
 # Path to kapsule-dbus-mux binary inside container (via hostfs mount)
 KAPSULE_DBUS_MUX_BIN = "/.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux"
@@ -53,13 +55,27 @@ _ENTER_ENV_SKIP = frozenset({
 })
 
 
-def _base_container_config() -> dict[str, str]:
+def _nvidia_runtime_available() -> bool:
+    """Check if NVIDIA GPU hardware and container toolkit are available.
+
+    Returns True only when both an NVIDIA GPU with a loaded driver and the
+    nvidia-container-toolkit (specifically nvidia-container-cli) are present.
+    """
+    has_gpu = os.path.exists("/dev/nvidia0")
+    has_toolkit = shutil.which("nvidia-container-cli") is not None
+    return has_gpu and has_toolkit
+
+
+def _base_container_config(*, nvidia: bool = False) -> dict[str, str]:
     """Base Incus config applied to every new Kapsule container.
+
+    Args:
+        nvidia: If True, enable NVIDIA runtime for driver/CUDA passthrough.
 
     Returns:
         Config dict with security and networking settings.
     """
-    return {
+    config = {
         # In a future version, we might investigate what
         # we can do with unprivileged containers.
         "security.privileged": "true",
@@ -67,6 +83,12 @@ def _base_container_config() -> dict[str, str]:
         # Use host networking
         "raw.lxc": "lxc.net.0.type=none\n",
     }
+
+    if nvidia:
+        config["nvidia.runtime"] = "true"
+        config["nvidia.driver.capabilities"] = "all"
+
+    return config
 
 
 def _base_container_devices(host_rootfs: bool) -> dict[str, dict[str, str]]:
@@ -158,6 +180,7 @@ class ContainerService:
         session_mode: bool = False,
         dbus_mux: bool = False,
         host_rootfs: bool = True,
+        nvidia: bool = True,
     ) -> None:
         """Create a new container.
 
@@ -169,6 +192,8 @@ class ContainerService:
             dbus_mux: Enable D-Bus multiplexer (implies session_mode)
             host_rootfs: Mount entire host filesystem at /.kapsule/host.
                 When False, only targeted mounts are added during user setup.
+            nvidia: Enable NVIDIA runtime for driver/CUDA library passthrough.
+                Auto-detected: only takes effect when hardware and toolkit are present.
         """
         # dbus_mux implies session_mode
         if dbus_mux:
@@ -186,6 +211,18 @@ class ContainerService:
         if await self._incus.instance_exists(name):
             raise OperationError(f"Container '{name}' already exists")
 
+        # Resolve effective NVIDIA setting based on hardware availability
+        if nvidia:
+            if _nvidia_runtime_available():
+                effective_nvidia = True
+                progress.info("NVIDIA runtime: enabled")
+            else:
+                effective_nvidia = False
+                progress.info("NVIDIA runtime: not available (no hardware or toolkit)")
+        else:
+            effective_nvidia = False
+            progress.info("NVIDIA runtime: disabled by user")
+
         progress.info(f"Image: {image}")
         if not host_rootfs:
             progress.info("Minimal host mounts (no full rootfs)")
@@ -196,12 +233,15 @@ class ContainerService:
             raise OperationError(f"Invalid image format: {image}")
 
         # Build instance config — base settings applied directly
-        instance_config_dict = _base_container_config()
+        instance_config_dict = _base_container_config(nvidia=effective_nvidia)
         if session_mode:
             instance_config_dict[KAPSULE_SESSION_MODE_KEY] = "true"
         if dbus_mux:
             instance_config_dict[KAPSULE_DBUS_MUX_KEY] = "true"
         instance_config_dict[KAPSULE_HOST_ROOTFS_KEY] = str(host_rootfs).lower()
+        # Store user intent (not effective value) so _sync_nvidia_config
+        # can re-evaluate on future starts
+        instance_config_dict[KAPSULE_NVIDIA_KEY] = str(nvidia).lower()
 
         instance_config = InstancesPost(
             name=name,
@@ -317,6 +357,9 @@ class ContainerService:
         if instance.status and instance.status.lower() == "running":
             progress.warning(f"Container '{name}' is already running")
             return
+
+        # Sync NVIDIA config based on current hardware availability
+        await self._sync_nvidia_config(name, progress)
 
         progress.info("Starting container...")
         try:
@@ -668,6 +711,9 @@ class ContainerService:
         status = (instance.status or "unknown").lower()
 
         if status != "running":
+            # Sync NVIDIA config based on current hardware availability
+            await self._sync_nvidia_config(container_name)
+
             # Start the container
             try:
                 op = await self._incus.start_instance(container_name, wait=True)
@@ -741,6 +787,9 @@ class ContainerService:
         if instance_source is None:
             raise OperationError(f"Invalid image format: {image}")
 
+        # Detect NVIDIA at creation time (container starts immediately)
+        effective_nvidia = _nvidia_runtime_available()
+
         # Create instance — base settings applied directly
         instance_config = InstancesPost(
             name=name,
@@ -748,7 +797,11 @@ class ContainerService:
             source=instance_source,
             start=True,
             architecture=None,
-            config={**_base_container_config(), KAPSULE_HOST_ROOTFS_KEY: "true"},
+            config={
+                **_base_container_config(nvidia=effective_nvidia),
+                KAPSULE_HOST_ROOTFS_KEY: "true",
+                KAPSULE_NVIDIA_KEY: "true",
+            },
             description=None,
             devices=_base_container_devices(host_rootfs=True),
             ephemeral=None,
@@ -767,6 +820,48 @@ class ContainerService:
 
         # Restore file capabilities stripped during image extraction
         await self._fix_file_capabilities(None, name)
+
+    async def _sync_nvidia_config(
+        self,
+        name: str,
+        progress: OperationReporter | None = None,
+    ) -> None:
+        """Sync NVIDIA runtime config on a stopped container before start.
+
+        Compares the user's NVIDIA intent (user.kapsule.nvidia) with current
+        hardware availability and updates nvidia.runtime accordingly.
+        This allows containers to automatically gain or lose NVIDIA support
+        as the host environment changes.
+
+        Args:
+            name: Instance name (must be stopped).
+            progress: Optional operation reporter for status messages.
+        """
+        instance = await self._incus.get_instance(name)
+        config = instance.config or {}
+
+        # Check user's stored intent — default to True for containers
+        # that were created before this feature existed
+        nvidia_wanted = config.get(KAPSULE_NVIDIA_KEY, "true") == "true"
+        if not nvidia_wanted:
+            return
+
+        available = _nvidia_runtime_available()
+        currently_enabled = config.get("nvidia.runtime") == "true"
+
+        if available and not currently_enabled:
+            if progress:
+                progress.info("NVIDIA runtime: enabling (hardware and toolkit detected)")
+            await self._incus.patch_instance_config(name, {
+                "nvidia.runtime": "true",
+                "nvidia.driver.capabilities": "all",
+            })
+        elif not available and currently_enabled:
+            if progress:
+                progress.info("NVIDIA runtime: disabling (hardware or toolkit no longer available)")
+            await self._incus.patch_instance_config(name, {
+                "nvidia.runtime": "false",
+            })
 
     async def _setup_user_sync(
         self,
