@@ -113,6 +113,7 @@ public:
      * @param name The name for the new container.
      * @param image The base image to use (e.g., "ubuntu:24.04"), empty for default.
      * @param mode The D-Bus integration mode.
+     * @param hostRootfs Mount entire host filesystem at /.kapsule/host.
      * @param progress Optional callback for progress messages.
      * @return Operation result with success/error info.
      */
@@ -120,6 +121,7 @@ public:
         const QString &name,
         const QString &image,
         ContainerMode mode = ContainerMode::Default,
+        bool hostRootfs = true,
         ProgressHandler progress = {});
 
     /**

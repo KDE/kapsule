@@ -30,6 +30,7 @@ from .models_generated import InstanceSource, InstancesPost
 # Config keys for kapsule metadata stored in container config
 KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
 KAPSULE_DBUS_MUX_KEY = "user.kapsule.dbus-mux"
+KAPSULE_HOST_ROOTFS_KEY = "user.kapsule.host-rootfs"
 
 # Path to kapsule-dbus-mux binary inside container (via hostfs mount)
 KAPSULE_DBUS_MUX_BIN = "/.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux"
@@ -69,13 +70,17 @@ def _base_container_config() -> dict[str, str]:
     }
 
 
-def _base_container_devices() -> dict[str, dict[str, str]]:
+def _base_container_devices(host_rootfs: bool) -> dict[str, dict[str, str]]:
     """Base Incus devices applied to every new Kapsule container.
 
+    Args:
+        host_rootfs: If True, mount the entire host filesystem at /.kapsule/host.
+            If False, only targeted mounts are added later during user setup.
+
     Returns:
-        Devices dict with root disk, GPU passthrough, and host filesystem mount.
+        Devices dict with root disk, GPU passthrough, and optionally host filesystem.
     """
-    return {
+    devices: dict[str, dict[str, str]] = {
         # Root disk - required for container storage
         "root": {
             "type": "disk",
@@ -86,16 +91,20 @@ def _base_container_devices() -> dict[str, dict[str, str]]:
         "gpu": {
             "type": "gpu",
         },
-        # Mount the host filesystem at /.kapsule/host
-        "hostfs": {
+    }
+
+    if host_rootfs:
+        # Mount the entire host filesystem at /.kapsule/host
+        devices["hostfs"] = {
             "type": "disk",
             "source": "/",
             "path": "/.kapsule/host",
             "propagation": "rslave",
             "recursive": "true",
             "shift": "false",
-        },
-    }
+        }
+
+    return devices
 
 
 class ContainerService:
@@ -149,6 +158,7 @@ class ContainerService:
         image: str,
         session_mode: bool = False,
         dbus_mux: bool = False,
+        host_rootfs: bool = True,
     ) -> None:
         """Create a new container.
 
@@ -158,16 +168,28 @@ class ContainerService:
             image: Image to use (e.g., "images:archlinux")
             session_mode: Enable session mode with container D-Bus
             dbus_mux: Enable D-Bus multiplexer (implies session_mode)
+            host_rootfs: Mount entire host filesystem at /.kapsule/host.
+                When False, only targeted mounts are added during user setup.
         """
         # dbus_mux implies session_mode
         if dbus_mux:
             session_mode = True
+
+        # D-Bus mux requires the full host rootfs (the mux binary is
+        # accessed via /.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux)
+        if dbus_mux and not host_rootfs:
+            raise OperationError(
+                "D-Bus multiplexer requires --host-rootfs "
+                "(the mux binary is accessed via the host filesystem mount)"
+            )
 
         # Check if container already exists
         if await self._incus.instance_exists(name):
             raise OperationError(f"Container '{name}' already exists")
 
         progress.info(f"Image: {image}")
+        if not host_rootfs:
+            progress.info("Minimal host mounts (no full rootfs)")
 
         # Parse image source
         instance_source = self._parse_image_source(image)
@@ -180,6 +202,7 @@ class ContainerService:
             instance_config_dict[KAPSULE_SESSION_MODE_KEY] = "true"
         if dbus_mux:
             instance_config_dict[KAPSULE_DBUS_MUX_KEY] = "true"
+        instance_config_dict[KAPSULE_HOST_ROOTFS_KEY] = str(host_rootfs).lower()
 
         instance_config = InstancesPost(
             name=name,
@@ -189,7 +212,7 @@ class ContainerService:
             architecture=None,
             config=instance_config_dict,
             description=None,
-            devices=_base_container_devices(),
+            devices=_base_container_devices(host_rootfs=host_rootfs),
             ephemeral=None,
             instance_type=None,
             restore=None,
@@ -727,9 +750,9 @@ class ContainerService:
             source=instance_source,
             start=True,
             architecture=None,
-            config=_base_container_config(),
+            config={**_base_container_config(), KAPSULE_HOST_ROOTFS_KEY: "true"},
             description=None,
-            devices=_base_container_devices(),
+            devices=_base_container_devices(host_rootfs=True),
             ephemeral=None,
             instance_type=None,
             restore=None,
@@ -782,6 +805,48 @@ class ContainerService:
         except IncusError as e:
             raise OperationError(f"Failed to mount home directory: {e}")
 
+        # When not using full host rootfs, add targeted mounts for
+        # /run/user/<uid> and /tmp/.X11-unix so socket symlinks work.
+        instance = await self._incus.get_instance(container_name)
+        instance_config = instance.config or {}
+        has_host_rootfs = instance_config.get(KAPSULE_HOST_ROOTFS_KEY) == "true"
+
+        if not has_host_rootfs:
+            # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
+            hostrun_device = f"kapsule-hostrun-{uid}"
+            try:
+                await self._incus.add_instance_device(
+                    container_name,
+                    hostrun_device,
+                    {
+                        "type": "disk",
+                        "source": f"/run/user/{uid}",
+                        "path": f"/.kapsule/host/run/user/{uid}",
+                        "shift": "false",
+                        "recursive": "true",
+                        "propagation": "rslave",
+                    },
+                )
+            except IncusError as e:
+                raise OperationError(f"Failed to mount host runtime dir: {e}")
+
+            # Mount /tmp/.X11-unix at /.kapsule/host/tmp/.X11-unix for X11
+            try:
+                await self._incus.add_instance_device(
+                    container_name,
+                    "kapsule-x11",
+                    {
+                        "type": "disk",
+                        "source": "/tmp/.X11-unix",
+                        "path": "/.kapsule/host/tmp/.X11-unix",
+                        "shift": "false",
+                        "recursive": "true",
+                        "propagation": "rslave",
+                    },
+                )
+            except IncusError as e:
+                raise OperationError(f"Failed to mount host X11 dir: {e}")
+
         # Create group
         subprocess.run(
             ["incus", "exec", container_name, "--", "groupadd", "-o", "-g", str(gid), username],
@@ -827,8 +892,6 @@ class ContainerService:
             raise OperationError(f"Failed to configure sudo: {e}")
 
         # Check if session mode is enabled and enable linger
-        instance = await self._incus.get_instance(container_name)
-        instance_config = instance.config or {}
         session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
 
         if session_mode:
