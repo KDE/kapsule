@@ -6,6 +6,12 @@
 
 set -xe
 
+if [[ -n "$VIRTUAL_ENV" ]]; then
+    echo "ERROR: This script must not be run inside a Python virtual environment." >&2
+    echo "Please deactivate the venv first and try again." >&2
+    exit 1
+fi
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 install_dir=~/src/kde/sysext/kapsule
 
@@ -34,7 +40,7 @@ IMAGE_ID="kde-linux"
 IMAGE_VERSION="202601271004"
 EOF
 
-serve_dir=/tmp/kapsule
+serve_dir=~/src/kde/sysext
 mkdir -p "$serve_dir"
 
 sudo tar -cf ${serve_dir}/kapsule.tar -C "$install_dir" usr
