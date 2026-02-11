@@ -294,8 +294,36 @@ raw.lxc: "lxc.net.0.type=none"  # Host networking
 
 ### Devices
 - **root**: Container root filesystem
-- **gpu**: GPU passthrough for graphics
+- **gpu**: GPU passthrough for graphics (device nodes: `/dev/nvidia*`, `/dev/dri/*`)
 - **hostfs** (default): Host filesystem at `/.kapsule/host` (for tooling access)
+
+### NVIDIA GPU Support
+
+NVIDIA GPUs require two things inside the container: **device nodes** and
+**userspace driver libraries**.  Incus's `gpu` device type handles the first;
+for the second, Kapsule registers an LXC mount hook
+(`data/nvidia-container-hook.sh`) that calls `nvidia-container-cli configure`
+to bind-mount the host's driver stack into the container rootfs before
+`pivot_root`.
+
+> **Why not use Incus's built-in `nvidia.runtime=true`?**
+>
+> Upstream Incus explicitly rejects `nvidia.runtime` on privileged containers,
+> and the upstream LXC hook (`/usr/share/lxc/hooks/nvidia`) refuses to run
+> outside a user namespace.  Both guards exist because `libnvidia-container`'s
+> `--user` mode depends on user-namespace UID/GID remapping, and its default
+> codepath tries to manage cgroups for device isolation — neither of which is
+> relevant to privileged containers.
+>
+> Kapsule sidesteps this by invoking `nvidia-container-cli` with `--no-cgroups`
+> (privileged containers already have unrestricted device access) and
+> `--no-devbind` (Incus's `gpu` device already passes device nodes through).
+> This reduces the tool's job to pure library injection, which works
+> regardless of namespace or cgroup context.
+
+The hook silently exits 0 when `nvidia-container-cli` or `/dev/nvidia0` is
+absent, making it safe to register unconditionally on non-NVIDIA hosts.
+Users can opt out at container creation time with `--no-nvidia-drivers`.
 - Minimal mode (`--no-host-rootfs`): replaces `hostfs` with targeted mounts added
   during user setup:
   - `kapsule-hostrun-<uid>`: `/run/user/<uid>` at `/.kapsule/host/run/user/<uid>`

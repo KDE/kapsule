@@ -75,8 +75,11 @@ def _base_container_config(nvidia_drivers: bool = True) -> dict[str, str]:
     raw_lxc = "lxc.net.0.type=none\n"
 
     # Register NVIDIA driver injection hook when enabled.
-    # The hook itself silently exits 0 when nvidia-container-cli or
-    # /dev/nvidia0 are absent, so this is safe on non-NVIDIA hosts.
+    # We use our own hook rather than Incus's nvidia.runtime because
+    # upstream rejects that option on privileged containers.  See the
+    # header comment in data/nvidia-container-hook.sh for the full
+    # rationale.  The hook silently exits 0 when nvidia-container-cli
+    # or /dev/nvidia0 are absent, so this is safe on non-NVIDIA hosts.
     if nvidia_drivers and os.path.isfile(NVIDIA_HOOK_PATH):
         raw_lxc += f"lxc.hook.mount={NVIDIA_HOOK_PATH}\n"
 

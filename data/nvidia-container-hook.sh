@@ -10,8 +10,33 @@
 # and any bind-mounts created under it will be visible inside the container
 # after pivot_root.
 #
-# Unlike the upstream /usr/share/lxc/hooks/nvidia, this hook works with
-# *privileged* containers (security.privileged=true).
+# --- Why this exists instead of using nvidia.runtime ---
+#
+# Upstream Incus rejects nvidia.runtime=true on privileged containers
+# (security.privileged=true) and the upstream LXC hook
+# (/usr/share/lxc/hooks/nvidia) explicitly exits with an error outside
+# a user namespace.  Both restrictions stem from a limitation in
+# libnvidia-container: its --user flag (required by the upstream hook)
+# relies on user-namespace UID/GID remapping, and its default codepath
+# expects to manage cgroups for device isolation — neither of which
+# applies to privileged containers.
+#
+# Kapsule containers are privileged by design (for nesting, host
+# networking, etc.), so we run nvidia-container-cli directly with:
+#
+#   --no-cgroups   Privileged containers have unrestricted device access;
+#                  cgroup-based GPU isolation is unnecessary.
+#   --no-devbind   Incus's gpu device type already passes /dev/nvidia*
+#                  and /dev/dri/* into the container.
+#
+# This leaves nvidia-container-cli with only one job: bind-mount the
+# host's NVIDIA userspace libraries and DSOs into the container rootfs
+# so that CUDA / OpenGL / Vulkan work without the container image
+# shipping its own driver stack.  That operation requires no user
+# namespace support and no cgroup manipulation, so the upstream
+# restrictions do not apply.
+#
+# See also: docs/ARCHITECTURE.md § "NVIDIA GPU Support"
 
 set -eu
 
@@ -46,8 +71,8 @@ ldconfig_path=$(command -v "ldconfig.real" 2>/dev/null \
              || true)
 
 configure_args=(
-    --no-cgroups
-    --no-devbind          # Incus gpu device already passes device nodes through
+    --no-cgroups          # No cgroup device isolation needed (privileged container)
+    --no-devbind          # Incus gpu device already passes /dev/nvidia* through
     --device=all
     --compute
     --utility
