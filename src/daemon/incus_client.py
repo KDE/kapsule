@@ -21,6 +21,7 @@ from .models_generated import (
     Instance,
     InstancePut,
     InstancesPost,
+    InstanceState,
     InstanceStatePut,
     Operation,
     Server,
@@ -243,6 +244,22 @@ class IncusClient:
             Instance object.
         """
         return await self._request("GET", f"/1.0/instances/{name}", response_type=Instance)
+
+    async def get_instance_state(self, name: str) -> InstanceState:
+        """Get the runtime state of an instance.
+
+        This returns live state information including the init PID,
+        resource usage, and network details.
+
+        Args:
+            name: Instance name.
+
+        Returns:
+            InstanceState with pid, status, etc.
+        """
+        return await self._request(
+            "GET", f"/1.0/instances/{name}/state", response_type=InstanceState
+        )
 
     async def is_available(self) -> bool:
         """Check if Incus is available and responding.
