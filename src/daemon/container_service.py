@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 import os
 import pwd
-import shutil
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -38,6 +37,9 @@ KAPSULE_NVIDIA_DRIVERS_KEY = "user.kapsule.nvidia-drivers"
 
 logger = logging.getLogger(__name__)
 
+# Absolute path to the NVIDIA container hook script (installed by CMake)
+NVIDIA_HOOK_PATH = "/usr/lib/kapsule/nvidia-container-hook.sh"
+
 # Path to kapsule-dbus-mux binary inside container (via hostfs mount)
 KAPSULE_DBUS_MUX_BIN = "/.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux"
 
@@ -59,19 +61,32 @@ _ENTER_ENV_SKIP = frozenset({
 })
 
 
-def _base_container_config() -> dict[str, str]:
+def _base_container_config(nvidia_drivers: bool = True) -> dict[str, str]:
     """Base Incus config applied to every new Kapsule container.
+
+    Args:
+        nvidia_drivers: If True *and* the hook script is present on the host,
+            register an LXC mount hook that injects NVIDIA userspace drivers
+            into the container before pivot_root.
 
     Returns:
         Config dict with security and networking settings.
     """
+    raw_lxc = "lxc.net.0.type=none\n"
+
+    # Register NVIDIA driver injection hook when enabled.
+    # The hook itself silently exits 0 when nvidia-container-cli or
+    # /dev/nvidia0 are absent, so this is safe on non-NVIDIA hosts.
+    if nvidia_drivers and os.path.isfile(NVIDIA_HOOK_PATH):
+        raw_lxc += f"lxc.hook.mount={NVIDIA_HOOK_PATH}\n"
+
     return {
         # In a future version, we might investigate what
         # we can do with unprivileged containers.
         "security.privileged": "true",
         "security.nesting": "true",
-        # Use host networking
-        "raw.lxc": "lxc.net.0.type=none\n",
+        # Use host networking (+ optional NVIDIA hook)
+        "raw.lxc": raw_lxc,
     }
 
 
@@ -216,7 +231,7 @@ class ContainerService:
             raise OperationError(f"Invalid image format: {image}")
 
         # Build instance config — base settings applied directly
-        instance_config_dict = _base_container_config()
+        instance_config_dict = _base_container_config(nvidia_drivers=gpu and nvidia_drivers)
         if session_mode:
             instance_config_dict[KAPSULE_SESSION_MODE_KEY] = "true"
         if dbus_mux:
@@ -242,6 +257,9 @@ class ContainerService:
         )
 
         # Create the container
+        if NVIDIA_HOOK_PATH in instance_config_dict.get("raw.lxc", ""):
+            progress.dim("NVIDIA userspace drivers will be injected on start")
+
         progress.info("Downloading image and creating container...")
         try:
             operation = await self._incus.create_instance(instance_config, wait=True)
@@ -255,9 +273,6 @@ class ContainerService:
 
         # Restore file capabilities stripped during image extraction
         await self._fix_file_capabilities(progress, name)
-
-        # Inject NVIDIA userspace drivers if enabled
-        await self._maybe_configure_nvidia(progress, name)
 
         # Set up session mode if enabled
         if session_mode:
@@ -343,6 +358,10 @@ class ContainerService:
             progress.warning(f"Container '{name}' is already running")
             return
 
+        raw_lxc = (instance.config or {}).get("raw.lxc", "")
+        if NVIDIA_HOOK_PATH in raw_lxc:
+            progress.dim("NVIDIA userspace drivers will be injected on start")
+
         progress.info("Starting container...")
         try:
             op = await self._incus.start_instance(name, wait=True)
@@ -350,9 +369,6 @@ class ContainerService:
                 raise OperationError(f"Start failed: {op.err or op.status}")
         except IncusError as e:
             raise OperationError(f"Failed to start container: {e}")
-
-        # Inject NVIDIA userspace drivers if enabled for this container
-        await self._maybe_configure_nvidia(progress, name)
 
         progress.success(f"Container '{name}' started successfully")
 
@@ -704,9 +720,6 @@ class ContainerService:
             except IncusError as e:
                 return (False, f"Failed to start container: {e}", [])
 
-            # Inject NVIDIA userspace drivers after start
-            await self._maybe_configure_nvidia(None, container_name)
-
         # Set up user if needed
         if not await self.is_user_setup(container_name, uid):
             try:
@@ -780,7 +793,7 @@ class ContainerService:
             start=True,
             architecture=None,
             config={
-                **_base_container_config(),
+                **_base_container_config(nvidia_drivers=True),
                 KAPSULE_HOST_ROOTFS_KEY: "true",
                 KAPSULE_GPU_KEY: "true",
                 KAPSULE_NVIDIA_DRIVERS_KEY: "true",
@@ -803,9 +816,6 @@ class ContainerService:
 
         # Restore file capabilities stripped during image extraction
         await self._fix_file_capabilities(None, name)
-
-        # Inject NVIDIA userspace drivers if available
-        await self._maybe_configure_nvidia(None, name)
 
     async def _setup_user_sync(
         self,
@@ -1118,97 +1128,6 @@ class ContainerService:
             source=None,
             **{"base-image": None},
         )
-
-    async def _maybe_configure_nvidia(
-        self,
-        progress: OperationReporter | None,
-        name: str,
-    ) -> None:
-        """Inject host NVIDIA userspace drivers into a running container.
-
-        Uses ``nvidia-container-cli configure`` from the nvidia-container-toolkit
-        package to selectively bind-mount *only* the NVIDIA-specific libraries
-        and binaries (libcuda.so, libnvidia-ml.so, nvidia-smi, etc.) into the
-        container's rootfs.  This avoids the "naive LD_LIBRARY_PATH" problem
-        where pointing at the host's lib directory would also pull in glibc
-        and other system libraries, causing version mismatches.
-
-        The method is a no-op when:
-        - The container was created with ``nvidia_drivers=false``
-        - ``nvidia-container-cli`` is not installed on the host
-        - No NVIDIA GPU is detected (``/dev/nvidia0`` absent)
-
-        Must be called while the container is running so that
-        nvidia-container-cli can enter the container's mount namespace.
-
-        Args:
-            progress: Operation reporter (may be ``None`` for silent runs)
-            name: Container name
-        """
-        # Check container config — bail if NVIDIA drivers were opted out
-        instance = await self._incus.get_instance(name)
-        config = instance.config or {}
-        if config.get(KAPSULE_NVIDIA_DRIVERS_KEY) != "true":
-            return
-        if config.get(KAPSULE_GPU_KEY) != "true":
-            return
-
-        # Check if nvidia-container-cli is installed on the host
-        nvidia_cli = shutil.which("nvidia-container-cli")
-        if nvidia_cli is None:
-            logger.debug("nvidia-container-cli not found, skipping NVIDIA driver injection")
-            return
-
-        # Check if NVIDIA hardware is actually present
-        if not os.path.exists("/dev/nvidia0"):
-            logger.debug("No NVIDIA GPU detected (/dev/nvidia0 absent), skipping")
-            return
-
-        # Get the container's init PID for namespace entry
-        state = await self._incus.get_instance_state(name)
-        pid = state.pid
-        if not pid or pid <= 0:
-            if progress:
-                progress.warning("Cannot inject NVIDIA drivers: container PID unavailable")
-            return
-
-        # The rootfs path for Incus containers
-        rootfs = f"/var/lib/incus/containers/{name}/rootfs"
-        if not os.path.isdir(rootfs):
-            if progress:
-                progress.warning(
-                    f"Cannot inject NVIDIA drivers: rootfs not found at {rootfs}"
-                )
-            return
-
-        if progress:
-            progress.info("Injecting NVIDIA userspace drivers...")
-
-        cmd = [
-            nvidia_cli,
-            "--no-pivot",
-            "configure",
-            "--pid", str(pid),
-            "--no-cgroups",
-            "--no-devbind",
-            "--device=all",
-            "--compute",
-            "--utility",
-            "--graphics",
-            "--ldconfig=@/sbin/ldconfig",
-            rootfs,
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            msg = f"nvidia-container-cli failed (exit {result.returncode}): {result.stderr.strip()}"
-            logger.warning(msg)
-            if progress:
-                progress.warning(msg)
-        else:
-            logger.info("NVIDIA userspace drivers injected into '%s'", name)
-            if progress:
-                progress.dim("NVIDIA userspace drivers available in container")
 
     async def _fix_file_capabilities(
         self,
