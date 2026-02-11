@@ -455,6 +455,11 @@ class ContainerService:
 
         # Configure passwordless sudo
         progress.info(f"Configuring passwordless sudo for '{username}'")
+        # Ensure /etc/sudoers.d/ exists (Alpine and other minimal images may lack it)
+        subprocess.run(
+            ["incus", "exec", container_name, "--", "mkdir", "-p", "/etc/sudoers.d"],
+            capture_output=True,
+        )
         sudoers_content = f"{username} ALL=(ALL) NOPASSWD:ALL\n"
         sudoers_file = f"/etc/sudoers.d/{username}"
         try:
@@ -870,6 +875,11 @@ class ContainerService:
         )
 
         # Configure passwordless sudo
+        # Ensure /etc/sudoers.d/ exists (Alpine and other minimal images may lack it)
+        subprocess.run(
+            ["incus", "exec", container_name, "--", "mkdir", "-p", "/etc/sudoers.d"],
+            capture_output=True,
+        )
         sudoers_content = f"{username} ALL=(ALL) NOPASSWD:ALL\n"
         sudoers_file = f"/etc/sudoers.d/{username}"
         try:

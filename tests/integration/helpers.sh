@@ -37,11 +37,14 @@ ssh_vm() {
 
 # Create a test container using kapsule CLI
 # Usage: create_container NAME [IMAGE]
+#
+# Respects KAPSULE_CREATE_FLAGS env var for additional flags
+# (e.g., KAPSULE_CREATE_FLAGS="--no-host-rootfs" to test minimal mounts)
 create_container() {
     local name="$1"
     local image="${2:-images:alpine/edge}"
     
-    ssh_vm "kapsule create '$name' --image '$image'" 2>&1
+    ssh_vm "kapsule create '$name' --image '$image' ${KAPSULE_CREATE_FLAGS:-}" 2>&1
 }
 
 # Delete a test container

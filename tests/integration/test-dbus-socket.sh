@@ -52,7 +52,7 @@ assert_container_state "$CONTAINER_DEFAULT" "RUNNING"
 
 echo ""
 echo "2. Create session-mode container"
-output=$(ssh_vm "kapsule create '$CONTAINER_SESSION' --image images:archlinux --session" 2>&1) || {
+output=$(ssh_vm "kapsule create '$CONTAINER_SESSION' --image images:archlinux --session ${KAPSULE_CREATE_FLAGS:-}" 2>&1) || {
     echo "Create (session) failed:"
     echo "$output"
     exit 1
