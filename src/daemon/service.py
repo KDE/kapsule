@@ -200,7 +200,8 @@ class KapsuleManagerInterface(ServiceInterface):
         session_mode: DBusBool,
         dbus_mux: DBusBool,
         host_rootfs: DBusBool,
-        nvidia: DBusBool,
+        gpu: DBusBool,
+        nvidia_drivers: DBusBool,
     ) -> DBusObjectPath:
         """Create a new container.
 
@@ -210,7 +211,8 @@ class KapsuleManagerInterface(ServiceInterface):
             session_mode: Enable session mode with container D-Bus
             dbus_mux: Enable D-Bus multiplexer (implies session_mode)
             host_rootfs: Mount entire host filesystem at /.kapsule/host
-            nvidia: Enable NVIDIA runtime (auto-detected based on hardware)
+            gpu: Include GPU passthrough device
+            nvidia_drivers: Inject host NVIDIA userspace drivers on each start
 
         Returns:
             D-Bus object path for tracking operation progress
@@ -237,7 +239,8 @@ class KapsuleManagerInterface(ServiceInterface):
             session_mode=session_mode,
             dbus_mux=dbus_mux,
             host_rootfs=host_rootfs,
-            nvidia=nvidia,
+            gpu=gpu,
+            nvidia_drivers=nvidia_drivers,
         )
 
     @dbus_method()

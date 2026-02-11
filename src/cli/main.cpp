@@ -136,8 +136,10 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
          QStringLiteral("Enable D-Bus multiplexer (implies --session)")},
         {QStringLiteral("no-host-rootfs"),
          QStringLiteral("Don't mount the full host filesystem (use minimal mounts)")},
-        {QStringLiteral("no-nvidia"),
-         QStringLiteral("Don't enable NVIDIA runtime (driver/CUDA library passthrough)")},
+        {QStringLiteral("no-gpu"),
+         QStringLiteral("Don't pass through GPU devices to the container")},
+        {QStringLiteral("no-nvidia-drivers"),
+         QStringLiteral("Don't inject host NVIDIA userspace drivers into the container")},
     });
 
     // Parse with program name for help text
@@ -165,7 +167,8 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
     bool sessionMode = parser.isSet(QStringLiteral("session"));
     bool dbusMux = parser.isSet(QStringLiteral("dbus-mux"));
     bool hostRootfs = !parser.isSet(QStringLiteral("no-host-rootfs"));
-    bool nvidia = !parser.isSet(QStringLiteral("no-nvidia"));
+    bool gpu = !parser.isSet(QStringLiteral("no-gpu"));
+    bool nvidiaDrivers = !parser.isSet(QStringLiteral("no-nvidia-drivers"));
 
     // Determine container mode
     ContainerMode mode = ContainerMode::Default;
@@ -177,7 +180,7 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Creating container: %1").arg(name).toStdString());
 
-    auto result = co_await client.createContainer(name, image, mode, hostRootfs, nvidia,
+    auto result = co_await client.createContainer(name, image, mode, hostRootfs, gpu, nvidiaDrivers,
         [&o](MessageType type, const QString &msg, int indent) {
             o.print(type, msg.toStdString(), indent);
         });
