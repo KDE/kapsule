@@ -134,6 +134,8 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
          QStringLiteral("Enable session mode with container D-Bus")},
         {{QStringLiteral("m"), QStringLiteral("dbus-mux")},
          QStringLiteral("Enable D-Bus multiplexer (implies --session)")},
+        {QStringLiteral("no-host-rootfs"),
+         QStringLiteral("Don't mount the full host filesystem (use minimal mounts)")},
     });
 
     // Parse with program name for help text
@@ -160,6 +162,7 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
     QString image = parser.value(QStringLiteral("image"));
     bool sessionMode = parser.isSet(QStringLiteral("session"));
     bool dbusMux = parser.isSet(QStringLiteral("dbus-mux"));
+    bool hostRootfs = !parser.isSet(QStringLiteral("no-host-rootfs"));
 
     // Determine container mode
     ContainerMode mode = ContainerMode::Default;
@@ -171,7 +174,7 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Creating container: %1").arg(name).toStdString());
 
-    auto result = co_await client.createContainer(name, image, mode,
+    auto result = co_await client.createContainer(name, image, mode, hostRootfs,
         [&o](MessageType type, const QString &msg, int indent) {
             o.print(type, msg.toStdString(), indent);
         });

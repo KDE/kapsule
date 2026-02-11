@@ -199,6 +199,7 @@ class KapsuleManagerInterface(ServiceInterface):
         image: DBusStr,
         session_mode: DBusBool,
         dbus_mux: DBusBool,
+        host_rootfs: DBusBool,
     ) -> DBusObjectPath:
         """Create a new container.
 
@@ -207,6 +208,7 @@ class KapsuleManagerInterface(ServiceInterface):
             image: Image to use (e.g., "archlinux"), empty for default from config
             session_mode: Enable session mode with container D-Bus
             dbus_mux: Enable D-Bus multiplexer (implies session_mode)
+            host_rootfs: Mount entire host filesystem at /.kapsule/host
 
         Returns:
             D-Bus object path for tracking operation progress
@@ -232,6 +234,7 @@ class KapsuleManagerInterface(ServiceInterface):
             image=actual_image,
             session_mode=session_mode,
             dbus_mux=dbus_mux,
+            host_rootfs=host_rootfs,
         )
 
     @dbus_method()

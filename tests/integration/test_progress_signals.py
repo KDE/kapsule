@@ -138,8 +138,8 @@ async def call_create_container(
             path=DBUS_PATH,
             interface=DBUS_INTERFACE,
             member="CreateContainer",
-            signature="ssbb",
-            body=[name, image, False, False],
+            signature="ssbbb",
+            body=[name, image, False, False, True],
         )
     )
     if reply.message_type == MessageType.ERROR:

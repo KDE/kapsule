@@ -205,6 +205,7 @@ class KapsuleClient : public QObject {
         const QString &name,
         const QString &image,
         ContainerMode mode = ContainerMode::Default,
+        bool hostRootfs = true,
         ProgressHandler progress = {});
     
     QCoro::Task<EnterResult> prepareEnter(
@@ -239,7 +240,7 @@ using ProgressHandler = std::function<void(MessageType, const QString &, int)>;
 
 // Usage
 co_await client.createContainer("dev", "ubuntu:24.04",
-    ContainerMode::Default,
+    ContainerMode::Default, true,
     [](MessageType type, const QString &msg, int indent) {
         // Display progress to user
     });
@@ -294,15 +295,20 @@ raw.lxc: "lxc.net.0.type=none"  # Host networking
 ### Devices
 - **root**: Container root filesystem
 - **gpu**: GPU passthrough for graphics
-- **hostfs**: Host filesystem at `/.kapsule/host` (for tooling access)
+- **hostfs** (default): Host filesystem at `/.kapsule/host` (for tooling access)
+- Minimal mode (`--no-host-rootfs`): replaces `hostfs` with targeted mounts added
+  during user setup:
+  - `kapsule-hostrun-<uid>`: `/run/user/<uid>` at `/.kapsule/host/run/user/<uid>`
+  - `kapsule-x11`: `/tmp/.X11-unix` at `/.kapsule/host/tmp/.X11-unix`
 
 ### User Setup
 
 When entering a container, Kapsule:
 1. Creates matching user account (same UID/GID)
 2. Mounts home directory from host
-3. Sets up environment variables (DISPLAY, XDG_*, etc.)
-4. Configures shell and working directory
+3. If minimal mode: adds per-user host runtime and X11 mounts
+4. Sets up environment variables (DISPLAY, XDG_*, etc.)
+5. Configures shell and working directory
 
 ---
 
