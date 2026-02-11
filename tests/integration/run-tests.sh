@@ -104,22 +104,77 @@ cleanup_test_containers() {
 # Test runners
 # ============================================================================
 
+# Shell tests that exercise socket/mount functionality and should be
+# run in both full-rootfs (default) and minimal-mount modes.
+# test-host-mounts is excluded because it tests both modes internally.
+SOCKET_TESTS=(
+    "test-audio-sockets"
+    "test-display-sockets"
+    "test-dbus-socket"
+)
+
+is_socket_test() {
+    local name="$1"
+    for st in "${SOCKET_TESTS[@]}"; do
+        if [[ "$name" == "$st" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Run a single shell test file
+# Usage: run_one_shell_test FILE [LABEL_SUFFIX]
+run_one_shell_test() {
+    local test_file="$1"
+    local suffix="${2:-}"
+    local test_name=$(basename "$test_file" .sh)
+    local label="${test_name}${suffix}"
+
+    echo ""
+    log_info "Running $label..."
+
+    if bash "$test_file"; then
+        log_pass "$label"
+    else
+        log_fail "$label"
+    fi
+}
+
 run_shell_tests() {
     log_info "Running shell-based integration tests..."
-    
+
+    # Pass 1: Run all tests with default settings (full rootfs)
     for test_file in "$SCRIPT_DIR"/test-*.sh; do
         if [[ -f "$test_file" ]]; then
             local test_name=$(basename "$test_file" .sh)
-            echo ""
-            log_info "Running $test_name..."
-            
-            if bash "$test_file"; then
-                log_pass "$test_name"
-            else
-                log_fail "$test_name"
+
+            # Apply test pattern filter if specified
+            if [[ -n "$TEST_PATTERN" ]] && [[ "$test_name" != *"$TEST_PATTERN"* ]]; then
+                continue
             fi
+
+            run_one_shell_test "$test_file"
         fi
     done
+
+    # Pass 2: Re-run socket tests with --no-host-rootfs
+    log_info ""
+    log_info "Re-running socket tests with --no-host-rootfs..."
+
+    export KAPSULE_CREATE_FLAGS="--no-host-rootfs"
+    for st in "${SOCKET_TESTS[@]}"; do
+        local test_file="$SCRIPT_DIR/${st}.sh"
+        if [[ -f "$test_file" ]]; then
+            # Apply test pattern filter if specified
+            if [[ -n "$TEST_PATTERN" ]] && [[ "$st" != *"$TEST_PATTERN"* ]]; then
+                continue
+            fi
+
+            run_one_shell_test "$test_file" " [no-host-rootfs]"
+        fi
+    done
+    unset KAPSULE_CREATE_FLAGS
 }
 
 run_python_tests() {

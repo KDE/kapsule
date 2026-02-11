@@ -573,12 +573,16 @@ class IncusClient:
             stateful=instance.stateful,
         )
 
-        await self._request(
+        response = await self._request(
             "PUT",
             f"/1.0/instances/{name}",
             response_type=AsyncOperationResponse,
             json=put_data.model_dump(exclude_none=True),
         )
+
+        # Wait for the operation to complete so subsequent reads see the update
+        if response.metadata and response.metadata.id:
+            await self.wait_operation(response.metadata.id)
 
     async def add_instance_device(
         self,
@@ -612,12 +616,16 @@ class IncusClient:
             stateful=instance.stateful,
         )
 
-        await self._request(
+        response = await self._request(
             "PUT",
             f"/1.0/instances/{name}",
             response_type=AsyncOperationResponse,
             json=put_data.model_dump(exclude_none=True),
         )
+
+        # Wait for the operation to complete so subsequent reads see the update
+        if response.metadata and response.metadata.id:
+            await self.wait_operation(response.metadata.id)
 
     # -------------------------------------------------------------------------
     # Storage pool operations
