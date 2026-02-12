@@ -969,11 +969,17 @@ class ContainerService:
         gid: int,
         env: dict[str, str],
     ) -> None:
-        """Set up runtime directory symlinks for graphics/audio access.
+        """Set up runtime directory bind mounts for graphics/audio access.
 
-        Symlinks individual sockets from the host's /run/user/$uid into the
-        container's /run/user/$uid directory. In session mode, the dbus socket
-        is not symlinked (the container has its own D-Bus session).
+        Bind-mounts individual sockets from the host's /run/user/$uid (via
+        hostfs) into the container's /run/user/$uid directory.  Bind mounts
+        are used instead of symlinks so that applications running inside
+        their own mount namespace (such as snap packages) can access the
+        sockets correctly — snap-update-ns cannot follow symlinks that
+        point into /.kapsule/host/.
+
+        In session mode, the dbus socket is not mounted (the container has
+        its own D-Bus session).
 
         Args:
             container_name: Container name
@@ -999,7 +1005,7 @@ class ContainerService:
         except IncusError:
             pass
 
-        # Symlink individual sockets from host runtime dir
+        # Bind-mount individual sockets from host runtime dir.
         # Format: (item, is_env_var, source_subpath_override)
         runtime_links: list[tuple[str, bool, str | None]] = [
             ("WAYLAND_DISPLAY", True, None),
@@ -1007,8 +1013,8 @@ class ContainerService:
         ]
 
         # D-Bus socket handling:
-        # - Default mode: symlink to host's session bus so container sees host services
-        # - Session mode (any): no symlink — container has its own D-Bus session.
+        # - Default mode: bind-mount host's session bus so container sees host services
+        # - Session mode (any): no mount — container has its own D-Bus session.
         #   Without mux, systemd's dbus.socket creates /run/user/$uid/bus natively.
         #   With mux, the mux service listens at /run/user/$uid/bus.
         if not session_mode:
@@ -1025,12 +1031,9 @@ class ContainerService:
             source = f"{host_runtime_dir}/{subpath if subpath else socket_name}"
             target = f"{runtime_dir}/{socket_name}"
 
-            try:
-                await self._incus.create_symlink(container_name, target, source, uid=uid, gid=gid)
-            except IncusError:
-                pass  # Symlink might already exist
+            self._bind_mount_in_container(container_name, source, target, uid, gid)
 
-        # X11: symlink the individual socket from the host's /tmp/.X11-unix/
+        # X11: bind-mount the individual socket from the host's /tmp/.X11-unix/
         # into the container. The host's /tmp is accessible via hostfs.
         display = env.get("DISPLAY", "")
         if display.startswith(":"):
@@ -1044,15 +1047,11 @@ class ContainerService:
                 )
             except IncusError:
                 pass
-            try:
-                await self._incus.create_symlink(
-                    container_name, f"{container_x11_dir}/{x11_socket}", host_x11,
-                    uid=0, gid=0,
-                )
-            except IncusError:
-                pass  # Symlink might already exist
+            self._bind_mount_in_container(
+                container_name, host_x11, f"{container_x11_dir}/{x11_socket}", 0, 0,
+            )
 
-        # PulseAudio: create a real pulse/ directory and symlink native inside.
+        # PulseAudio: create a real pulse/ directory and bind-mount native inside.
         # PulseAudio refuses to use pulse/ if it's itself a symlink (security check).
         pulse_dir = f"{runtime_dir}/pulse"
         host_pulse_native = f"{host_runtime_dir}/pulse/native"
@@ -1060,27 +1059,64 @@ class ContainerService:
             await self._incus.mkdir(container_name, pulse_dir, uid=uid, gid=gid, mode="0700")
         except IncusError:
             pass
-        try:
-            await self._incus.create_symlink(
-                container_name, f"{pulse_dir}/native", host_pulse_native, uid=uid, gid=gid,
-            )
-        except IncusError:
-            pass
+        self._bind_mount_in_container(
+            container_name, host_pulse_native, f"{pulse_dir}/native", uid, gid,
+        )
 
         # XAUTHORITY: the env value is a full path (e.g. /run/user/1000/xauth_LAPpeP).
-        # Symlink just the basename inside the container's runtime dir to the
+        # Bind-mount just the basename inside the container's runtime dir to the
         # corresponding host file via hostfs.
         xauth_path = env.get("XAUTHORITY", "")
         if xauth_path:
             xauth_basename = os.path.basename(xauth_path)
             host_xauth = f"{host_runtime_dir}/{xauth_basename}"
             target_xauth = f"{runtime_dir}/{xauth_basename}"
-            try:
-                await self._incus.create_symlink(
-                    container_name, target_xauth, host_xauth, uid=uid, gid=gid,
-                )
-            except IncusError:
-                pass  # Symlink might already exist
+            self._bind_mount_in_container(
+                container_name, host_xauth, target_xauth, uid, gid,
+            )
+
+    def _bind_mount_in_container(
+        self,
+        container_name: str,
+        source: str,
+        target: str,
+        uid: int,
+        gid: int,
+    ) -> None:
+        """Bind-mount a host file/socket into a container.
+
+        Creates the mount point if it doesn't exist, removes any stale
+        symlink at the target, and performs a bind mount.  If the target
+        is already a mount point or the source does not exist, this is a
+        no-op.
+
+        Args:
+            container_name: Container name.
+            source: Source path inside the container (typically under
+                /.kapsule/host/).
+            target: Target path inside the container.
+            uid: Mount-point owner UID.
+            gid: Mount-point owner GID.
+        """
+        # Single shell command that handles idempotency:
+        #  1. Skip if target is already a mount point
+        #  2. Remove any stale symlink at target
+        #  3. Skip if the source doesn't exist (host socket absent)
+        #  4. Create mount point file and bind-mount
+        script = (
+            f'mountpoint -q "$1" 2>/dev/null && exit 0; '
+            f'rm -f "$1"; '
+            f'[ -e "$2" ] || exit 0; '
+            f'touch "$1" && chown {uid}:{gid} "$1" && '
+            f'mount --bind "$2" "$1"'
+        )
+        subprocess.run(
+            [
+                "incus", "exec", container_name, "--",
+                "sh", "-c", script, "sh", target, source,
+            ],
+            capture_output=True,
+        )
 
     # -------------------------------------------------------------------------
     # Private Helper Methods
