@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Test VM configuration
 TEST_VM="${KAPSULE_TEST_VM:-192.168.100.129}"
+VM_EXEC_MODE="${KAPSULE_VM_EXEC_MODE:-auto}"
 SSH_OPTS="-n -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o LogLevel=ERROR"
 
 # Colors
@@ -27,8 +28,42 @@ NC='\033[0m'
 # SSH Helpers
 # ============================================================================
 
+is_local_vm_target() {
+    [[ "$TEST_VM" == "localhost" || "$TEST_VM" == "127.0.0.1" || "$TEST_VM" == "::1" ]]
+}
+
+resolve_vm_exec_mode() {
+    if [[ "$VM_EXEC_MODE" == "auto" ]]; then
+        if is_local_vm_target; then
+            echo "local"
+        else
+            echo "ssh"
+        fi
+        return
+    fi
+
+    if [[ "$VM_EXEC_MODE" == "local" || "$VM_EXEC_MODE" == "ssh" ]]; then
+        echo "$VM_EXEC_MODE"
+        return
+    fi
+
+    echo "ERROR: Invalid KAPSULE_VM_EXEC_MODE='$VM_EXEC_MODE' (expected auto|local|ssh)" >&2
+    return 1
+}
+
 ssh_vm() {
-    timeout --kill-after=2 25 ssh $SSH_OPTS "$TEST_VM" "$@"
+    local mode
+    mode="$(resolve_vm_exec_mode)" || return 1
+
+    if [[ "$mode" == "local" ]]; then
+        if [[ $# -eq 1 ]]; then
+            timeout --kill-after=2 25 bash -lc "$1"
+        else
+            timeout --kill-after=2 25 "$@"
+        fi
+    else
+        timeout --kill-after=2 25 ssh $SSH_OPTS "$TEST_VM" "$@"
+    fi
 }
 
 # ============================================================================
