@@ -77,10 +77,17 @@ fi
 
 # Get the test user's UID on the VM
 set -x
-uid=$(ssh_vm "id -u") || {
-    echo -e "  ${RED}✗${NC} Failed to determine host UID over SSH"
-    exit 1
-}
+if [[ "$TEST_VM" == "localhost" || "$TEST_VM" == "127.0.0.1" ]]; then
+    uid=$(id -u) || {
+        echo -e "  ${RED}✗${NC} Failed to determine local UID"
+        exit 1
+    }
+else
+    uid=$(ssh_vm "id -u") || {
+        echo -e "  ${RED}✗${NC} Failed to determine host UID over SSH"
+        exit 1
+    }
+fi
 set +x
 
 # Test: Check that runtime directory sockets exist (using kapsule enter to set them up)
