@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Test VM configuration
 TEST_VM="${KAPSULE_TEST_VM:-192.168.100.129}"
-SSH_OPTS="-o ConnectTimeout=5 -o StrictHostKeyChecking=no -o LogLevel=ERROR"
+SSH_OPTS="-n -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o LogLevel=ERROR"
 
 # Colors
 RED='\033[0;31m'

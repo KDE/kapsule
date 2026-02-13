@@ -77,7 +77,7 @@ fi
 
 # Get the test user's UID on the VM
 set -x
-uid=$(timeout 10 ssh $SSH_OPTS "$TEST_VM" "id -u") || {
+uid=$(ssh_vm "id -u") || {
     echo -e "  ${RED}✗${NC} Failed to determine host UID over SSH"
     exit 1
 }
