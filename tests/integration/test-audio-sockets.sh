@@ -17,7 +17,7 @@ CONTAINER_NAME="test-audio-sockets"
 # Helper to run commands in container via kapsule enter
 # This ensures runtime mounts are set up properly
 kapsule_exec() {
-    ssh_vm "kapsule enter '$CONTAINER_NAME' -- $*"
+    timeout --kill-after=2 20 ssh $SSH_OPTS "$TEST_VM" "kapsule enter '$CONTAINER_NAME' -- $*"
 }
 
 # ============================================================================
