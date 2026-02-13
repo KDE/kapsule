@@ -46,10 +46,32 @@ assert_container_state "$CONTAINER_NAME" "RUNNING"
 # Wait for container to fully initialize
 echo ""
 echo "2. Waiting for container to initialize..."
-sleep 3
+
+ready=false
+for i in $(seq 1 30); do
+    if timeout 8 kapsule_exec "true" >/dev/null 2>&1; then
+        ready=true
+        echo -e "  ${GREEN}✓${NC} Container enter path is ready"
+        break
+    fi
+    echo "  waiting for kapsule enter readiness ($i/30)..."
+    sleep 1
+done
+
+if [[ "$ready" != "true" ]]; then
+    echo -e "  ${RED}✗${NC} Container did not become enter-ready in time"
+    echo "  Incus state:"
+    ssh_vm "incus info '$CONTAINER_NAME' 2>/dev/null | sed 's/^/    /'" || true
+    echo "  Last 30 daemon log lines:"
+    ssh_vm "journalctl -u kapsule-daemon.service --no-pager -n 30 2>/dev/null | sed 's/^/    /'" || true
+    exit 1
+fi
 
 # Get the test user's UID on the VM
-uid=$(ssh_vm "id -u")
+uid=$(timeout 10 ssh_vm "id -u") || {
+    echo -e "  ${RED}✗${NC} Failed to determine host UID over SSH"
+    exit 1
+}
 
 # Test: Check that runtime directory sockets exist (using kapsule enter to set them up)
 echo ""
