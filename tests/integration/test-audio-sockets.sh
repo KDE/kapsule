@@ -51,7 +51,7 @@ set -x
 ready=false
 for i in $(seq 1 30); do
     echo "  [debug] readiness probe ${i}/30"
-    if probe_output=$(timeout 8 ssh $SSH_OPTS "$TEST_VM" "incus exec '$CONTAINER_NAME' -- true" 2>&1); then
+    if probe_output=$(timeout --kill-after=2 8 ssh $SSH_OPTS "$TEST_VM" "incus exec '$CONTAINER_NAME' -- true" 2>&1); then
         ready=true
         echo -e "  ${GREEN}✓${NC} Container base runtime is ready"
         break
