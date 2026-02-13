@@ -10,6 +10,7 @@ using the operation decorator for automatic progress reporting.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import os
 import pwd
@@ -59,6 +60,14 @@ _ENTER_ENV_SKIP = frozenset({
     "LESS_TERMCAP_mb", "LESS_TERMCAP_md", "LESS_TERMCAP_me",  # Less colors
     "LESS_TERMCAP_se", "LESS_TERMCAP_so", "LESS_TERMCAP_ue", "LESS_TERMCAP_us",
 })
+
+
+@dataclass(frozen=True)
+class BindMount:
+    source: str
+    target: str
+    uid: int
+    gid: int
 
 
 def _base_container_config(nvidia_drivers: bool = True) -> dict[str, str]:
@@ -1036,8 +1045,8 @@ class ContainerService:
         except IncusError:
             pass
 
-        # Collect (source, target, owner_uid, owner_gid) tuples for all mounts.
-        mounts: list[tuple[str, str, int, int]] = []
+        # Collect all mount descriptors.
+        mounts: list[BindMount] = []
 
         # Runtime sockets from host runtime dir
         # Format: (item, is_env_var, source_subpath_override)
@@ -1064,7 +1073,7 @@ class ContainerService:
 
             source = f"{host_runtime_dir}/{subpath if subpath else socket_name}"
             target = f"{runtime_dir}/{socket_name}"
-            mounts.append((source, target, uid, gid))
+            mounts.append(BindMount(source=source, target=target, uid=uid, gid=gid))
 
         # X11: bind-mount the individual socket from the host's /tmp/.X11-unix/
         display = env.get("DISPLAY", "")
@@ -1079,7 +1088,12 @@ class ContainerService:
                 )
             except IncusError:
                 pass
-            mounts.append((host_x11, f"{container_x11_dir}/{x11_socket}", 0, 0))
+            mounts.append(BindMount(
+                source=host_x11,
+                target=f"{container_x11_dir}/{x11_socket}",
+                uid=0,
+                gid=0,
+            ))
 
         # PulseAudio: create a real pulse/ directory and bind-mount native inside.
         # PulseAudio refuses to use pulse/ if it's itself a symlink (security check).
@@ -1089,7 +1103,12 @@ class ContainerService:
             await self._incus.mkdir(container_name, pulse_dir, uid=uid, gid=gid, mode="0700")
         except IncusError:
             pass
-        mounts.append((host_pulse_native, f"{pulse_dir}/native", uid, gid))
+        mounts.append(BindMount(
+            source=host_pulse_native,
+            target=f"{pulse_dir}/native",
+            uid=uid,
+            gid=gid,
+        ))
 
         # XAUTHORITY: the env value is a full path (e.g. /run/user/1000/xauth_LAPpeP).
         # Bind-mount just the basename inside the container's runtime dir to the
@@ -1099,7 +1118,7 @@ class ContainerService:
             xauth_basename = os.path.basename(xauth_path)
             host_xauth = f"{host_runtime_dir}/{xauth_basename}"
             target_xauth = f"{runtime_dir}/{xauth_basename}"
-            mounts.append((host_xauth, target_xauth, uid, gid))
+            mounts.append(BindMount(source=host_xauth, target=target_xauth, uid=uid, gid=gid))
 
         # --- Execute all mounts via nsenter into the container namespace ---
         if mounts and state.pid:
@@ -1111,7 +1130,7 @@ class ContainerService:
     @staticmethod
     def _bind_mount_batch(
         container_pid: int,
-        mounts: list[tuple[str, str, int, int]],
+        mounts: list[BindMount],
     ) -> None:
         """Bind-mount multiple host files/sockets into a container.
 
@@ -1119,7 +1138,7 @@ class ContainerService:
         bypassing the Incus API.  This is ~10-20x faster than ``incus exec``
         because it avoids the CLI→REST→WebSocket→fork chain.
 
-        For each (source, target, uid, gid) tuple the script:
+        For each mount descriptor the script:
           1. Skips if target is already a mount point
           2. Removes any stale symlink at target
           3. Skips if the source doesn't exist (host socket absent)
@@ -1128,7 +1147,7 @@ class ContainerService:
         Args:
             container_pid: PID of the container's init process
                 (from InstanceState.pid).
-            mounts: List of (source, target, uid, gid) tuples.
+            mounts: List of bind-mount descriptors.
         """
         # Build a self-contained sh script that reads quad-tuples from args.
         # Usage: sh -c '<script>' sh src1 tgt1 uid1 gid1 src2 tgt2 uid2 gid2 ...
@@ -1144,8 +1163,8 @@ class ContainerService:
         )
 
         args: list[str] = []
-        for source, target, mount_uid, mount_gid in mounts:
-            args.extend([source, target, str(mount_uid), str(mount_gid)])
+        for mount in mounts:
+            args.extend([mount.source, mount.target, str(mount.uid), str(mount.gid)])
 
         subprocess.run(
             [
