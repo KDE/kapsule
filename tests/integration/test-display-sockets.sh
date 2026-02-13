@@ -6,7 +6,7 @@
 
 # Test: Display socket passthrough (X11 and Wayland)
 #
-# Tests that X11 and Wayland sockets are correctly mounted/symlinked
+# Tests that X11 and Wayland sockets are correctly exposed
 # in containers and that graphical applications can connect to the
 # host's display server.
 
@@ -16,7 +16,7 @@ CONTAINER_NAME="test-display-sockets"
 
 # Helper to run commands in container via kapsule enter
 # Exports DISPLAY, WAYLAND_DISPLAY, and XAUTHORITY so the daemon (which reads
-# /proc/<pid>/environ) sets up the correct symlinks.
+# /proc/<pid>/environ) sets up the correct runtime mounts.
 kapsule_exec() {
     ssh_vm "DISPLAY=$HOST_DISPLAY WAYLAND_DISPLAY=$HOST_WAYLAND XAUTHORITY=$HOST_XAUTHORITY kapsule enter '$CONTAINER_NAME' -- $*"
 }
@@ -32,9 +32,23 @@ cleanup_container "$CONTAINER_NAME"
 HOST_DISPLAY=":0"
 HOST_WAYLAND="wayland-0"
 HOST_UID=$(ssh_vm "id -u")
+display_num="${HOST_DISPLAY#:}"
+display_num="${display_num%%.*}"  # strip screen number if present
 
 # XAUTHORITY has a random filename — discover it from the running session
 HOST_XAUTHORITY=$(ssh_vm "cat /proc/\$(pgrep -u \$(id -u) plasmashell | head -1)/environ 2>/dev/null | tr '\0' '\n' | grep ^XAUTHORITY= | cut -d= -f2")
+
+if ssh_vm "test -S /tmp/.X11-unix/X${display_num}" 2>/dev/null; then
+    HOST_HAS_X11_SOCKET=true
+else
+    HOST_HAS_X11_SOCKET=false
+fi
+
+if ssh_vm "test -S /run/user/$HOST_UID/$HOST_WAYLAND" 2>/dev/null; then
+    HOST_HAS_WAYLAND_SOCKET=true
+else
+    HOST_HAS_WAYLAND_SOCKET=false
+fi
 
 echo "Host environment:"
 echo "  DISPLAY=$HOST_DISPLAY"
@@ -73,7 +87,7 @@ echo ""
 echo "3. Checking X11 socket passthrough"
 
 # The X11 socket directory is created at enter time and the individual
-# socket is symlinked to the host via hostfs
+# socket should be available inside the container.
 if kapsule_exec "test -d /tmp/.X11-unix" 2>/dev/null; then
     echo -e "  ${GREEN}✓${NC} /tmp/.X11-unix directory exists"
 else
@@ -81,43 +95,31 @@ else
     exit 1
 fi
 
-# Check that the specific X socket is a symlink to the host
-display_num="${HOST_DISPLAY#:}"
-display_num="${display_num%%.*}"  # strip screen number if present
-
-if kapsule_exec "test -L /tmp/.X11-unix/X${display_num}" 2>/dev/null; then
-    echo -e "  ${GREEN}✓${NC} X11 socket X${display_num} is a symlink"
-
-    target=$(kapsule_exec "readlink /tmp/.X11-unix/X${display_num}" 2>/dev/null)
-    expected_target="/.kapsule/host/tmp/.X11-unix/X${display_num}"
-    if [[ "$target" == "$expected_target" ]]; then
-        echo -e "  ${GREEN}✓${NC} X11 symlink points to host socket"
+if [[ "$HOST_HAS_X11_SOCKET" == true ]]; then
+    if kapsule_exec "test -S /tmp/.X11-unix/X${display_num}" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} X11 socket X${display_num} is available in container"
     else
-        echo -e "  ${RED}✗${NC} X11 symlink has wrong target: $target (expected $expected_target)"
+        echo -e "  ${RED}✗${NC} X11 socket X${display_num} missing in container (host has X11 socket)"
         exit 1
     fi
 else
-    echo -e "  ${RED}✗${NC} X11 socket X${display_num} not found as symlink"
-    exit 1
+    echo -e "  ${YELLOW}!${NC} Host X11 socket X${display_num} not found, skipping direct socket presence check"
 fi
 
-# Check XAUTHORITY symlink
+# Check XAUTHORITY availability
 echo ""
-echo "4. Checking XAUTHORITY symlink"
+echo "4. Checking XAUTHORITY availability"
 if [[ -n "$HOST_XAUTHORITY" ]]; then
     xauth_basename=$(basename "$HOST_XAUTHORITY")
-    if kapsule_exec "test -L /run/user/$HOST_UID/$xauth_basename" 2>/dev/null; then
-        target=$(kapsule_exec "readlink /run/user/$HOST_UID/$xauth_basename" 2>/dev/null)
-        expected_target="/.kapsule/host/run/user/$HOST_UID/$xauth_basename"
-        if [[ "$target" == "$expected_target" ]]; then
-            echo -e "  ${GREEN}✓${NC} XAUTHORITY symlink points to host file"
+    if ssh_vm "test -f '$HOST_XAUTHORITY'" 2>/dev/null; then
+        if kapsule_exec "test -r /run/user/$HOST_UID/$xauth_basename" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} XAUTHORITY file is readable in container"
         else
-            echo -e "  ${RED}✗${NC} XAUTHORITY symlink has wrong target: $target (expected $expected_target)"
+            echo -e "  ${RED}✗${NC} XAUTHORITY file not readable in container for $xauth_basename"
             exit 1
         fi
     else
-        echo -e "  ${RED}✗${NC} XAUTHORITY symlink not found for $xauth_basename"
-        exit 1
+        echo -e "  ${YELLOW}!${NC} Host XAUTHORITY file not found, skipping"
     fi
 else
     echo -e "  ${YELLOW}!${NC} XAUTHORITY not discovered from host session, skipping"
@@ -131,20 +133,15 @@ echo ""
 echo "5. Checking Wayland socket passthrough"
 
 if [[ -n "$HOST_WAYLAND" ]]; then
-    if kapsule_exec "test -L /run/user/$HOST_UID/$HOST_WAYLAND" 2>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} Wayland socket symlink exists"
-
-        target=$(kapsule_exec "readlink /run/user/$HOST_UID/$HOST_WAYLAND" 2>/dev/null)
-        expected_target="/.kapsule/host/run/user/$HOST_UID/$HOST_WAYLAND"
-        if [[ "$target" == "$expected_target" ]]; then
-            echo -e "  ${GREEN}✓${NC} Wayland symlink points to host socket"
+    if [[ "$HOST_HAS_WAYLAND_SOCKET" == true ]]; then
+        if kapsule_exec "test -S /run/user/$HOST_UID/$HOST_WAYLAND" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} Wayland socket is available in container"
         else
-            echo -e "  ${RED}✗${NC} Wayland symlink has wrong target: $target (expected $expected_target)"
+            echo -e "  ${RED}✗${NC} Wayland socket missing in container for $HOST_WAYLAND"
             exit 1
         fi
     else
-        echo -e "  ${RED}✗${NC} Wayland socket symlink not created for $HOST_WAYLAND"
-        exit 1
+        echo -e "  ${YELLOW}!${NC} Host Wayland socket $HOST_WAYLAND not found, skipping direct socket presence check"
     fi
 else
     echo -e "  ${YELLOW}!${NC} WAYLAND_DISPLAY not set on host, skipping Wayland socket check"
@@ -155,11 +152,15 @@ echo ""
 echo "6. Checking host socket accessibility through hostfs"
 
 if [[ -n "$HOST_WAYLAND" ]]; then
-    if kapsule_exec "test -e /.kapsule/host/run/user/$HOST_UID/$HOST_WAYLAND" 2>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} Host Wayland socket accessible via hostfs"
+    if [[ "$HOST_HAS_WAYLAND_SOCKET" == true ]]; then
+        if kapsule_exec "test -S /.kapsule/host/run/user/$HOST_UID/$HOST_WAYLAND" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} Host Wayland socket accessible via hostfs"
+        else
+            echo -e "  ${RED}✗${NC} Host Wayland socket not accessible via hostfs"
+            exit 1
+        fi
     else
-        echo -e "  ${RED}✗${NC} Host Wayland socket not accessible via hostfs"
-        exit 1
+        echo -e "  ${YELLOW}!${NC} Host Wayland socket not present, skipping hostfs accessibility check"
     fi
 fi
 
@@ -191,7 +192,7 @@ kapsule_exec "sudo pacman -Syu --noconfirm xorg-xdpyinfo xorg-xmessage wayland-u
 
 echo ""
 echo "8. Testing X11 connection with xdpyinfo"
-if [[ -n "$HOST_DISPLAY" ]]; then
+if [[ -n "$HOST_DISPLAY" && "$HOST_HAS_X11_SOCKET" == true ]]; then
     xdpyinfo_output=$(kapsule_exec "xdpyinfo" 2>&1)
     xdpyinfo_exit=$?
     if [[ $xdpyinfo_exit -eq 0 ]]; then
@@ -206,12 +207,12 @@ if [[ -n "$HOST_DISPLAY" ]]; then
         exit 1
     fi
 else
-    echo -e "  ${YELLOW}!${NC} Skipping X11 connection test (DISPLAY not set)"
+    echo -e "  ${YELLOW}!${NC} Skipping X11 connection test (host X11 socket unavailable)"
 fi
 
 echo ""
 echo "9. Testing X11 window creation with xmessage"
-if [[ -n "$HOST_DISPLAY" ]]; then
+if [[ -n "$HOST_DISPLAY" && "$HOST_HAS_X11_SOCKET" == true ]]; then
     # xmessage -timeout N exits after N seconds with code 0
     xmessage_output=$(kapsule_exec "xmessage -timeout 3 'Kapsule X11 test'" 2>&1)
     xmessage_exit=$?
@@ -223,12 +224,12 @@ if [[ -n "$HOST_DISPLAY" ]]; then
         exit 1
     fi
 else
-    echo -e "  ${YELLOW}!${NC} Skipping X11 window test (DISPLAY not set)"
+    echo -e "  ${YELLOW}!${NC} Skipping X11 window test (host X11 socket unavailable)"
 fi
 
 echo ""
 echo "10. Testing GPU (X11) with glxinfo"
-if [[ -n "$HOST_DISPLAY" ]]; then
+if [[ -n "$HOST_DISPLAY" && "$HOST_HAS_X11_SOCKET" == true ]]; then
     glxinfo_output=$(kapsule_exec "glxinfo -B" 2>&1)
     glxinfo_exit=$?
     if [[ $glxinfo_exit -eq 0 ]]; then
@@ -243,7 +244,7 @@ if [[ -n "$HOST_DISPLAY" ]]; then
         exit 1
     fi
 else
-    echo -e "  ${YELLOW}!${NC} Skipping glxinfo test (DISPLAY not set)"
+    echo -e "  ${YELLOW}!${NC} Skipping glxinfo test (host X11 socket unavailable)"
 fi
 
 # ============================================================================
@@ -252,7 +253,7 @@ fi
 
 echo ""
 echo "11. Testing Wayland connection with wayland-info"
-if [[ -n "$HOST_WAYLAND" ]]; then
+if [[ -n "$HOST_WAYLAND" && "$HOST_HAS_WAYLAND_SOCKET" == true ]]; then
     wayinfo_output=$(kapsule_exec "wayland-info" 2>&1)
     wayinfo_exit=$?
     if [[ $wayinfo_exit -eq 0 ]]; then
@@ -267,12 +268,12 @@ if [[ -n "$HOST_WAYLAND" ]]; then
         exit 1
     fi
 else
-    echo -e "  ${YELLOW}!${NC} Skipping Wayland connection test (WAYLAND_DISPLAY not set)"
+    echo -e "  ${YELLOW}!${NC} Skipping Wayland connection test (host Wayland socket unavailable)"
 fi
 
 echo ""
 echo "12. Testing Wayland window creation with foot"
-if [[ -n "$HOST_WAYLAND" ]]; then
+if [[ -n "$HOST_WAYLAND" && "$HOST_HAS_WAYLAND_SOCKET" == true ]]; then
     # foot -e <cmd> opens a terminal, runs the command, and exits
     foot_output=$(kapsule_exec "foot -e true" 2>&1)
     foot_exit=$?
@@ -284,12 +285,12 @@ if [[ -n "$HOST_WAYLAND" ]]; then
         exit 1
     fi
 else
-    echo -e "  ${YELLOW}!${NC} Skipping Wayland window test (WAYLAND_DISPLAY not set)"
+    echo -e "  ${YELLOW}!${NC} Skipping Wayland window test (host Wayland socket unavailable)"
 fi
 
 echo ""
 echo "13. Testing GPU (Wayland) with eglinfo"
-if [[ -n "$HOST_WAYLAND" ]]; then
+if [[ -n "$HOST_WAYLAND" && "$HOST_HAS_WAYLAND_SOCKET" == true ]]; then
     # eglinfo often exits non-zero when some platforms (GBM, device) fail,
     # even if Wayland/X11 platforms work fine. Use || true to prevent set -e.
     eglinfo_output=$(kapsule_exec "eglinfo" 2>&1) || true
@@ -301,7 +302,7 @@ if [[ -n "$HOST_WAYLAND" ]]; then
         echo -e "  ${YELLOW}!${NC} eglinfo could not find a renderer"
     fi
 else
-    echo -e "  ${YELLOW}!${NC} Skipping eglinfo test (WAYLAND_DISPLAY not set)"
+    echo -e "  ${YELLOW}!${NC} Skipping eglinfo test (host Wayland socket unavailable)"
 fi
 
 # ============================================================================

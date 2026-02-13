@@ -15,7 +15,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 CONTAINER_NAME="test-audio-sockets"
 
 # Helper to run commands in container via kapsule enter
-# This ensures runtime symlinks are set up properly
+# This ensures runtime mounts are set up properly
 kapsule_exec() {
     ssh_vm "kapsule enter '$CONTAINER_NAME' -- $*"
 }
@@ -53,65 +53,43 @@ uid=$(ssh_vm "id -u")
 
 # Test: Check that runtime directory sockets exist (using kapsule enter to set them up)
 echo ""
-echo "3. Checking runtime directory symlinks"
+echo "3. Checking runtime audio sockets"
 
-# These are the critical tests - verify symlinks are created
+# These are the critical tests - verify host sockets are exposed in-container
 
-# Check PipeWire socket symlink exists
+# Check PipeWire socket passthrough
 echo ""
 echo "   Checking PipeWire socket..."
-if kapsule_exec "test -L /run/user/$uid/pipewire-0" 2>/dev/null; then
-    echo -e "  ${GREEN}✓${NC} PipeWire socket symlink exists"
-    
-    # Verify symlink target
-    target=$(kapsule_exec "readlink /run/user/$uid/pipewire-0" 2>/dev/null)
-    expected_target="/.kapsule/host/run/user/$uid/pipewire-0"
-    if [[ "$target" == "$expected_target" ]]; then
-        echo -e "  ${GREEN}✓${NC} PipeWire symlink points to host socket"
+if ssh_vm "test -S /run/user/$uid/pipewire-0" 2>/dev/null; then
+    if kapsule_exec "test -S /run/user/$uid/pipewire-0" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} PipeWire socket is available in container"
     else
-        echo -e "  ${RED}✗${NC} PipeWire symlink has wrong target: $target"
+        echo -e "  ${RED}✗${NC} PipeWire socket missing in container (host has PipeWire)"
         exit 1
     fi
 else
-    # This is a failure if PipeWire is running on host
-    if ssh_vm "test -S /run/user/$uid/pipewire-0" 2>/dev/null; then
-        echo -e "  ${RED}✗${NC} PipeWire socket symlink not created (but host has PipeWire)"
-        exit 1
-    else
-        echo -e "  ${YELLOW}!${NC} PipeWire socket symlink not found (PipeWire not running on host)"
-    fi
+    echo -e "  ${YELLOW}!${NC} PipeWire socket not found on host (skipping passthrough check)"
 fi
 
-# Check PulseAudio: pulse/ should be a real directory with native symlink inside
+# Check PulseAudio socket passthrough
 echo ""
 echo "   Checking PulseAudio socket..."
-if kapsule_exec "test -d /run/user/$uid/pulse" 2>/dev/null; then
-    echo -e "  ${GREEN}✓${NC} PulseAudio directory exists"
-    
-    # Verify native socket symlink inside pulse/
-    if kapsule_exec "test -L /run/user/$uid/pulse/native" 2>/dev/null; then
-        echo -e "  ${GREEN}✓${NC} PulseAudio native socket symlink exists"
-        
-        target=$(kapsule_exec "readlink /run/user/$uid/pulse/native" 2>/dev/null)
-        expected_target="/.kapsule/host/run/user/$uid/pulse/native"
-        if [[ "$target" == "$expected_target" ]]; then
-            echo -e "  ${GREEN}✓${NC} PulseAudio native symlink points to host socket"
-        else
-            echo -e "  ${RED}✗${NC} PulseAudio native symlink has wrong target: $target"
-            exit 1
-        fi
+if ssh_vm "test -S /run/user/$uid/pulse/native" 2>/dev/null; then
+    if kapsule_exec "test -d /run/user/$uid/pulse" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} PulseAudio directory exists"
     else
-        echo -e "  ${RED}✗${NC} PulseAudio native socket symlink not found inside pulse/"
+        echo -e "  ${RED}✗${NC} PulseAudio directory missing in container (host has PulseAudio)"
+        exit 1
+    fi
+
+    if kapsule_exec "test -S /run/user/$uid/pulse/native" 2>/dev/null; then
+        echo -e "  ${GREEN}✓${NC} PulseAudio native socket is available in container"
+    else
+        echo -e "  ${RED}✗${NC} PulseAudio native socket missing in container (host has PulseAudio)"
         exit 1
     fi
 else
-    # This is a failure if PulseAudio is running on host
-    if ssh_vm "test -d /run/user/$uid/pulse" 2>/dev/null; then
-        echo -e "  ${RED}✗${NC} PulseAudio directory not created (but host has PulseAudio)"
-        exit 1
-    else
-        echo -e "  ${YELLOW}!${NC} PulseAudio not found (PulseAudio not running on host)"
-    fi
+    echo -e "  ${YELLOW}!${NC} PulseAudio native socket not found on host (skipping passthrough check)"
 fi
 
 # Check that the host sockets are accessible through hostfs

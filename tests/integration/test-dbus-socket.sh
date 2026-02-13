@@ -110,13 +110,13 @@ fi
 assert_eq "Session container has session-mode=true" "true" "$session_mode"
 
 # ============================================================================
-# 4. D-Bus socket symlink tests
+# 4. D-Bus socket availability tests
 # ============================================================================
 
 echo ""
 echo "5. Checking D-Bus socket in default-mode container"
 
-# In default mode the bus socket should be a symlink to the host
+# In default mode the host's bus should be accessible in-container.
 if kapsule_exec "$CONTAINER_DEFAULT" "test -e /run/user/$HOST_UID/bus" 2>/dev/null; then
     echo -e "  ${GREEN}✓${NC} D-Bus socket exists in default container"
 else
@@ -124,12 +124,10 @@ else
     exit 1
 fi
 
-if kapsule_exec "$CONTAINER_DEFAULT" "test -L /run/user/$HOST_UID/bus" 2>/dev/null; then
-    target=$(kapsule_exec "$CONTAINER_DEFAULT" "readlink /run/user/$HOST_UID/bus" 2>/dev/null)
-    expected_target="/.kapsule/host/run/user/$HOST_UID/bus"
-    assert_eq "Default D-Bus socket points to host" "$expected_target" "$target"
+if kapsule_exec "$CONTAINER_DEFAULT" "test -S /run/user/$HOST_UID/bus" 2>/dev/null; then
+    echo -e "  ${GREEN}✓${NC} D-Bus path is a socket in default container"
 else
-    echo -e "  ${RED}✗${NC} D-Bus socket is not a symlink (expected host passthrough)"
+    echo -e "  ${RED}✗${NC} D-Bus path is not a socket in default container"
     exit 1
 fi
 
@@ -137,8 +135,7 @@ echo ""
 echo "6. Checking D-Bus socket in session-mode container"
 
 # In session mode (without mux) the container's own systemd dbus.socket
-# creates /run/user/$uid/bus natively. It should be a real socket, NOT a
-# symlink to the host.
+# creates /run/user/$uid/bus natively.
 if kapsule_exec "$CONTAINER_SESSION" "test -e /run/user/$HOST_UID/bus" 2>/dev/null; then
     echo -e "  ${GREEN}✓${NC} D-Bus socket exists in session container"
 else
@@ -146,16 +143,11 @@ else
     exit 1
 fi
 
-if kapsule_exec "$CONTAINER_SESSION" "test -L /run/user/$HOST_UID/bus" 2>/dev/null; then
-    target=$(kapsule_exec "$CONTAINER_SESSION" "readlink /run/user/$HOST_UID/bus" 2>/dev/null)
-    host_target="/.kapsule/host/run/user/$HOST_UID/bus"
-    if [[ "$target" == "$host_target" ]]; then
-        echo -e "  ${RED}✗${NC} Session D-Bus socket is symlinked to host bus (should be native)"
-        exit 1
-    fi
-    echo -e "  ${YELLOW}!${NC} D-Bus socket is a symlink to: $target (expected a real socket)"
+if kapsule_exec "$CONTAINER_SESSION" "test -S /run/user/$HOST_UID/bus" 2>/dev/null; then
+    echo -e "  ${GREEN}✓${NC} D-Bus path is a socket in session container"
 else
-    echo -e "  ${GREEN}✓${NC} D-Bus socket is NOT a symlink (container's own systemd socket)"
+    echo -e "  ${RED}✗${NC} D-Bus path is not a socket in session container"
+    exit 1
 fi
 
 # ============================================================================
