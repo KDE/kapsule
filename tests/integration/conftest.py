@@ -28,14 +28,6 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
-
-
-@pytest.fixture(scope="session")
-def event_loop_policy():
-    """Use default event loop policy."""
-    return asyncio.DefaultEventLoopPolicy()
-
-
 async def ssh_run_on_vm(*cmd: str) -> asyncio.subprocess.Process:
     """Run a command on the test VM over SSH and return the process.
 
