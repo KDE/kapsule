@@ -10,6 +10,7 @@ Provides the org.kde.kapsule.Manager interface for container management.
 from __future__ import annotations
 
 import contextvars
+from dataclasses import dataclass
 import logging
 from typing import Annotated
 
@@ -40,6 +41,13 @@ logger = logging.getLogger(__name__)
 _current_sender: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "current_sender", default=None
 )
+
+
+@dataclass(frozen=True)
+class CallerCredentials:
+    uid: int
+    gid: int
+    pid: int
 
 
 class KapsuleManagerInterface(ServiceInterface):
@@ -83,14 +91,14 @@ class KapsuleManagerInterface(ServiceInterface):
         """Set the message bus for credential lookups."""
         self._bus = bus
 
-    async def _get_caller_credentials(self, sender: str) -> tuple[int, int, int]:
+    async def _get_caller_credentials(self, sender: str) -> CallerCredentials:
         """Get the UID, GID, and PID of a D-Bus caller.
 
         Args:
             sender: The unique bus name of the caller (e.g., ":1.123")
 
         Returns:
-            Tuple of (uid, gid, pid)
+            Caller credentials object.
 
         Raises:
             RuntimeError: If credentials cannot be obtained
@@ -139,7 +147,7 @@ class KapsuleManagerInterface(ServiceInterface):
         except (FileNotFoundError, PermissionError, ValueError):
             gid = uid  # Fallback
 
-        return uid, gid, pid
+        return CallerCredentials(uid=uid, gid=gid, pid=pid)
 
     def _get_process_environ(self, pid: int) -> dict[str, str]:
         """Read environment variables from a process.
@@ -225,8 +233,8 @@ class KapsuleManagerInterface(ServiceInterface):
                 raise Exception("No image specified and could not determine caller identity")
 
             try:
-                uid, _gid, _pid = await self._get_caller_credentials(sender)
-                config = await self._service.get_config(uid)
+                creds = await self._get_caller_credentials(sender)
+                config = await self._service.get_config(creds.uid)
                 actual_image = config.get("default_image", "")
                 if not actual_image:
                     raise Exception("No image specified and no default_image in config")
@@ -371,11 +379,11 @@ class KapsuleManagerInterface(ServiceInterface):
             return {"error": "Could not determine caller identity"}
 
         try:
-            uid, _gid, _pid = await self._get_caller_credentials(sender)
+            creds = await self._get_caller_credentials(sender)
         except RuntimeError as e:
             return {"error": f"Failed to get caller credentials: {e}"}
 
-        return await self._service.get_config(uid)
+        return await self._service.get_config(creds.uid)
 
     # =========================================================================
     # Methods - Enter Container
@@ -413,16 +421,16 @@ class KapsuleManagerInterface(ServiceInterface):
             return (False, "Could not determine caller identity", [])
 
         try:
-            uid, gid, pid = await self._get_caller_credentials(sender)
+            creds = await self._get_caller_credentials(sender)
         except RuntimeError as e:
             return (False, f"Failed to get caller credentials: {e}", [])
 
         # Read environment from caller's process
-        env = self._get_process_environ(pid)
+        env = self._get_process_environ(creds.pid)
 
         success, message, cmd = await self._service.prepare_enter(
-            uid=uid,
-            gid=gid,
+            uid=creds.uid,
+            gid=creds.gid,
             container_name=container_name if container_name else None,
             command=list(command),
             env=env,
