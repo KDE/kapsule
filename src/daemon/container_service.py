@@ -70,7 +70,7 @@ class BindMount:
     gid: int
 
 
-def _base_container_config(nvidia_drivers: bool = True) -> dict[str, str]:
+def _base_container_config(nvidia_drivers: bool) -> dict[str, str]:
     """Base Incus config applied to every new Kapsule container.
 
     Args:
@@ -203,7 +203,7 @@ class ContainerService:
         dbus_mux: bool = False,
         host_rootfs: bool = True,
         gpu: bool = True,
-        nvidia_drivers: bool = True,
+        nvidia_drivers: bool,
     ) -> None:
         """Create a new container.
 
