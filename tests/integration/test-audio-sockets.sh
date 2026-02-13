@@ -47,16 +47,24 @@ assert_container_state "$CONTAINER_NAME" "RUNNING"
 echo ""
 echo "2. Waiting for container to initialize..."
 
+set -x
 ready=false
 for i in $(seq 1 30); do
-    if timeout 8 kapsule_exec "true" >/dev/null 2>&1; then
+    echo "  [debug] readiness probe ${i}/30"
+    if probe_output=$(timeout 8 ssh $SSH_OPTS "$TEST_VM" "kapsule enter '$CONTAINER_NAME' -- true" 2>&1); then
         ready=true
         echo -e "  ${GREEN}✓${NC} Container enter path is ready"
         break
     fi
-    echo "  waiting for kapsule enter readiness ($i/30)..."
+
+    probe_exit=$?
+    echo "  waiting for kapsule enter readiness ($i/30)... (exit=$probe_exit)"
+    if [[ -n "$probe_output" ]]; then
+        echo "$probe_output" | sed 's/^/    /'
+    fi
     sleep 1
 done
+set +x
 
 if [[ "$ready" != "true" ]]; then
     echo -e "  ${RED}✗${NC} Container did not become enter-ready in time"
@@ -68,10 +76,12 @@ if [[ "$ready" != "true" ]]; then
 fi
 
 # Get the test user's UID on the VM
-uid=$(timeout 10 ssh_vm "id -u") || {
+set -x
+uid=$(timeout 10 ssh $SSH_OPTS "$TEST_VM" "id -u") || {
     echo -e "  ${RED}✗${NC} Failed to determine host UID over SSH"
     exit 1
 }
+set +x
 
 # Test: Check that runtime directory sockets exist (using kapsule enter to set them up)
 echo ""
