@@ -246,6 +246,14 @@ integration_test:
       set -e
       echo "incus exec smoke exit code: $incus_exec_rc"
 
+      echo "=== Smoke: D-Bus PrepareEnter call ==="
+      echo "Calling: busctl call org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter 'sas' $CONTAINER_NAME 1 true"
+      set +e
+      timeout 30 busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+      dbus_rc=$?
+      set -e
+      echo "PrepareEnter D-Bus exit code: $dbus_rc"
+
       echo "=== Smoke: verify kapsule enter path ==="
       echo "Running: timeout 30 kapsule enter $CONTAINER_NAME -- true"
       set +e
