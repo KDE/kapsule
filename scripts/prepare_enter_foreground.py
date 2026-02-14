@@ -15,7 +15,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from src.daemon.container_service import ContainerService
 from src.daemon.incus_client import IncusClient
