@@ -227,6 +227,8 @@ integration_test:
       uid="$(id -u)"
       journal_kernel_pid=""
       journal_daemon_pid=""
+      kernel_log_file="/tmp/kapsule-kernel-live.log"
+      daemon_log_file="/tmp/kapsule-daemon-live.log"
 
       cleanup() {
         if [ -n "$journal_kernel_pid" ]; then
@@ -235,15 +237,20 @@ integration_test:
         if [ -n "$journal_daemon_pid" ]; then
           kill "$journal_daemon_pid" 2>/dev/null || true
         fi
+        echo "=== Smoke: tail live kernel log ==="
+        sudo -n tail -n 200 "$kernel_log_file" 2>/dev/null || echo "(no kernel live log captured)"
+        echo "=== Smoke: tail live kapsule-daemon log ==="
+        sudo -n tail -n 200 "$daemon_log_file" 2>/dev/null || echo "(no daemon live log captured)"
         incus delete "$CONTAINER_NAME" --force 2>/dev/null || true
       }
       trap cleanup EXIT
 
       echo "=== Smoke: start live diagnostics ==="
       if command -v journalctl >/dev/null 2>&1; then
-        (journalctl -kf -o short-precise --no-pager || true) &
+        sudo -n rm -f "$kernel_log_file" "$daemon_log_file" || true
+        (sudo -n journalctl -kf -o short-precise --no-pager > "$kernel_log_file" 2>&1 || true) &
         journal_kernel_pid="$!"
-        (journalctl -f -u kapsule-daemon -o short-precise --no-pager || true) &
+        (sudo -n journalctl -f -u kapsule-daemon -o short-precise --no-pager > "$daemon_log_file" 2>&1 || true) &
         journal_daemon_pid="$!"
       fi
 
@@ -264,11 +271,28 @@ integration_test:
 
       echo "=== Smoke: D-Bus PrepareEnter call ==="
       echo "Calling: busctl call org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter 'sas' $CONTAINER_NAME 1 true"
+      echo "=== Smoke: daemon journal snapshot (pre-PrepareEnter) ==="
+      sudo -n journalctl -u kapsule-daemon --no-pager -n 120 2>&1 || true
+      echo "=== Smoke: kernel snapshot (pre-PrepareEnter) ==="
+      sudo -n dmesg --time-format=iso | tail -n 80 2>&1 || true
       set +e
-      timeout 30 busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+      timeout --signal=KILL --kill-after=5s 30 busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
       dbus_rc=$?
       set -e
       echo "PrepareEnter D-Bus exit code: $dbus_rc"
+      echo "=== Smoke: daemon journal snapshot (post-PrepareEnter) ==="
+      sudo -n journalctl -u kapsule-daemon --no-pager -n 180 2>&1 || true
+      echo "=== Smoke: kernel snapshot (post-PrepareEnter) ==="
+      sudo -n dmesg --time-format=iso | tail -n 120 2>&1 || true
+
+      if [ "$dbus_rc" -ne 0 ]; then
+        echo "ERROR: PrepareEnter D-Bus call failed or timed out"
+        echo "=== Diagnostics: daemon journal (final) ==="
+        sudo -n journalctl -u kapsule-daemon --no-pager -n 250 2>&1 || true
+        echo "=== Diagnostics: kernel log (final) ==="
+        sudo -n dmesg --time-format=iso | tail -n 200 2>&1 || true
+        exit 1
+      fi
 
       echo "=== Smoke: kapsule enter bisection probes ==="
 
