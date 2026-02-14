@@ -1,113 +1,54 @@
-# CI Pipeline Context
+# CI Investigation Context (Focused)
 
-## Branch
-`work/fernando/ci` on `invent.kde.org/kde-linux/kapsule`
+## Scope
+This file tracks only the **remaining investigation** into CI integration failures around `kapsule enter`.
 
-## What we're doing
-Setting up a GitLab CI pipeline for Kapsule following KDE best practices. The pipeline
-is being iterated on — push, check CI results, fix, repeat.
+## Active branch
+- `work/fernando/audio-smoke-3da68dd`
 
+## Investigation goal
+- Determine the root cause of the `kapsule enter` failure/hang in CI and collect minimal evidence to fix it safely.
 
-## API quick references (for fast CI triage)
+## Confirmed findings
+1. Failure reproduces in **inline `.gitlab-ci.yml` smoke steps** (not via `tests/integration/*.sh` harness).
+2. In integration CI, container creation and state checks succeed.
+3. `incus exec <container> -- true` succeeds (`exit code: 0`).
+4. `kapsule enter <container> -- true` then fails/hangs in the same job.
+5. Therefore this currently looks **Kapsule-specific**, not an Incus/container readiness issue.
 
-Project ID for `kde-linux/kapsule`: `24978`
+## Relevant CI behavior right now
+- `integration_test` now runs inline smoke diagnostics in `.gitlab-ci.yml`.
+- Python jobs are marked `allow_failure: true` so they don’t block integration debugging.
+- `after_script` is forced to collect diagnostics with `set +e` and `exit 0`.
 
-- List latest pipelines for branch:
-   - `https://invent.kde.org/api/v4/projects/24978/pipelines?ref=work%2Ffernando%2Fci&per_page=5`
-   - Example:
-      - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/pipelines?ref=work%2Ffernando%2Fci&per_page=5'`
+## Most relevant commits on this branch
+- `0e04864`: inline smoke expanded with audio-style checks
+- `2dbe720`: allow Python checks to fail during integration debugging
+- `427fe5d`: add timeout/diagnostics around smoke steps
+- `8931908`: print `kapsule enter` smoke exit code
+- `016057b`: robust `after_script` diagnostics collection
+- `72f6c4e`: compare `incus exec` vs `kapsule enter` explicitly
 
-- List jobs in a pipeline:
-   - `https://invent.kde.org/api/v4/projects/24978/pipelines/<PIPELINE_ID>/jobs?per_page=100`
-   - Example:
-      - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/pipelines/1164234/jobs?per_page=100'`
+## Fast triage commands
+Project ID: `24978`
 
-- Plain-text/raw job log (works without API token in this repo):
-   - `https://invent.kde.org/kde-linux/kapsule/-/jobs/<JOB_ID>/raw`
-   - Example:
-      - `curl -fsSL 'https://invent.kde.org/kde-linux/kapsule/-/jobs/4009020/raw' | tail -n 200`
+- Latest pipelines for this branch:
+  - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/pipelines?ref=work%2Ffernando%2Faudio-smoke-3da68dd&per_page=5' | jq`
 
-- API trace endpoint (usually requires auth):
-   - `https://invent.kde.org/api/v4/projects/24978/jobs/<JOB_ID>/trace`
-   - Example (may return `401` without token):
-      - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/jobs/4009020/trace'`
+- Jobs for a pipeline:
+  - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/pipelines/<PIPELINE_ID>/jobs?per_page=100' | jq -r 'sort_by(.id)[] | "\(.id)\t\(.stage)\t\(.name)\t\(.status)"'`
 
-## Pipeline structure
+- Integration job raw log:
+  - `curl -fsSL 'https://invent.kde.org/kde-linux/kapsule/-/jobs/<JOB_ID>/raw' | tail -n 300`
 
-### `.gitlab-ci.yml` — 6 jobs across 3 stages
+- Extract only decisive markers:
+  - `curl -fsSL 'https://invent.kde.org/kde-linux/kapsule/-/jobs/<JOB_ID>/raw' | grep -nE 'verify incus exec path|incus exec smoke exit code|verify kapsule enter path|kapsule enter smoke exit code|kapsule-specific issue|ERROR:'`
 
-| Stage | Job | Runner | Purpose |
-|-------|-----|--------|---------|
-| validate | `reuse` | Docker (Linux) | REUSE/SPDX license compliance (KDE template) |
-| build | `suse_tumbleweed_qt610` | Docker (Linux) | Standard KDE C++ build on openSUSE (KDE template, tests disabled) |
-| build | `python_lint` | Docker (`python:3.14-slim`) | `ruff check` + `ruff format --check` on Python daemon |
-| build | `python_typecheck` | Docker (`python:3.14-slim`) | `mypy` on `src/daemon/` |
-| build | `build_sysext` | **VM** (`kde-linux-builder`) | Builds C++ + Python, packages as sysext tarball artifact |
-| test | `integration_test` | **VM** (`kde-linux-builder`) | Deploys sysext, starts incus + daemon, runs integration tests |
+## Important shell note
+- In `zsh`, avoid assigning to `status` (readonly special var). Use `job_status` instead.
 
-### `.kde-ci.yml` — KDE CI dependency metadata
-- Dependencies: ECM, KCoreAddons, KI18n, KConfig (`@latest-kf6`), QCoro (`@latest`)
-- Linux only
-- `run-tests: False` (no CTest unit tests, only VM-based integration tests)
-
-## VM runner details
-- Tagged `VM` + `amd64`, uses custom executor (`vm-runner`)
-- Image: `storage.kde.org/vm-images/kde-linux-builder` (Arch Linux cloud VM)
-- The CI user is `user` with passwordless sudo
-- Each job gets a fresh VM — no state is preserved between jobs
-
-## Issues fixed so far (in chronological order)
-
-1. **iptables conflict** (commit `91696bf`): `incus` depends on `iptables-nft` which
-   conflicts with `iptables` pre-installed in the VM image. Fixed with `--ask 4` flag
-   to pacman so it auto-resolves conflicts.
-
-2. **D-Bus policy not loaded** (commit `c9f3dd0`): The sysext installs
-   `org.kde.kapsule.conf` D-Bus policy into `/usr/share/dbus-1/system.d/`, but
-   dbus-daemon doesn't see new policy files until reloaded. Fixed by adding
-   `sudo systemctl reload dbus.service` after `systemd-sysext refresh`.
-
-3. **Missing shared libraries** (commit `1c294f1`): The kapsule CLI binary links
-   against Qt6, KF6, and QCoro shared libs. The build_sysext job installs them for
-   build but the integration_test VM is a separate fresh VM that didn't have them.
-   Fixed by also installing `qt6-base ki18n kcoreaddons kconfig qcoro-qt6` in the
-   test job.
-
-4. **Incus socket permissions** (commit `1c294f1`): `usermod -aG incus $(whoami)`
-   doesn't take effect until a new login session. Fixed by doing
-   `chmod 0666 /var/lib/incus/unix.socket` instead.
-
-5. **Root SSH for tests** (commit `1c294f1`): `test-profile-sync.sh` SSHes as root
-   to restart the daemon. Fixed by copying the CI user's SSH public key into
-   `/root/.ssh/authorized_keys`.
-
-6. **after_script silent failure** (commit TBD): The `after_script` in
-   `integration_test` produced zero diagnostic output and failed with exit status 1.
-   The `|| true` guards on individual commands didn't help because the after_script
-   block likely failed at the `sudo` call (custom VM executor may not preserve sudo
-   context in after_script). Fixed by adding `set +e` as the first after_script line,
-   using `sudo -n` (non-interactive) to avoid hanging on password prompts, and
-   wrapping each command with `2>&1` + fallback echo.
-
-7. **No pre-test diagnostics** (commit TBD): The integration_test job had no
-   verification steps between environment setup and running tests, making it
-   impossible to know which component was broken when tests failed. Fixed by adding
-   verification sections after sysext deploy (check files exist, CLI works), after
-   incus start (version, socket), after daemon start (systemctl status, D-Bus tree),
-   and after SSH setup (test connection).
-
-## Likely next issues
-- The test-audio-sockets test creates an archlinux container. The test hit
-  "Waiting for container to initialize" and then something after that failed —
-  likely `kapsule enter` or the socket checks on a headless CI VM without audio.
-  Now that diagnostic logs are collected, the next run will show exactly where.
-- The `python_lint` job is failing with 157 ruff errors (import sorting, line length,
-  etc.) — these need to be fixed separately or the ruff config adjusted.
-- The Arch package names for KF6 libs might be wrong (e.g. `ki18n` vs `ki18n6` etc.)
-  — check the build log if pacman can't find them.
-- The `build_sysext` job might also need the `--ask 4` flag if it hits the same
-  iptables conflict (it doesn't install incus though, so probably fine).
-- Integration tests may hit real test failures once environment setup is working.
-- The `python_lint` and `python_typecheck` jobs install from `.[dev]` which requires
-  setuptools to parse `pyproject.toml` — if these fail, check that the package
-  metadata is correct.
+## Next investigation steps
+1. Add targeted daemon-side logs around Enter D-Bus call handling (`kapsule-daemon` path).
+2. In CI, capture daemon journal immediately before/after `kapsule enter` attempt.
+3. If needed, add temporary debug output in daemon enter flow (request args, subprocess spawn, timeout path).
+4. Keep integration smoke minimal until root cause is isolated.
