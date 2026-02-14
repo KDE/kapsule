@@ -291,6 +291,9 @@ integration_test:
 
       echo "=== Smoke: timeout control probe ==="
       set +e
+      echo "=== Smoke: foreground probe preflight ==="
+      python -u -c 'print("probe:python-start", flush=True)'
+      python -u -c 'print("probe:import-start", flush=True); import src.daemon.container_service; print("probe:import-ok", flush=True)'
       timeout 30 python -u scripts/prepare_enter_foreground.py "$CONTAINER_NAME" -- true
       dbus_rc=$?
       echo "PrepareEnter foreground exit code: $dbus_rc"
