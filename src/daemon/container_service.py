@@ -15,7 +15,7 @@ import logging
 import os
 import pwd
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from .config import load_config
 from .operations import OperationError, OperationReporter, OperationTracker, operation
@@ -681,6 +681,58 @@ class ContainerService:
     ) -> tuple[bool, str, list[str]]:
         """Prepare everything needed to enter a container.
 
+        This is the daemon-facing path used by the D-Bus method.
+        """
+
+        def phase_logger(message: str) -> None:
+            logger.warning("PrepareEnter %s", message)
+
+        return await self._prepare_enter_impl(
+            uid=uid,
+            gid=gid,
+            container_name=container_name,
+            command=command,
+            env=env,
+            phase_logger=phase_logger,
+        )
+
+    async def prepare_enter_foreground_debug(
+        self,
+        uid: int,
+        gid: int,
+        container_name: str | None,
+        command: list[str],
+        env: dict[str, str],
+    ) -> tuple[bool, str, list[str]]:
+        """Run PrepareEnter logic in foreground with explicit prints per phase.
+
+        This is intended for CI/debug workflows where we want direct stdout
+        traces before each PrepareEnter step.
+        """
+
+        def phase_logger(message: str) -> None:
+            print(f"PrepareEnter {message}", flush=True)
+
+        return await self._prepare_enter_impl(
+            uid=uid,
+            gid=gid,
+            container_name=container_name,
+            command=command,
+            env=env,
+            phase_logger=phase_logger,
+        )
+
+    async def _prepare_enter_impl(
+        self,
+        uid: int,
+        gid: int,
+        container_name: str | None,
+        command: list[str],
+        env: dict[str, str],
+        phase_logger: Callable[[str], None],
+    ) -> tuple[bool, str, list[str]]:
+        """Prepare everything needed to enter a container.
+
         This method handles all the setup logic for entering a container:
         - Resolves the container name from config if not specified
         - Creates the default container if it doesn't exist
@@ -713,20 +765,21 @@ class ContainerService:
         except KeyError:
             return (False, f"User with UID {uid} not found", [])
 
-        logger.warning(
-            "PrepareEnter phase=start uid=%d gid=%d user=%s container=%s cmd=%s skips={user_setup:%s,runtime_mounts:%s,su_login:%s}",
-            uid,
-            gid,
-            username,
-            container_name or "",
-            " ".join(command) if command else "(shell)",
-            debug_skip_user_setup,
-            debug_skip_runtime_mounts,
-            debug_skip_su_login,
+        phase_logger(
+            "phase=start uid={} gid={} user={} container={} cmd={} skips={{user_setup:{},runtime_mounts:{},su_login:{}}}".format(
+                uid,
+                gid,
+                username,
+                container_name or "",
+                " ".join(command) if command else "(shell)",
+                debug_skip_user_setup,
+                debug_skip_runtime_mounts,
+                debug_skip_su_login,
+            )
         )
 
         # Load config for defaults (using caller's home for XDG paths)
-        logger.warning("PrepareEnter phase=load_config")
+        phase_logger("phase=load_config")
         config = load_config(home_dir=home_dir)
 
         # Use default container name if not specified
@@ -734,7 +787,7 @@ class ContainerService:
             container_name = config.default_container
 
         # Check if container exists
-        logger.warning("PrepareEnter phase=check_container_exists container=%s", container_name)
+        phase_logger(f"phase=check_container_exists container={container_name}")
         container_exists = await self._incus.instance_exists(container_name)
 
         if not container_exists:
@@ -742,7 +795,7 @@ class ContainerService:
             if container_name == config.default_container:
                 # Create the container (this is a synchronous operation here)
                 try:
-                    logger.warning("PrepareEnter phase=create_default_container container=%s", container_name)
+                    phase_logger(f"phase=create_default_container container={container_name}")
                     await self._create_default_container(
                         container_name, config.default_image
                     )
@@ -752,14 +805,14 @@ class ContainerService:
                 return (False, f"Container '{container_name}' does not exist", [])
 
         # Check container status
-        logger.warning("PrepareEnter phase=get_container_status container=%s", container_name)
+        phase_logger(f"phase=get_container_status container={container_name}")
         instance = await self._incus.get_instance(container_name)
         status = (instance.status or "unknown").lower()
 
         if status != "running":
             # Start the container
             try:
-                logger.warning("PrepareEnter phase=start_container container=%s", container_name)
+                phase_logger(f"phase=start_container container={container_name}")
                 op = await self._incus.start_instance(container_name, wait=True)
                 if op.status != "Success":
                     return (False, f"Failed to start container: {op.err or op.status}", [])
@@ -767,25 +820,25 @@ class ContainerService:
                 return (False, f"Failed to start container: {e}", [])
 
         # Set up user if needed
-        logger.warning("PrepareEnter phase=check_user_setup container=%s uid=%d", container_name, uid)
+        phase_logger(f"phase=check_user_setup container={container_name} uid={uid}")
         if not debug_skip_user_setup and not await self.is_user_setup(container_name, uid):
             try:
-                logger.warning("PrepareEnter phase=setup_user container=%s uid=%d", container_name, uid)
+                phase_logger(f"phase=setup_user container={container_name} uid={uid}")
                 await self._setup_user_sync(container_name, uid, gid, username, home_dir)
             except OperationError as e:
                 return (False, str(e), [])
         elif debug_skip_user_setup:
-            logger.warning("PrepareEnter phase=skip_user_setup container=%s uid=%d", container_name, uid)
+            phase_logger(f"phase=skip_user_setup container={container_name} uid={uid}")
 
         # Set up runtime directory symlinks
         if not debug_skip_runtime_mounts:
             try:
-                logger.warning("PrepareEnter phase=setup_runtime_mounts container=%s uid=%d", container_name, uid)
+                phase_logger(f"phase=setup_runtime_mounts container={container_name} uid={uid}")
                 await self._setup_runtime_symlinks(container_name, uid, gid, env)
             except OperationError as e:
                 return (False, str(e), [])
         else:
-            logger.warning("PrepareEnter phase=skip_runtime_mounts container=%s uid=%d", container_name, uid)
+            phase_logger(f"phase=skip_runtime_mounts container={container_name} uid={uid}")
 
         # Build environment arguments
         env_args: list[str] = []
@@ -811,7 +864,7 @@ class ContainerService:
         # that are needed for PulseAudio/PipeWire socket discovery.
         whitelist_arg = ",".join(whitelist_keys) if whitelist_keys else ""
         if debug_skip_su_login:
-            logger.warning("PrepareEnter phase=skip_su_login container=%s uid=%d", container_name, uid)
+            phase_logger(f"phase=skip_su_login container={container_name} uid={uid}")
             if command:
                 exec_cmd = command
             else:
@@ -832,12 +885,13 @@ class ContainerService:
             *exec_cmd,
         ]
 
-        logger.warning(
-            "PrepareEnter phase=done container=%s uid=%d env_count=%d exec_head=%s",
-            container_name,
-            uid,
-            len(env_args) // 2,
-            " ".join(exec_args[:8]),
+        phase_logger(
+            "phase=done container={} uid={} env_count={} exec_head={}".format(
+                container_name,
+                uid,
+                len(env_args) // 2,
+                " ".join(exec_args[:8]),
+            )
         )
 
         return (True, "", exec_args)

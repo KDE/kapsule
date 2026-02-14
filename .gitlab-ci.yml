@@ -291,11 +291,9 @@ integration_test:
 
       echo "=== Smoke: timeout control probe ==="
       set +e
-      rm -f /tmp/kapsule_probe_reached
-      rm -f /tmp/kapsule_prepareenter_rc
-      python -u -c $'import subprocess,sys\n\ndef run_with_timeout(cmd,t):\n    try:\n        cp=subprocess.run(cmd,check=False,capture_output=True,text=True,timeout=t)\n        if cp.stdout:\n            print(cp.stdout,end="",flush=True)\n        if cp.stderr:\n            print(cp.stderr,end="",file=sys.stderr,flush=True)\n        return cp.returncode\n    except subprocess.TimeoutExpired as exc:\n        if exc.stdout:\n            print(exc.stdout,end="",flush=True)\n        if exc.stderr:\n            print(exc.stderr,end="",file=sys.stderr,flush=True)\n        print("Command timed out after " + str(t) + "s: " + " ".join(cmd), file=sys.stderr, flush=True)\n        return 124\n\nprobe_rc=run_with_timeout(["sleep","10"],2.0)\nprint(f"timeout control exit code: {probe_rc}", flush=True)\nopen("/tmp/kapsule_probe_reached","w",encoding="utf-8").write(str(probe_rc))\ncontainer=sys.argv[1]\ndbus_cmd=["busctl","call","--verbose","org.kde.kapsule","/org/kde/kapsule","org.kde.kapsule.Manager","PrepareEnter","sas",container,"1","true"]\ndbus_rc=run_with_timeout(dbus_cmd,30.0)\nprint(f"PrepareEnter D-Bus exit code: {dbus_rc}", flush=True)\nopen("/tmp/kapsule_prepareenter_rc","w",encoding="utf-8").write(str(dbus_rc))\n' "$CONTAINER_NAME"
-      echo "timeout probe marker: $(cat /tmp/kapsule_probe_reached 2>/dev/null || echo missing)"
-      dbus_rc="$(cat /tmp/kapsule_prepareenter_rc 2>/dev/null || echo 125)"
+      timeout 30 python -u scripts/prepare_enter_foreground.py "$CONTAINER_NAME" -- true
+      dbus_rc=$?
+      echo "PrepareEnter foreground exit code: $dbus_rc"
       set -e
       echo "=== Smoke: D-Bus monitor tail (post-PrepareEnter) ==="
       sudo -n tail -n 120 "$dbus_log_file" 2>&1 || true
