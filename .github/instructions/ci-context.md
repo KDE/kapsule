@@ -15,6 +15,7 @@ This file tracks only the **remaining investigation** into CI integration failur
 3. `incus exec <container> -- true` succeeds (`exit code: 0`).
 4. `kapsule enter <container> -- true` then fails/hangs in the same job.
 5. Therefore this currently looks **Kapsule-specific**, not an Incus/container readiness issue.
+6. `kapsule enter` works correctly and all integration tests pass on the local development VM — the failure is **CI-environment-specific**.
 
 ## Relevant CI behavior right now
 - `integration_test` now runs inline smoke diagnostics in `.gitlab-ci.yml`.
