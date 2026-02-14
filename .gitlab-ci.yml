@@ -239,47 +239,54 @@ integration_test:
       incus list
 
       echo "=== Smoke: verify enter path ==="
-      kapsule enter "$CONTAINER_NAME" -- true
+      if ! timeout 30 kapsule enter "$CONTAINER_NAME" -- true; then
+        echo "ERROR: kapsule enter smoke command failed or timed out"
+        echo "=== Diagnostics: incus info ==="
+        incus info "$CONTAINER_NAME" || true
+        echo "=== Diagnostics: container log ==="
+        incus info "$CONTAINER_NAME" --show-log || true
+        exit 1
+      fi
 
       echo "=== Audio: checking runtime sockets ==="
       if test -S "/run/user/$uid/pipewire-0"; then
-        kapsule enter "$CONTAINER_NAME" -- test -S "/run/user/$uid/pipewire-0"
+        timeout 20 kapsule enter "$CONTAINER_NAME" -- test -S "/run/user/$uid/pipewire-0"
         echo "PipeWire socket is available in container"
       else
         echo "PipeWire socket not found on host (skipping passthrough check)"
       fi
 
       if test -S "/run/user/$uid/pulse/native"; then
-        kapsule enter "$CONTAINER_NAME" -- test -d "/run/user/$uid/pulse"
-        kapsule enter "$CONTAINER_NAME" -- test -S "/run/user/$uid/pulse/native"
+        timeout 20 kapsule enter "$CONTAINER_NAME" -- test -d "/run/user/$uid/pulse"
+        timeout 20 kapsule enter "$CONTAINER_NAME" -- test -S "/run/user/$uid/pulse/native"
         echo "PulseAudio socket is available in container"
       else
         echo "PulseAudio socket not found on host (skipping passthrough check)"
       fi
 
       echo "=== Audio: checking hostfs socket visibility ==="
-      if kapsule enter "$CONTAINER_NAME" -- test -S "/.kapsule/host/run/user/$uid/pipewire-0"; then
+      if timeout 20 kapsule enter "$CONTAINER_NAME" -- test -S "/.kapsule/host/run/user/$uid/pipewire-0"; then
         echo "Host PipeWire socket visible via hostfs"
       else
         echo "Host PipeWire socket not visible via hostfs (may not be running)"
       fi
 
-      if kapsule enter "$CONTAINER_NAME" -- test -d "/.kapsule/host/run/user/$uid/pulse"; then
+      if timeout 20 kapsule enter "$CONTAINER_NAME" -- test -d "/.kapsule/host/run/user/$uid/pulse"; then
         echo "Host PulseAudio directory visible via hostfs"
       else
         echo "Host PulseAudio directory not visible via hostfs (may not be running)"
       fi
 
       echo "=== Audio: tool-level checks (best effort) ==="
-      if kapsule enter "$CONTAINER_NAME" -- sudo pacman -Syu --noconfirm libpulse pipewire; then
-        if kapsule enter "$CONTAINER_NAME" -- pactl info; then
+      if timeout 180 kapsule enter "$CONTAINER_NAME" -- sudo pacman -Syu --noconfirm libpulse pipewire; then
+        if timeout 20 kapsule enter "$CONTAINER_NAME" -- pactl info; then
           echo "pactl info succeeded"
         else
           echo "pactl info failed"
           exit 1
         fi
 
-        if kapsule enter "$CONTAINER_NAME" -- pw-cli info 0; then
+        if timeout 20 kapsule enter "$CONTAINER_NAME" -- pw-cli info 0; then
           echo "pw-cli info succeeded"
         else
           echo "pw-cli info failed"
