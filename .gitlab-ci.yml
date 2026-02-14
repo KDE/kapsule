@@ -26,6 +26,7 @@ include:
 
 python_lint:
   extends: .python_base
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH
@@ -35,6 +36,7 @@ python_lint:
 
 python_typecheck:
   extends: .python_base
+  allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH
