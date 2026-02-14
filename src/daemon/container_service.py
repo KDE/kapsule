@@ -824,7 +824,14 @@ class ContainerService:
         if not debug_skip_user_setup and not await self.is_user_setup(container_name, uid):
             try:
                 phase_logger(f"phase=setup_user container={container_name} uid={uid}")
-                await self._setup_user_sync(container_name, uid, gid, username, home_dir)
+                await self._setup_user_sync(
+                    container_name,
+                    uid,
+                    gid,
+                    username,
+                    home_dir,
+                    step_logger=phase_logger,
+                )
             except OperationError as e:
                 return (False, str(e), [])
         elif debug_skip_user_setup:
@@ -947,6 +954,7 @@ class ContainerService:
         gid: int,
         username: str,
         home_dir: str,
+        step_logger: Callable[[str], None] | None = None,
     ) -> None:
         """Set up a host user in a container without progress reporting.
 
@@ -960,7 +968,31 @@ class ContainerService:
         home_basename = os.path.basename(home_dir)
         container_home = f"/home/{home_basename}"
 
+        def log_step(message: str) -> None:
+            if step_logger is not None:
+                step_logger(message)
+
+        def run_incus_exec(args: list[str], *, label: str) -> None:
+            log_step(f"setup_user:{label}:begin")
+            try:
+                result = subprocess.run(
+                    ["incus", "exec", container_name, "--", *args],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                stderr = (exc.stderr or "").strip()
+                raise OperationError(
+                    f"setup_user:{label} timed out after 20s"
+                    + (f": {stderr}" if stderr else "")
+                ) from exc
+
+            log_step(f"setup_user:{label}:rc={result.returncode}")
+
         # Mount home directory
+        log_step("setup_user:add_instance_device_home:begin")
         device_name = f"kapsule-home-{username}"
         try:
             await self._incus.add_instance_device(
@@ -972,6 +1004,7 @@ class ContainerService:
                     "path": container_home,
                 },
             )
+            log_step("setup_user:add_instance_device_home:ok")
         except IncusError as e:
             raise OperationError(f"Failed to mount home directory: {e}")
 
@@ -984,6 +1017,7 @@ class ContainerService:
         if not has_host_rootfs:
             # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
             hostrun_device = f"kapsule-hostrun-{uid}"
+            log_step("setup_user:add_instance_device_hostrun:begin")
             try:
                 await self._incus.add_instance_device(
                     container_name,
@@ -997,10 +1031,12 @@ class ContainerService:
                         "propagation": "rslave",
                     },
                 )
+                log_step("setup_user:add_instance_device_hostrun:ok")
             except IncusError as e:
                 raise OperationError(f"Failed to mount host runtime dir: {e}")
 
             # Mount /tmp/.X11-unix at /.kapsule/host/tmp/.X11-unix for X11
+            log_step("setup_user:add_instance_device_x11:begin")
             try:
                 await self._incus.add_instance_device(
                     container_name,
@@ -1014,22 +1050,16 @@ class ContainerService:
                         "propagation": "rslave",
                     },
                 )
+                log_step("setup_user:add_instance_device_x11:ok")
             except IncusError as e:
                 raise OperationError(f"Failed to mount host X11 dir: {e}")
 
         # Create group
-        subprocess.run(
-            ["incus", "exec", container_name, "--", "groupadd", "-o", "-g", str(gid), username],
-            capture_output=True,
-        )
+        run_incus_exec(["groupadd", "-o", "-g", str(gid), username], label="groupadd")
 
         # Create user
-        subprocess.run(
+        run_incus_exec(
             [
-                "incus",
-                "exec",
-                container_name,
-                "--",
                 "useradd",
                 "-o",
                 "-M",
@@ -1043,17 +1073,15 @@ class ContainerService:
                 "/bin/bash",
                 username,
             ],
-            capture_output=True,
+            label="useradd",
         )
 
         # Configure passwordless sudo
         # Ensure /etc/sudoers.d/ exists (Alpine and other minimal images may lack it)
-        subprocess.run(
-            ["incus", "exec", container_name, "--", "mkdir", "-p", "/etc/sudoers.d"],
-            capture_output=True,
-        )
+        run_incus_exec(["mkdir", "-p", "/etc/sudoers.d"], label="mkdir_sudoers")
         sudoers_content = f"{username} ALL=(ALL) NOPASSWD:ALL\n"
         sudoers_file = f"/etc/sudoers.d/{username}"
+        log_step("setup_user:push_sudoers:begin")
         try:
             await self._incus.push_file(
                 container_name,
@@ -1063,6 +1091,7 @@ class ContainerService:
                 gid=0,
                 mode="0440",
             )
+            log_step("setup_user:push_sudoers:ok")
         except IncusError as e:
             raise OperationError(f"Failed to configure sudo: {e}")
 
@@ -1070,15 +1099,14 @@ class ContainerService:
         session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
 
         if session_mode:
-            subprocess.run(
-                ["incus", "exec", container_name, "--", "loginctl", "enable-linger", username],
-                capture_output=True,
-            )
+            run_incus_exec(["loginctl", "enable-linger", username], label="enable_linger")
 
         # Mark user as mapped
         user_mapped_key = f"user.kapsule.host-users.{uid}.mapped"
+        log_step("setup_user:patch_instance_config:begin")
         try:
             await self._incus.patch_instance_config(container_name, {user_mapped_key: "true"})
+            log_step("setup_user:patch_instance_config:ok")
         except IncusError as e:
             raise OperationError(f"Failed to update container config: {e}")
 
