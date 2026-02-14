@@ -62,6 +62,12 @@ _ENTER_ENV_SKIP = frozenset({
 })
 
 
+def _env_debug_enabled(env: dict[str, str], key: str) -> bool:
+    """Return True when a debug env toggle is enabled."""
+    value = env.get(key, "")
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class BindMount:
     source: str
@@ -695,6 +701,10 @@ class ContainerService:
             On success: (True, "", ["incus", "exec", ...])
             On failure: (False, "error message", [])
         """
+        debug_skip_user_setup = _env_debug_enabled(env, "KAPSULE_DEBUG_SKIP_USER_SETUP")
+        debug_skip_runtime_mounts = _env_debug_enabled(env, "KAPSULE_DEBUG_SKIP_RUNTIME_MOUNTS")
+        debug_skip_su_login = _env_debug_enabled(env, "KAPSULE_DEBUG_SKIP_SU_LOGIN")
+
         # Get user info from UID
         try:
             pw_entry = pwd.getpwuid(uid)
@@ -703,7 +713,20 @@ class ContainerService:
         except KeyError:
             return (False, f"User with UID {uid} not found", [])
 
+        logger.warning(
+            "PrepareEnter phase=start uid=%d gid=%d user=%s container=%s cmd=%s skips={user_setup:%s,runtime_mounts:%s,su_login:%s}",
+            uid,
+            gid,
+            username,
+            container_name or "",
+            " ".join(command) if command else "(shell)",
+            debug_skip_user_setup,
+            debug_skip_runtime_mounts,
+            debug_skip_su_login,
+        )
+
         # Load config for defaults (using caller's home for XDG paths)
+        logger.warning("PrepareEnter phase=load_config")
         config = load_config(home_dir=home_dir)
 
         # Use default container name if not specified
@@ -711,6 +734,7 @@ class ContainerService:
             container_name = config.default_container
 
         # Check if container exists
+        logger.warning("PrepareEnter phase=check_container_exists container=%s", container_name)
         container_exists = await self._incus.instance_exists(container_name)
 
         if not container_exists:
@@ -718,6 +742,7 @@ class ContainerService:
             if container_name == config.default_container:
                 # Create the container (this is a synchronous operation here)
                 try:
+                    logger.warning("PrepareEnter phase=create_default_container container=%s", container_name)
                     await self._create_default_container(
                         container_name, config.default_image
                     )
@@ -727,12 +752,14 @@ class ContainerService:
                 return (False, f"Container '{container_name}' does not exist", [])
 
         # Check container status
+        logger.warning("PrepareEnter phase=get_container_status container=%s", container_name)
         instance = await self._incus.get_instance(container_name)
         status = (instance.status or "unknown").lower()
 
         if status != "running":
             # Start the container
             try:
+                logger.warning("PrepareEnter phase=start_container container=%s", container_name)
                 op = await self._incus.start_instance(container_name, wait=True)
                 if op.status != "Success":
                     return (False, f"Failed to start container: {op.err or op.status}", [])
@@ -740,17 +767,25 @@ class ContainerService:
                 return (False, f"Failed to start container: {e}", [])
 
         # Set up user if needed
-        if not await self.is_user_setup(container_name, uid):
+        logger.warning("PrepareEnter phase=check_user_setup container=%s uid=%d", container_name, uid)
+        if not debug_skip_user_setup and not await self.is_user_setup(container_name, uid):
             try:
+                logger.warning("PrepareEnter phase=setup_user container=%s uid=%d", container_name, uid)
                 await self._setup_user_sync(container_name, uid, gid, username, home_dir)
             except OperationError as e:
                 return (False, str(e), [])
+        elif debug_skip_user_setup:
+            logger.warning("PrepareEnter phase=skip_user_setup container=%s uid=%d", container_name, uid)
 
         # Set up runtime directory symlinks
-        try:
-            await self._setup_runtime_symlinks(container_name, uid, gid, env)
-        except OperationError as e:
-            return (False, str(e), [])
+        if not debug_skip_runtime_mounts:
+            try:
+                logger.warning("PrepareEnter phase=setup_runtime_mounts container=%s uid=%d", container_name, uid)
+                await self._setup_runtime_symlinks(container_name, uid, gid, env)
+            except OperationError as e:
+                return (False, str(e), [])
+        else:
+            logger.warning("PrepareEnter phase=skip_runtime_mounts container=%s uid=%d", container_name, uid)
 
         # Build environment arguments
         env_args: list[str] = []
@@ -775,10 +810,17 @@ class ContainerService:
         # preventing su -l from clearing vars like XDG_RUNTIME_DIR
         # that are needed for PulseAudio/PipeWire socket discovery.
         whitelist_arg = ",".join(whitelist_keys) if whitelist_keys else ""
-        if command:
-            exec_cmd = ["su", "-l", "-w", whitelist_arg, "-c", " ".join(command), username]
+        if debug_skip_su_login:
+            logger.warning("PrepareEnter phase=skip_su_login container=%s uid=%d", container_name, uid)
+            if command:
+                exec_cmd = command
+            else:
+                exec_cmd = ["bash", "-l"]
         else:
-            exec_cmd = ["su", "-l", "-w", whitelist_arg, username]
+            if command:
+                exec_cmd = ["su", "-l", "-w", whitelist_arg, "-c", " ".join(command), username]
+            else:
+                exec_cmd = ["su", "-l", "-w", whitelist_arg, username]
 
         # Build full incus exec command
         exec_args = [
@@ -789,6 +831,14 @@ class ContainerService:
             "--",
             *exec_cmd,
         ]
+
+        logger.warning(
+            "PrepareEnter phase=done container=%s uid=%d env_count=%d exec_head=%s",
+            container_name,
+            uid,
+            len(env_args) // 2,
+            " ".join(exec_args[:8]),
+        )
 
         return (True, "", exec_args)
 

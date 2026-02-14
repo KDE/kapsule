@@ -420,6 +420,13 @@ class KapsuleManagerInterface(ServiceInterface):
         if sender is None:
             return (False, "Could not determine caller identity", [])
 
+        logger.warning(
+            "PrepareEnter rpc=start sender=%s container=%s argc=%d",
+            sender,
+            container_name,
+            len(command),
+        )
+
         try:
             creds = await self._get_caller_credentials(sender)
         except RuntimeError as e:
@@ -434,6 +441,13 @@ class KapsuleManagerInterface(ServiceInterface):
             container_name=container_name if container_name else None,
             command=list(command),
             env=env,
+        )
+        logger.warning(
+            "PrepareEnter rpc=done sender=%s success=%s cmd_len=%d message=%s",
+            sender,
+            success,
+            len(cmd),
+            message,
         )
         return (success, message, cmd)
 

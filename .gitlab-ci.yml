@@ -225,11 +225,27 @@ integration_test:
       CONTAINER_NAME="test-audio-inline-smoke"
       TEST_IMAGE="images:archlinux"
       uid="$(id -u)"
+      journal_kernel_pid=""
+      journal_daemon_pid=""
 
       cleanup() {
+        if [ -n "$journal_kernel_pid" ]; then
+          kill "$journal_kernel_pid" 2>/dev/null || true
+        fi
+        if [ -n "$journal_daemon_pid" ]; then
+          kill "$journal_daemon_pid" 2>/dev/null || true
+        fi
         incus delete "$CONTAINER_NAME" --force 2>/dev/null || true
       }
       trap cleanup EXIT
+
+      echo "=== Smoke: start live diagnostics ==="
+      if command -v journalctl >/dev/null 2>&1; then
+        (journalctl -kf -o short-precise --no-pager || true) &
+        journal_kernel_pid="$!"
+        (journalctl -f -u kapsule-daemon -o short-precise --no-pager || true) &
+        journal_daemon_pid="$!"
+      fi
 
       echo "=== Smoke: create container ==="
       kapsule create "$CONTAINER_NAME" --image "$TEST_IMAGE"
@@ -253,6 +269,31 @@ integration_test:
       dbus_rc=$?
       set -e
       echo "PrepareEnter D-Bus exit code: $dbus_rc"
+
+      echo "=== Smoke: kapsule enter bisection probes ==="
+
+      echo "Probe 1/4: all skips enabled (user setup + runtime mounts + su login)"
+      set +e
+      timeout 30 env KAPSULE_DEBUG_SKIP_USER_SETUP=1 KAPSULE_DEBUG_SKIP_RUNTIME_MOUNTS=1 KAPSULE_DEBUG_SKIP_SU_LOGIN=1 kapsule enter "$CONTAINER_NAME" -- true
+      enter_probe_all_skips_rc=$?
+      set -e
+      echo "kapsule enter probe(all_skips) exit code: $enter_probe_all_skips_rc"
+
+      echo "Probe 2/4: only runtime mounts enabled (su login + user setup skipped)"
+      set +e
+      timeout 30 env KAPSULE_DEBUG_SKIP_USER_SETUP=1 KAPSULE_DEBUG_SKIP_SU_LOGIN=1 kapsule enter "$CONTAINER_NAME" -- true
+      enter_probe_mounts_only_rc=$?
+      set -e
+      echo "kapsule enter probe(mounts_only) exit code: $enter_probe_mounts_only_rc"
+
+      echo "Probe 3/4: only su login enabled (runtime mounts + user setup skipped)"
+      set +e
+      timeout 30 env KAPSULE_DEBUG_SKIP_USER_SETUP=1 KAPSULE_DEBUG_SKIP_RUNTIME_MOUNTS=1 kapsule enter "$CONTAINER_NAME" -- true
+      enter_probe_su_only_rc=$?
+      set -e
+      echo "kapsule enter probe(su_only) exit code: $enter_probe_su_only_rc"
+
+      echo "Probe 4/4: baseline (no skips)"
 
       echo "=== Smoke: verify kapsule enter path ==="
       echo "Running: timeout 30 kapsule enter $CONTAINER_NAME -- true"
@@ -282,6 +323,11 @@ integration_test:
 
       if [ "$enter_rc" -ne 0 ]; then
         echo "ERROR: kapsule enter smoke command failed or timed out"
+        echo "=== Probe Summary ==="
+        echo "probe(all_skips)=$enter_probe_all_skips_rc"
+        echo "probe(mounts_only)=$enter_probe_mounts_only_rc"
+        echo "probe(su_only)=$enter_probe_su_only_rc"
+        echo "probe(baseline)=$enter_rc"
         echo "=== Diagnostics: incus info ==="
         incus info "$CONTAINER_NAME" || true
         echo "=== Diagnostics: container log ==="
