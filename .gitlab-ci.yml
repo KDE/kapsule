@@ -289,7 +289,11 @@ integration_test:
       echo "=== Smoke: kernel snapshot (pre-PrepareEnter) ==="
       sudo -n dmesg --time-format=iso | tail -n 80 2>&1 || true
       set +e
-      timeout --signal=KILL --kill-after=5s 30 strace -ff -tt -s 200 -o "$busctl_strace_prefix" busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+      if command -v strace >/dev/null 2>&1; then
+        timeout --signal=KILL --kill-after=5s 30 strace -ff -tt -s 200 -o "$busctl_strace_prefix" busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+      else
+        timeout --signal=KILL --kill-after=5s 30 busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+      fi
       dbus_rc=$?
       set -e
       echo "PrepareEnter D-Bus exit code: $dbus_rc"
