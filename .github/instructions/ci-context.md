@@ -7,9 +7,30 @@
 Setting up a GitLab CI pipeline for Kapsule following KDE best practices. The pipeline
 is being iterated on — push, check CI results, fix, repeat.
 
-## Current state
-The pipeline was last pushed at commit `1c294f1` and is waiting for CI results.
-Check the latest pipeline at: https://invent.kde.org/kde-linux/kapsule/-/pipelines?ref=work/fernando/ci
+
+## API quick references (for fast CI triage)
+
+Project ID for `kde-linux/kapsule`: `24978`
+
+- List latest pipelines for branch:
+   - `https://invent.kde.org/api/v4/projects/24978/pipelines?ref=work%2Ffernando%2Fci&per_page=5`
+   - Example:
+      - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/pipelines?ref=work%2Ffernando%2Fci&per_page=5'`
+
+- List jobs in a pipeline:
+   - `https://invent.kde.org/api/v4/projects/24978/pipelines/<PIPELINE_ID>/jobs?per_page=100`
+   - Example:
+      - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/pipelines/1164234/jobs?per_page=100'`
+
+- Plain-text/raw job log (works without API token in this repo):
+   - `https://invent.kde.org/kde-linux/kapsule/-/jobs/<JOB_ID>/raw`
+   - Example:
+      - `curl -fsSL 'https://invent.kde.org/kde-linux/kapsule/-/jobs/4009020/raw' | tail -n 200`
+
+- API trace endpoint (usually requires auth):
+   - `https://invent.kde.org/api/v4/projects/24978/jobs/<JOB_ID>/trace`
+   - Example (may return `401` without token):
+      - `curl -fsSL 'https://invent.kde.org/api/v4/projects/24978/jobs/4009020/trace'`
 
 ## Pipeline structure
 
