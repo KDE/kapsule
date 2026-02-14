@@ -238,13 +238,40 @@ integration_test:
       incus info "$CONTAINER_NAME"
       incus list
 
-      echo "=== Smoke: verify enter path ==="
+      echo "=== Smoke: verify incus exec path ==="
+      echo "Running: timeout 30 incus exec $CONTAINER_NAME -- true"
+      set +e
+      timeout 30 incus exec "$CONTAINER_NAME" -- true
+      incus_exec_rc=$?
+      set -e
+      echo "incus exec smoke exit code: $incus_exec_rc"
+
+      echo "=== Smoke: verify kapsule enter path ==="
       echo "Running: timeout 30 kapsule enter $CONTAINER_NAME -- true"
       set +e
       timeout 30 kapsule enter "$CONTAINER_NAME" -- true
       enter_rc=$?
       set -e
       echo "kapsule enter smoke exit code: $enter_rc"
+
+      if [ "$incus_exec_rc" -eq 0 ] && [ "$enter_rc" -ne 0 ]; then
+        echo "ERROR: incus exec succeeded but kapsule enter failed (likely kapsule-specific issue)"
+        echo "=== Diagnostics: incus info ==="
+        incus info "$CONTAINER_NAME" || true
+        echo "=== Diagnostics: container log ==="
+        incus info "$CONTAINER_NAME" --show-log || true
+        exit 1
+      fi
+
+      if [ "$incus_exec_rc" -ne 0 ]; then
+        echo "ERROR: incus exec smoke command failed or timed out"
+        echo "=== Diagnostics: incus info ==="
+        incus info "$CONTAINER_NAME" || true
+        echo "=== Diagnostics: container log ==="
+        incus info "$CONTAINER_NAME" --show-log || true
+        exit 1
+      fi
+
       if [ "$enter_rc" -ne 0 ]; then
         echo "ERROR: kapsule enter smoke command failed or timed out"
         echo "=== Diagnostics: incus info ==="
