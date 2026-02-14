@@ -291,19 +291,59 @@ integration_test:
 
       echo "=== Smoke: timeout control probe ==="
       set +e
-      timeout --kill-after=1s 2 sleep 10
-      timeout_probe_rc=$?
-      echo "timeout control exit code: $timeout_probe_rc"
+        rm -f /tmp/kapsule_prepareenter_rc
+        python - <<'PY'
+    import subprocess
+    import sys
 
-      echo "=== Smoke: invoking PrepareEnter via timeout wrapper ==="
-      if command -v strace >/dev/null 2>&1; then
-        timeout --kill-after=5s 30 strace -ff -tt -s 200 -o "$busctl_strace_prefix" sh -c 'exec busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$1" 1 "true"' _ "$CONTAINER_NAME"
-      else
-        timeout --kill-after=5s 30 sh -c 'exec busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$1" 1 "true"' _ "$CONTAINER_NAME"
-      fi
-      dbus_rc=$?
+
+    def run_with_timeout(cmd: list[str], timeout_seconds: float) -> int:
+      try:
+        completed = subprocess.run(
+          cmd,
+          check=False,
+          capture_output=True,
+          text=True,
+          timeout=timeout_seconds,
+        )
+        if completed.stdout:
+          print(completed.stdout, end="")
+        if completed.stderr:
+          print(completed.stderr, end="", file=sys.stderr)
+        return completed.returncode
+      except subprocess.TimeoutExpired as exc:
+        if exc.stdout:
+          print(exc.stdout, end="")
+        if exc.stderr:
+          print(exc.stderr, end="", file=sys.stderr)
+        print(f"Command timed out after {timeout_seconds}s: {' '.join(cmd)}", file=sys.stderr)
+        return 124
+
+
+    probe_rc = run_with_timeout(["sleep", "10"], 2.0)
+    print(f"timeout control exit code: {probe_rc}")
+
+    dbus_cmd = [
+      "busctl",
+      "call",
+      "--verbose",
+      "org.kde.kapsule",
+      "/org/kde/kapsule",
+      "org.kde.kapsule.Manager",
+      "PrepareEnter",
+      "sas",
+      "test-audio-inline-smoke",
+      "1",
+      "true",
+    ]
+    dbus_rc = run_with_timeout(dbus_cmd, 30.0)
+    print(f"PrepareEnter D-Bus exit code: {dbus_rc}")
+
+    with open("/tmp/kapsule_prepareenter_rc", "w", encoding="utf-8") as f:
+      f.write(str(dbus_rc))
+    PY
+        dbus_rc="$(cat /tmp/kapsule_prepareenter_rc 2>/dev/null || echo 125)"
       set -e
-      echo "PrepareEnter D-Bus exit code: $dbus_rc"
       echo "=== Smoke: D-Bus monitor tail (post-PrepareEnter) ==="
       sudo -n tail -n 120 "$dbus_log_file" 2>&1 || true
       echo "=== Smoke: busctl strace tail (post-PrepareEnter) ==="
