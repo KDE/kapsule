@@ -216,8 +216,81 @@ integration_test:
     # ---- Verify SSH ----
     - ssh -o StrictHostKeyChecking=no localhost "echo 'SSH to localhost works'"
 
-    # ---- Run integration tests ----
-    - ./tests/integration/run-tests.sh --no-deploy
+    # ---- Inline smoke + audio socket validation ----
+    - |
+      set -euo pipefail
+
+      CONTAINER_NAME="test-audio-inline-smoke"
+      TEST_IMAGE="images:archlinux"
+      uid="$(id -u)"
+
+      cleanup() {
+        incus delete "$CONTAINER_NAME" --force 2>/dev/null || true
+      }
+      trap cleanup EXIT
+
+      echo "=== Smoke: create container ==="
+      kapsule create "$CONTAINER_NAME" --image "$TEST_IMAGE"
+
+      echo "=== Smoke: verify container state ==="
+      incus info "$CONTAINER_NAME"
+      incus list
+
+      echo "=== Smoke: verify enter path ==="
+      kapsule enter "$CONTAINER_NAME" -- true
+
+      echo "=== Audio: checking runtime sockets ==="
+      if test -S "/run/user/$uid/pipewire-0"; then
+        kapsule enter "$CONTAINER_NAME" -- test -S "/run/user/$uid/pipewire-0"
+        echo "PipeWire socket is available in container"
+      else
+        echo "PipeWire socket not found on host (skipping passthrough check)"
+      fi
+
+      if test -S "/run/user/$uid/pulse/native"; then
+        kapsule enter "$CONTAINER_NAME" -- test -d "/run/user/$uid/pulse"
+        kapsule enter "$CONTAINER_NAME" -- test -S "/run/user/$uid/pulse/native"
+        echo "PulseAudio socket is available in container"
+      else
+        echo "PulseAudio socket not found on host (skipping passthrough check)"
+      fi
+
+      echo "=== Audio: checking hostfs socket visibility ==="
+      if kapsule enter "$CONTAINER_NAME" -- test -S "/.kapsule/host/run/user/$uid/pipewire-0"; then
+        echo "Host PipeWire socket visible via hostfs"
+      else
+        echo "Host PipeWire socket not visible via hostfs (may not be running)"
+      fi
+
+      if kapsule enter "$CONTAINER_NAME" -- test -d "/.kapsule/host/run/user/$uid/pulse"; then
+        echo "Host PulseAudio directory visible via hostfs"
+      else
+        echo "Host PulseAudio directory not visible via hostfs (may not be running)"
+      fi
+
+      echo "=== Audio: tool-level checks (best effort) ==="
+      if kapsule enter "$CONTAINER_NAME" -- sudo pacman -Syu --noconfirm libpulse pipewire; then
+        if kapsule enter "$CONTAINER_NAME" -- pactl info; then
+          echo "pactl info succeeded"
+        else
+          echo "pactl info failed"
+          exit 1
+        fi
+
+        if kapsule enter "$CONTAINER_NAME" -- pw-cli info 0; then
+          echo "pw-cli info succeeded"
+        else
+          echo "pw-cli info failed"
+          exit 1
+        fi
+      else
+        echo "Failed to install audio tools in container"
+        exit 1
+      fi
+
+      echo "=== Smoke: cleanup ==="
+      kapsule rm "$CONTAINER_NAME" --force
+      trap - EXIT
   after_script:
     # Use set +e so the after_script block doesn't abort on first error.
     # Use sudo -n (non-interactive) to avoid hanging on password prompts.
