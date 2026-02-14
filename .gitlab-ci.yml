@@ -227,8 +227,11 @@ integration_test:
       uid="$(id -u)"
       journal_kernel_pid=""
       journal_daemon_pid=""
+      dbus_monitor_pid=""
       kernel_log_file="/tmp/kapsule-kernel-live.log"
       daemon_log_file="/tmp/kapsule-daemon-live.log"
+      dbus_log_file="/tmp/kapsule-dbus-monitor.log"
+      busctl_strace_prefix="/tmp/kapsule-busctl-strace"
 
       cleanup() {
         if [ -n "$journal_kernel_pid" ]; then
@@ -237,21 +240,31 @@ integration_test:
         if [ -n "$journal_daemon_pid" ]; then
           kill "$journal_daemon_pid" 2>/dev/null || true
         fi
+        if [ -n "$dbus_monitor_pid" ]; then
+          sudo -n kill "$dbus_monitor_pid" 2>/dev/null || true
+        fi
         echo "=== Smoke: tail live kernel log ==="
         sudo -n tail -n 200 "$kernel_log_file" 2>/dev/null || echo "(no kernel live log captured)"
         echo "=== Smoke: tail live kapsule-daemon log ==="
         sudo -n tail -n 200 "$daemon_log_file" 2>/dev/null || echo "(no daemon live log captured)"
+        echo "=== Smoke: tail D-Bus monitor log ==="
+        sudo -n tail -n 200 "$dbus_log_file" 2>/dev/null || echo "(no D-Bus monitor log captured)"
         incus delete "$CONTAINER_NAME" --force 2>/dev/null || true
       }
       trap cleanup EXIT
 
       echo "=== Smoke: start live diagnostics ==="
       if command -v journalctl >/dev/null 2>&1; then
-        sudo -n rm -f "$kernel_log_file" "$daemon_log_file" || true
+        sudo -n rm -f "$kernel_log_file" "$daemon_log_file" "$dbus_log_file" "${busctl_strace_prefix}"* || true
         (sudo -n journalctl -kf -o short-precise --no-pager > "$kernel_log_file" 2>&1 || true) &
         journal_kernel_pid="$!"
         (sudo -n journalctl -f -u kapsule-daemon -o short-precise --no-pager > "$daemon_log_file" 2>&1 || true) &
         journal_daemon_pid="$!"
+      fi
+
+      if command -v dbus-monitor >/dev/null 2>&1; then
+        (sudo -n dbus-monitor --system "path='/org/kde/kapsule'" > "$dbus_log_file" 2>&1 || true) &
+        dbus_monitor_pid="$!"
       fi
 
       echo "=== Smoke: create container ==="
@@ -276,10 +289,14 @@ integration_test:
       echo "=== Smoke: kernel snapshot (pre-PrepareEnter) ==="
       sudo -n dmesg --time-format=iso | tail -n 80 2>&1 || true
       set +e
-      timeout --signal=KILL --kill-after=5s 30 busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+      timeout --signal=KILL --kill-after=5s 30 strace -ff -tt -s 200 -o "$busctl_strace_prefix" busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
       dbus_rc=$?
       set -e
       echo "PrepareEnter D-Bus exit code: $dbus_rc"
+      echo "=== Smoke: D-Bus monitor tail (post-PrepareEnter) ==="
+      sudo -n tail -n 120 "$dbus_log_file" 2>&1 || true
+      echo "=== Smoke: busctl strace tail (post-PrepareEnter) ==="
+      sudo -n tail -n 120 "${busctl_strace_prefix}"* 2>&1 || true
       echo "=== Smoke: daemon journal snapshot (post-PrepareEnter) ==="
       sudo -n journalctl -u kapsule-daemon --no-pager -n 180 2>&1 || true
       echo "=== Smoke: kernel snapshot (post-PrepareEnter) ==="
