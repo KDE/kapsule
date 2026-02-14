@@ -288,11 +288,18 @@ integration_test:
       sudo -n journalctl -u kapsule-daemon --no-pager -n 120 2>&1 || true
       echo "=== Smoke: kernel snapshot (pre-PrepareEnter) ==="
       sudo -n dmesg --time-format=iso | tail -n 80 2>&1 || true
+
+      echo "=== Smoke: timeout control probe ==="
       set +e
+      timeout --kill-after=1s 2 sleep 10
+      timeout_probe_rc=$?
+      echo "timeout control exit code: $timeout_probe_rc"
+
+      echo "=== Smoke: invoking PrepareEnter via timeout wrapper ==="
       if command -v strace >/dev/null 2>&1; then
-        timeout --signal=KILL --kill-after=5s 30 strace -ff -tt -s 200 -o "$busctl_strace_prefix" busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+        timeout --kill-after=5s 30 strace -ff -tt -s 200 -o "$busctl_strace_prefix" sh -c 'exec busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$1" 1 "true"' _ "$CONTAINER_NAME"
       else
-        timeout --signal=KILL --kill-after=5s 30 busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$CONTAINER_NAME" 1 "true"
+        timeout --kill-after=5s 30 sh -c 'exec busctl call --verbose org.kde.kapsule /org/kde/kapsule org.kde.kapsule.Manager PrepareEnter "sas" "$1" 1 "true"' _ "$CONTAINER_NAME"
       fi
       dbus_rc=$?
       set -e
