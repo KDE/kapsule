@@ -685,6 +685,7 @@ class ContainerService:
         """
 
         def phase_logger(message: str) -> None:
+            print(f"PrepareEnter {message}", flush=True)
             logger.warning("PrepareEnter %s", message)
 
         return await self._prepare_enter_impl(

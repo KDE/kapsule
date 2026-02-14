@@ -426,6 +426,10 @@ class KapsuleManagerInterface(ServiceInterface):
             container_name,
             len(command),
         )
+        print(
+            f"PrepareEnter rpc=start sender={sender} container={container_name} argc={len(command)}",
+            flush=True,
+        )
 
         try:
             creds = await self._get_caller_credentials(sender)
@@ -448,6 +452,15 @@ class KapsuleManagerInterface(ServiceInterface):
             success,
             len(cmd),
             message,
+        )
+        print(
+            "PrepareEnter rpc=done sender={} success={} cmd_len={} message={}".format(
+                sender,
+                success,
+                len(cmd),
+                message,
+            ),
+            flush=True,
         )
         return (success, message, cmd)
 
