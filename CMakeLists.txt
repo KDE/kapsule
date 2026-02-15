@@ -80,13 +80,45 @@ if(INSTALL_PYTHON_DAEMON)
         src/daemon/__main__.py
         src/daemon/config.py
         src/daemon/container_options.py
-        src/daemon/container_service.py
         src/daemon/dbus_types.py
         src/daemon/incus_client.py
         src/daemon/models_generated.py
         src/daemon/operations.py
+        src/daemon/pipeline.py
         src/daemon/service.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon"
+    )
+
+    # Install container package
+    install(FILES
+        src/daemon/container/__init__.py
+        src/daemon/container/config_helpers.py
+        src/daemon/container/constants.py
+        src/daemon/container/contexts.py
+        src/daemon/container/service.py
+        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container"
+    )
+
+    # Install post_create pipeline package
+    install(FILES
+        src/daemon/container/post_create/__init__.py
+        src/daemon/container/post_create/file_capabilities.py
+        src/daemon/container/post_create/host_network.py
+        src/daemon/container/post_create/session_mode.py
+        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container/post_create"
+    )
+
+    # Install user_setup pipeline package
+    install(FILES
+        src/daemon/container/user_setup/__init__.py
+        src/daemon/container/user_setup/configure_sudo.py
+        src/daemon/container/user_setup/create_account.py
+        src/daemon/container/user_setup/enable_linger.py
+        src/daemon/container/user_setup/mark_mapped.py
+        src/daemon/container/user_setup/mount_custom.py
+        src/daemon/container/user_setup/mount_home.py
+        src/daemon/container/user_setup/mount_host_dirs.py
+        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container/user_setup"
     )
 endif()
 

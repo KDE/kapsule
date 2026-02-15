@@ -35,7 +35,7 @@ from .container_options import (
     get_create_schema_json,
     parse_options,
 )
-from .container_service import ContainerService
+from .container import ContainerService
 
 # Re-export IncusClient for use in __main__ and CLI
 from .incus_client import IncusClient, IncusError
