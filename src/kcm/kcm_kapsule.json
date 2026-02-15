@@ -1,0 +1,10 @@
+{
+    "KPlugin": {
+        "Name": "Containers",
+        "Description": "Manage Kapsule containers",
+        "Icon": "utilities-terminal",
+        "FormFactors": ["desktop"]
+    },
+    "X-KDE-Keywords": "Container,Kapsule,Incus,Linux,Distrobox",
+    "X-KDE-System-Settings-Parent-Category": "system-administration"
+}

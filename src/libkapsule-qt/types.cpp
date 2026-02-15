@@ -90,6 +90,12 @@ CreateSchema parseCreateSchema(const QString &json)
             opt.description = optObj.value(QStringLiteral("description")).toString();
             opt.defaultValue = optObj.value(QStringLiteral("default"));
 
+            // Parse "items.format" hint if present (e.g. "directory-path")
+            if (optObj.contains(QStringLiteral("items"))) {
+                QJsonObject itemsObj = optObj.value(QStringLiteral("items")).toObject();
+                opt.itemFormat = itemsObj.value(QStringLiteral("format")).toString();
+            }
+
             // Parse "requires" dict if present
             if (optObj.contains(QStringLiteral("requires"))) {
                 QJsonObject reqObj = optObj.value(QStringLiteral("requires")).toObject();

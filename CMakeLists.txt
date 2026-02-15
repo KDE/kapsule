@@ -297,6 +297,7 @@ if(BUILD_KDE_COMPONENTS)
         Core
         DBus
         Concurrent
+        Quick
     )
 
     find_package(KF6 ${REQUIRED_KF_VERSION} REQUIRED COMPONENTS
@@ -337,7 +338,7 @@ if(BUILD_KDE_COMPONENTS)
     endif()
 
     if(KF6KCMUtils_FOUND)
-        # add_subdirectory(src/kcm)  # TODO: Enable when KCM is implemented
+        add_subdirectory(src/kcm)
     endif()
 endif()
 

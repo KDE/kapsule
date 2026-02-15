@@ -47,6 +47,7 @@ struct KAPSULE_EXPORT CreateSchemaOption {
     QString description;               ///< Longer help text
     QJsonValue defaultValue;           ///< Schema default
     QVariantMap dependencies;          ///< Inter-option dependencies (key → required value)
+    QString itemFormat;                ///< Format hint for array items (e.g. "directory-path")
 
     /// Convert key to CLI flag name (underscores → dashes).
     [[nodiscard]] QString cliFlag() const;
