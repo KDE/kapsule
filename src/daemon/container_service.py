@@ -6,11 +6,18 @@
 
 This module implements the core container management operations,
 using the operation decorator for automatic progress reporting.
+
+Container creation and user setup are structured as pipelines of
+step functions.  Each step receives a context dataclass, checks its
+own preconditions, and performs one concern.  This keeps individual
+steps small and makes adding new features straightforward — just
+append a function to the relevant step list.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
 import os
 import pwd
@@ -71,6 +78,71 @@ class BindMount:
     target: str
     uid: int
     gid: int
+
+
+# =============================================================================
+# Pipeline contexts
+# =============================================================================
+
+
+@dataclass
+class PostCreateContext:
+    """Context passed through post-creation setup steps.
+
+    Each step receives this context and performs its work on the
+    (already running) container.  Steps should guard their own
+    preconditions (e.g. check ``opts.session_mode`` before doing
+    session-mode work).
+    """
+
+    name: str
+    opts: ContainerOptions
+    incus: IncusClient
+    progress: OperationReporter | None
+
+    def info(self, msg: str) -> None:
+        if self.progress:
+            self.progress.info(msg)
+
+    def dim(self, msg: str) -> None:
+        if self.progress:
+            self.progress.dim(msg)
+
+    def warning(self, msg: str) -> None:
+        if self.progress:
+            self.progress.warning(msg)
+
+
+@dataclass
+class UserSetupContext:
+    """Context passed through user setup steps.
+
+    Each step receives this context and performs its work to
+    configure a host user inside a container.
+    """
+
+    container_name: str
+    uid: int
+    gid: int
+    username: str
+    home_dir: str
+    container_home: str
+    instance_config: dict[str, str]
+    incus: IncusClient
+    progress: OperationReporter | None
+
+    def info(self, msg: str) -> None:
+        if self.progress:
+            self.progress.info(msg)
+
+    def warning(self, msg: str) -> None:
+        if self.progress:
+            self.progress.warning(msg)
+
+
+# =============================================================================
+# Base config / device helpers
+# =============================================================================
 
 
 def _base_container_config(nvidia_drivers: bool) -> dict[str, str]:
@@ -146,6 +218,503 @@ def _base_container_devices(host_rootfs: bool, gpu: bool = True) -> dict[str, di
     return devices
 
 
+def _store_option_metadata(config: dict[str, str], opts: ContainerOptions) -> None:
+    """Store kapsule option values as ``user.kapsule.*`` config keys.
+
+    These metadata keys are read back later by user-setup and enter
+    steps to decide which features are active for a container.
+    """
+    if opts.session_mode:
+        config[KAPSULE_SESSION_MODE_KEY] = "true"
+    if opts.dbus_mux:
+        config[KAPSULE_DBUS_MUX_KEY] = "true"
+    config[KAPSULE_HOST_ROOTFS_KEY] = str(opts.host_rootfs).lower()
+    config[KAPSULE_MOUNT_HOME_KEY] = str(opts.mount_home).lower()
+    if opts.custom_mounts:
+        config[KAPSULE_CUSTOM_MOUNTS_KEY] = json.dumps(opts.custom_mounts)
+    config[KAPSULE_GPU_KEY] = str(opts.gpu).lower()
+    config[KAPSULE_NVIDIA_DRIVERS_KEY] = str(opts.gpu and opts.nvidia_drivers).lower()
+
+
+# =============================================================================
+# Post-create pipeline steps
+# =============================================================================
+
+
+async def _post_create_host_network_fixups(ctx: PostCreateContext) -> None:
+    """Mask services that don't work with host networking.
+
+    Kapsule containers share the host's network namespace, so there are no
+    network interfaces for systemd-networkd to manage inside the container.
+    This causes systemd-networkd-wait-online.service to wait for a timeout
+    (~30s) before services like Docker can start.
+
+    We mask that service since the host network is already online.
+    """
+    ctx.info("Masking systemd-networkd-wait-online.service (host networking)")
+    try:
+        await ctx.incus.create_symlink(
+            ctx.name,
+            "/etc/systemd/system/systemd-networkd-wait-online.service",
+            "/dev/null",
+            uid=0,
+            gid=0,
+        )
+    except IncusError as e:
+        # Not fatal - some images may not have systemd
+        ctx.warning(f"Could not mask systemd-networkd-wait-online: {e}")
+
+
+async def _post_create_fix_file_capabilities(ctx: PostCreateContext) -> None:
+    """Restore file capabilities stripped during image extraction.
+
+    Container images from linuxcontainers.org lose ``security.capability``
+    extended attributes during image build or extraction.  Binaries like
+    ``newuidmap`` / ``newgidmap`` (from the ``shadow`` package) need file
+    capabilities (``cap_setuid+ep`` / ``cap_setgid+ep``) for rootless
+    Podman / Docker to set up user namespaces inside the container.
+
+    Upstream issue: https://github.com/lxc/lxc-ci/issues/955
+    """
+    caps: list[tuple[str, str]] = [
+        ("/usr/bin/newuidmap", "cap_setuid+ep"),
+        ("/usr/bin/newgidmap", "cap_setgid+ep"),
+    ]
+    for binary, cap in caps:
+        result = subprocess.run(
+            ["incus", "exec", ctx.name, "--", "setcap", cap, binary],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            # Binary or setcap may not exist on every image — not fatal
+            ctx.warning(f"Could not set {cap} on {binary}: {result.stderr.strip()}")
+        else:
+            ctx.dim(f"Set {cap} on {binary}")
+
+
+async def _post_create_session_mode(ctx: PostCreateContext) -> None:
+    """Set up session mode if enabled, otherwise configure rootless Podman."""
+    if ctx.opts.session_mode:
+        await _setup_session_mode_impl(
+            ctx.name, ctx.opts.dbus_mux, ctx.incus, ctx.progress,
+        )
+    else:
+        # Non-session containers lack a systemd user instance, so
+        # rootless Podman's default cgroup_manager=systemd will fail.
+        await _configure_rootless_podman_impl(ctx.name, ctx.incus, ctx.progress)
+
+
+async def _setup_session_mode_impl(
+    name: str,
+    dbus_mux: bool,
+    incus: IncusClient,
+    progress: OperationReporter | None,
+) -> None:
+    """Set up session mode for a container.
+
+    Without D-Bus mux, the container's own systemd dbus.socket creates
+    /run/user/$uid/bus natively — no extra setup is needed (loginctl
+    enable-linger is handled by the user setup pipeline).
+
+    With D-Bus mux, we redirect the container's dbus.socket to a hostfs
+    path so the mux process can reach it from the host, then install the
+    kapsule-dbus-mux.service that listens at the normal /run/user/$uid/bus.
+    """
+    if not dbus_mux:
+        if progress:
+            progress.info("Session mode: container will use its own D-Bus session bus")
+        return
+
+    # Use uid 1000 as placeholder - the drop-in uses %t so it works for any user
+    uid = 1000
+    host_socket_path = f"/run/user/{uid}/kapsule/{name}/dbus.socket"
+
+    if progress:
+        progress.info(f"Configuring container D-Bus socket at: {host_socket_path}")
+
+    # Create the directory on host with correct ownership
+    kapsule_base_dir = f"/run/user/{uid}/kapsule"
+    host_socket_dir = os.path.dirname(host_socket_path)
+    os.makedirs(host_socket_dir, exist_ok=True)
+    # Set ownership of both the kapsule base dir and container-specific dir
+    os.chown(kapsule_base_dir, uid, uid)
+    os.chown(host_socket_dir, uid, uid)
+
+    # Create systemd user drop-in directory
+    dropin_dir = "/etc/systemd/user/dbus.socket.d"
+    try:
+        await incus.mkdir(name, dropin_dir, uid=0, gid=0, mode="0755")
+    except IncusError:
+        pass  # Directory might already exist
+
+    # Create the drop-in file
+    systemd_socket_path = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
+    dropin_content = f"""[Socket]
+# Kapsule: redirect D-Bus session socket to shared path
+# This makes the container's D-Bus accessible from the host
+# %t expands to XDG_RUNTIME_DIR (/run/user/UID)
+ListenStream=
+ListenStream={systemd_socket_path}
+"""
+    dropin_file = f"{dropin_dir}/kapsule.conf"
+    try:
+        await incus.push_file(name, dropin_file, dropin_content, uid=0, gid=0, mode="0644")
+    except IncusError as e:
+        raise OperationError(f"Failed to configure D-Bus socket: {e}")
+
+    # Install D-Bus multiplexer service
+    await _setup_dbus_mux_impl(name, incus, progress)
+
+    # Reload systemd
+    if progress:
+        progress.info("Reloading systemd user configuration...")
+    subprocess.run(
+        ["incus", "exec", name, "--", "systemctl", "--user", "--global", "daemon-reload"],
+        capture_output=True,
+    )
+
+
+async def _setup_dbus_mux_impl(
+    name: str,
+    incus: IncusClient,
+    progress: OperationReporter | None,
+) -> None:
+    """Install kapsule-dbus-mux.service in a container."""
+    if progress:
+        progress.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
+
+    service_dir = "/etc/systemd/user"
+    try:
+        await incus.mkdir(name, service_dir, uid=0, gid=0, mode="0755")
+    except IncusError:
+        pass  # Directory might already exist
+
+    container_dbus_socket = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
+    host_dbus_socket = "unix:path=/.kapsule/host%t/bus"
+    mux_listen_socket = "%t/bus"
+
+    service_content = f"""[Unit]
+Description=Kapsule D-Bus Multiplexer
+Documentation=man:kapsule(1)
+After=dbus.service
+Requires=dbus.service
+
+[Service]
+Type=simple
+Environment=RUST_LOG=trace
+ExecStart={KAPSULE_DBUS_MUX_BIN} \\
+    --log-level debug \\
+    --listen {mux_listen_socket} \\
+    --container-bus unix:path={container_dbus_socket} \\
+    --host-bus {host_dbus_socket}
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=default.target
+"""
+
+    service_file = f"{service_dir}/kapsule-dbus-mux.service"
+    try:
+        await incus.push_file(name, service_file, service_content, uid=0, gid=0, mode="0644")
+    except IncusError as e:
+        raise OperationError(f"Failed to install dbus-mux service: {e}")
+
+    if progress:
+        progress.info("Enabling kapsule-dbus-mux.service globally")
+    subprocess.run(
+        ["incus", "exec", name, "--", "systemctl", "--user", "--global", "enable", "kapsule-dbus-mux.service"],
+        capture_output=True,
+    )
+
+
+async def _configure_rootless_podman_impl(
+    name: str,
+    incus: IncusClient,
+    progress: OperationReporter | None,
+) -> None:
+    """Configure rootless Podman for non-session containers.
+
+    Kapsule's default (non-session) containers forward the host's D-Bus
+    session bus rather than running their own systemd user instance.
+    Podman defaults to ``cgroup_manager = "systemd"`` which asks systemd
+    to create a transient scope via sd-bus, but the host's systemd cannot
+    manage the container's PIDs so this fails with "No such process".
+
+    Dropping a config file into ``/etc/containers/containers.conf.d/``
+    switches rootless Podman to the ``cgroupfs`` cgroup manager which
+    writes cgroup entries directly instead of going through sd-bus.
+    """
+    parent_dir = "/etc/containers"
+    dropin_dir = f"{parent_dir}/containers.conf.d"
+    dropin_file = f"{dropin_dir}/50-kapsule-cgroupfs.conf"
+    dropin_content = (
+        "# Installed by Kapsule – non-session containers lack a systemd\n"
+        "# user instance, so the default systemd cgroup manager fails.\n"
+        "[engine]\n"
+        'cgroup_manager = "cgroupfs"\n'
+    )
+
+    # Create the full directory hierarchy – most images don't ship
+    # with Podman so /etc/containers/ won't exist yet.
+    for d in (parent_dir, dropin_dir):
+        try:
+            await incus.mkdir(name, d, uid=0, gid=0, mode="0755")
+        except IncusError:
+            pass  # Directory might already exist
+
+    try:
+        await incus.push_file(
+            name, dropin_file, dropin_content,
+            uid=0, gid=0, mode="0644",
+        )
+    except IncusError as e:
+        # Not fatal – best-effort config for when Podman is installed later
+        if progress:
+            progress.warning(f"Could not configure rootless Podman: {e}")
+        return
+
+    if progress:
+        progress.dim("Configured rootless Podman (cgroup_manager=cgroupfs)")
+
+
+_POST_CREATE_STEPS = [
+    _post_create_host_network_fixups,
+    _post_create_fix_file_capabilities,
+    _post_create_session_mode,
+]
+
+
+# =============================================================================
+# User setup pipeline steps
+# =============================================================================
+
+
+async def _user_mount_home(ctx: UserSetupContext) -> None:
+    """Mount the user's home directory or create a container-local home."""
+    mount_home = ctx.instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
+
+    if mount_home:
+        ctx.info(f"Mounting home directory: {ctx.home_dir} -> {ctx.container_home}")
+        device_name = f"kapsule-home-{ctx.username}"
+        try:
+            await ctx.incus.add_instance_device(
+                ctx.container_name,
+                device_name,
+                {
+                    "type": "disk",
+                    "source": ctx.home_dir,
+                    "path": ctx.container_home,
+                },
+            )
+        except IncusError as e:
+            raise OperationError(f"Failed to mount home directory: {e}")
+    else:
+        ctx.info("Home directory mount: skipped (disabled)")
+        # Ensure the home path exists inside the container
+        try:
+            await ctx.incus.mkdir(
+                ctx.container_name, ctx.container_home,
+                uid=ctx.uid, gid=ctx.gid, mode="0700",
+            )
+        except IncusError:
+            pass  # May already exist
+
+
+async def _user_mount_custom_dirs(ctx: UserSetupContext) -> None:
+    """Mount custom directories specified at container creation.
+
+    Reads the ``user.kapsule.custom-mounts`` config key (a JSON array
+    of host paths) and adds each as an Incus disk device.
+    """
+    raw = ctx.instance_config.get(KAPSULE_CUSTOM_MOUNTS_KEY, "")
+    if not raw:
+        return
+
+    try:
+        custom_mounts: list[str] = json.loads(raw)
+    except json.JSONDecodeError:
+        ctx.warning(f"Invalid custom-mounts config: {raw}")
+        return
+
+    for mount_path in custom_mounts:
+        # Sanitise the path for use as an Incus device name
+        safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
+        device_name = f"kapsule-mount-{safe_name}"
+        container_path = mount_path  # Same path inside container
+
+        if not os.path.isdir(mount_path):
+            ctx.warning(f"Custom mount source does not exist: {mount_path}")
+            continue
+
+        ctx.info(f"Custom mount: {mount_path} -> {container_path}")
+        try:
+            await ctx.incus.add_instance_device(
+                ctx.container_name,
+                device_name,
+                {
+                    "type": "disk",
+                    "source": mount_path,
+                    "path": container_path,
+                },
+            )
+        except IncusError as e:
+            ctx.warning(f"Failed to mount {mount_path}: {e}")
+
+
+async def _user_mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
+    """Mount host runtime and X11 dirs when full rootfs is disabled.
+
+    When the container doesn't have the complete host filesystem mounted
+    at ``/.kapsule/host``, we add targeted mounts for ``/run/user/<uid>``
+    and ``/tmp/.X11-unix`` so socket symlinks work.
+    """
+    has_host_rootfs = ctx.instance_config.get(KAPSULE_HOST_ROOTFS_KEY) == "true"
+    if has_host_rootfs:
+        return
+
+    # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
+    hostrun_device = f"kapsule-hostrun-{ctx.uid}"
+    try:
+        await ctx.incus.add_instance_device(
+            ctx.container_name,
+            hostrun_device,
+            {
+                "type": "disk",
+                "source": f"/run/user/{ctx.uid}",
+                "path": f"/.kapsule/host/run/user/{ctx.uid}",
+                "shift": "false",
+                "recursive": "true",
+                "propagation": "rslave",
+            },
+        )
+    except IncusError as e:
+        raise OperationError(f"Failed to mount host runtime dir: {e}")
+
+    # Mount /tmp/.X11-unix at /.kapsule/host/tmp/.X11-unix for X11
+    try:
+        await ctx.incus.add_instance_device(
+            ctx.container_name,
+            "kapsule-x11",
+            {
+                "type": "disk",
+                "source": "/tmp/.X11-unix",
+                "path": "/.kapsule/host/tmp/.X11-unix",
+                "shift": "false",
+                "recursive": "true",
+                "propagation": "rslave",
+            },
+        )
+    except IncusError as e:
+        raise OperationError(f"Failed to mount host X11 dir: {e}")
+
+
+async def _user_create_account(ctx: UserSetupContext) -> None:
+    """Create user group and account in the container."""
+    # Create group
+    ctx.info(f"Creating group '{ctx.username}' (gid={ctx.gid})")
+    result = subprocess.run(
+        [
+            "incus", "exec", ctx.container_name, "--",
+            "groupadd", "-o", "-g", str(ctx.gid), ctx.username,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 and "already exists" not in result.stderr:
+        ctx.warning(f"groupadd: {result.stderr.strip()}")
+
+    # Create user
+    ctx.info(f"Creating user '{ctx.username}' (uid={ctx.uid})")
+    result = subprocess.run(
+        [
+            "incus", "exec", ctx.container_name, "--",
+            "useradd",
+            "-o",  # Allow duplicate UID
+            "-M",  # Don't create home directory
+            "-u", str(ctx.uid),
+            "-g", str(ctx.gid),
+            "-d", ctx.container_home,
+            "-s", "/bin/bash",
+            ctx.username,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 and "already exists" not in result.stderr:
+        ctx.warning(f"useradd: {result.stderr.strip()}")
+
+
+async def _user_configure_sudo(ctx: UserSetupContext) -> None:
+    """Configure passwordless sudo for the user."""
+    ctx.info(f"Configuring passwordless sudo for '{ctx.username}'")
+    # Ensure /etc/sudoers.d/ exists (Alpine and other minimal images may lack it)
+    subprocess.run(
+        ["incus", "exec", ctx.container_name, "--", "mkdir", "-p", "/etc/sudoers.d"],
+        capture_output=True,
+    )
+    sudoers_content = f"{ctx.username} ALL=(ALL) NOPASSWD:ALL\n"
+    sudoers_file = f"/etc/sudoers.d/{ctx.username}"
+    try:
+        await ctx.incus.push_file(
+            ctx.container_name,
+            sudoers_file,
+            sudoers_content,
+            uid=0,
+            gid=0,
+            mode="0440",
+        )
+    except IncusError as e:
+        raise OperationError(f"Failed to configure sudo: {e}")
+
+
+async def _user_enable_linger(ctx: UserSetupContext) -> None:
+    """Enable loginctl linger if session mode is active."""
+    session_mode = ctx.instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
+    if not session_mode:
+        return
+
+    ctx.info(f"Enabling linger for '{ctx.username}' (session mode)")
+    result = subprocess.run(
+        [
+            "incus", "exec", ctx.container_name, "--",
+            "loginctl", "enable-linger", ctx.username,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        ctx.warning(f"loginctl enable-linger: {result.stderr.strip()}")
+
+
+async def _user_mark_mapped(ctx: UserSetupContext) -> None:
+    """Mark the user as mapped in container config."""
+    user_mapped_key = f"user.kapsule.host-users.{ctx.uid}.mapped"
+    try:
+        await ctx.incus.patch_instance_config(
+            ctx.container_name, {user_mapped_key: "true"},
+        )
+    except IncusError as e:
+        raise OperationError(f"Failed to update container config: {e}")
+
+
+_USER_SETUP_STEPS = [
+    _user_mount_home,
+    _user_mount_custom_dirs,
+    _user_mount_minimal_host_dirs,
+    _user_create_account,
+    _user_configure_sudo,
+    _user_enable_linger,
+    _user_mark_mapped,
+]
+
+
+# =============================================================================
+# Container service
+# =============================================================================
+
+
 class ContainerService:
     """Container lifecycle operations exposed over D-Bus.
 
@@ -186,6 +755,48 @@ class ContainerService:
     def list_operations(self) -> list[str]:
         """List D-Bus object paths of all running operations."""
         return self._tracker.list_paths()
+
+    # -------------------------------------------------------------------------
+    # Pipeline runners
+    # -------------------------------------------------------------------------
+
+    async def _run_post_create(
+        self,
+        name: str,
+        opts: ContainerOptions,
+        progress: OperationReporter | None = None,
+    ) -> None:
+        """Run the post-creation setup pipeline."""
+        ctx = PostCreateContext(
+            name=name, opts=opts, incus=self._incus, progress=progress,
+        )
+        for step in _POST_CREATE_STEPS:
+            await step(ctx)
+
+    async def _run_user_setup(
+        self,
+        container_name: str,
+        uid: int,
+        gid: int,
+        username: str,
+        home_dir: str,
+        progress: OperationReporter | None = None,
+    ) -> None:
+        """Run the user setup pipeline."""
+        instance = await self._incus.get_instance(container_name)
+        ctx = UserSetupContext(
+            container_name=container_name,
+            uid=uid,
+            gid=gid,
+            username=username,
+            home_dir=home_dir,
+            container_home=f"/home/{os.path.basename(home_dir)}",
+            instance_config=instance.config or {},
+            incus=self._incus,
+            progress=progress,
+        )
+        for step in _USER_SETUP_STEPS:
+            await step(ctx)
 
     # -------------------------------------------------------------------------
     # Container Lifecycle Operations
@@ -236,24 +847,11 @@ class ContainerService:
         if instance_source is None:
             raise OperationError(f"Invalid image format: {image}")
 
-        # Build instance config — base settings applied directly
+        # Build instance config — base settings + option metadata
         instance_config_dict = _base_container_config(
-            nvidia_drivers=opts.gpu and opts.nvidia_drivers
+            nvidia_drivers=opts.gpu and opts.nvidia_drivers,
         )
-        if opts.session_mode:
-            instance_config_dict[KAPSULE_SESSION_MODE_KEY] = "true"
-        if opts.dbus_mux:
-            instance_config_dict[KAPSULE_DBUS_MUX_KEY] = "true"
-        instance_config_dict[KAPSULE_HOST_ROOTFS_KEY] = str(opts.host_rootfs).lower()
-        instance_config_dict[KAPSULE_MOUNT_HOME_KEY] = str(opts.mount_home).lower()
-        if opts.custom_mounts:
-            # Store as JSON array in Incus config (config values are strings)
-            import json
-            instance_config_dict[KAPSULE_CUSTOM_MOUNTS_KEY] = json.dumps(opts.custom_mounts)
-        instance_config_dict[KAPSULE_GPU_KEY] = str(opts.gpu).lower()
-        instance_config_dict[KAPSULE_NVIDIA_DRIVERS_KEY] = str(
-            opts.gpu and opts.nvidia_drivers
-        ).lower()
+        _store_option_metadata(instance_config_dict, opts)
 
         instance_config = InstancesPost(
             name=name,
@@ -283,19 +881,8 @@ class ContainerService:
         except IncusError as e:
             raise OperationError(f"Failed to create container: {e}")
 
-        # Apply host-networking fixups (mask services that don't work with lxc.net.0.type=none)
-        await self._apply_host_network_fixups(progress, name)
-
-        # Restore file capabilities stripped during image extraction
-        await self._fix_file_capabilities(progress, name)
-
-        # Set up session mode if enabled
-        if opts.session_mode:
-            await self._setup_session_mode(progress, name, opts.dbus_mux)
-        else:
-            # Non-session containers lack a systemd user instance, so
-            # rootless Podman's default cgroup_manager=systemd will fail.
-            await self._configure_rootless_podman(progress, name)
+        # Post-create pipeline
+        await self._run_post_create(name, opts, progress)
 
         progress.success(f"Container '{name}' created successfully")
 
@@ -456,121 +1043,9 @@ class ContainerService:
             username: Username
             home_dir: Path to home directory on host
         """
-        home_basename = os.path.basename(home_dir)
-        container_home = f"/home/{home_basename}"
-
-        # Check if home directory mounting is enabled
-        instance = await self._incus.get_instance(container_name)
-        instance_config = instance.config or {}
-        mount_home = instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
-
-        if mount_home:
-            # Mount home directory
-            progress.info(f"Mounting home directory: {home_dir} -> {container_home}")
-            device_name = f"kapsule-home-{username}"
-            try:
-                await self._incus.add_instance_device(
-                    container_name,
-                    device_name,
-                    {
-                        "type": "disk",
-                        "source": home_dir,
-                        "path": container_home,
-                    },
-                )
-            except IncusError as e:
-                raise OperationError(f"Failed to mount home directory: {e}")
-        else:
-            progress.info("Home directory mount: skipped (disabled)")
-            # Ensure the home path exists inside the container
-            try:
-                await self._incus.mkdir(
-                    container_name, container_home, uid=uid, gid=gid, mode="0700",
-                )
-            except IncusError:
-                pass  # May already exist
-
-        # Mount custom directories
-        await self._mount_custom_dirs(progress, container_name, instance_config)
-
-        # Create group
-        progress.info(f"Creating group '{username}' (gid={gid})")
-        result = subprocess.run(
-            ["incus", "exec", container_name, "--", "groupadd", "-o", "-g", str(gid), username],
-            capture_output=True,
-            text=True,
+        await self._run_user_setup(
+            container_name, uid, gid, username, home_dir, progress,
         )
-        if result.returncode != 0 and "already exists" not in result.stderr:
-            progress.warning(f"groupadd: {result.stderr.strip()}")
-
-        # Create user
-        progress.info(f"Creating user '{username}' (uid={uid})")
-        result = subprocess.run(
-            [
-                "incus",
-                "exec",
-                container_name,
-                "--",
-                "useradd",
-                "-o",  # Allow duplicate UID
-                "-M",  # Don't create home directory
-                "-u",
-                str(uid),
-                "-g",
-                str(gid),
-                "-d",
-                container_home,
-                "-s",
-                "/bin/bash",
-                username,
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0 and "already exists" not in result.stderr:
-            progress.warning(f"useradd: {result.stderr.strip()}")
-
-        # Configure passwordless sudo
-        progress.info(f"Configuring passwordless sudo for '{username}'")
-        # Ensure /etc/sudoers.d/ exists (Alpine and other minimal images may lack it)
-        subprocess.run(
-            ["incus", "exec", container_name, "--", "mkdir", "-p", "/etc/sudoers.d"],
-            capture_output=True,
-        )
-        sudoers_content = f"{username} ALL=(ALL) NOPASSWD:ALL\n"
-        sudoers_file = f"/etc/sudoers.d/{username}"
-        try:
-            await self._incus.push_file(
-                container_name,
-                sudoers_file,
-                sudoers_content,
-                uid=0,
-                gid=0,
-                mode="0440",
-            )
-        except IncusError as e:
-            raise OperationError(f"Failed to configure sudo: {e}")
-
-        # Check if session mode is enabled
-        session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
-
-        if session_mode:
-            progress.info(f"Enabling linger for '{username}' (session mode)")
-            result = subprocess.run(
-                ["incus", "exec", container_name, "--", "loginctl", "enable-linger", username],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                progress.warning(f"loginctl enable-linger: {result.stderr.strip()}")
-
-        # Mark user as mapped
-        user_mapped_key = f"user.kapsule.host-users.{uid}.mapped"
-        try:
-            await self._incus.patch_instance_config(container_name, {user_mapped_key: "true"})
-        except IncusError as e:
-            raise OperationError(f"Failed to update container config: {e}")
-
         progress.success(f"User '{username}' configured")
 
     # -------------------------------------------------------------------------
@@ -617,7 +1092,7 @@ class ContainerService:
             raise OperationError(f"Container '{name}' not found: {e}")
 
         config = instance.config or {}
-        
+
         # Determine kapsule mode
         if config.get(KAPSULE_DBUS_MUX_KEY) == "true":
             mode = "DbusMux"
@@ -625,9 +1100,9 @@ class ContainerService:
             mode = "Session"
         else:
             mode = "Default"
-        
+
         image = config.get("image.description", config.get("image.os", "unknown"))
-        
+
         return (
             instance.name or name,
             instance.status or "Unknown",
@@ -754,7 +1229,9 @@ class ContainerService:
         # Set up user if needed
         if not await self.is_user_setup(container_name, uid):
             try:
-                await self._setup_user_sync(container_name, uid, gid, username, home_dir)
+                await self._run_user_setup(
+                    container_name, uid, gid, username, home_dir,
+                )
             except OperationError as e:
                 return (False, str(e), [])
 
@@ -804,6 +1281,10 @@ class ContainerService:
 
         return (True, "", exec_args)
 
+    # -------------------------------------------------------------------------
+    # Private Helper Methods
+    # -------------------------------------------------------------------------
+
     async def _create_default_container(self, name: str, image: str) -> None:
         """Create the default container without progress reporting.
 
@@ -811,26 +1292,30 @@ class ContainerService:
             name: Container name
             image: Image to use
         """
+        opts = ContainerOptions()
+
         # Parse image source
         instance_source = self._parse_image_source(image)
         if instance_source is None:
             raise OperationError(f"Invalid image format: {image}")
 
-        # Create instance — base settings applied directly
+        # Build instance config — base settings + option metadata
+        instance_config_dict = _base_container_config(
+            nvidia_drivers=opts.gpu and opts.nvidia_drivers,
+        )
+        _store_option_metadata(instance_config_dict, opts)
+
         instance_config = InstancesPost(
             name=name,
             profiles=None,
             source=instance_source,
             start=True,
             architecture=None,
-            config={
-                **_base_container_config(nvidia_drivers=True),
-                KAPSULE_HOST_ROOTFS_KEY: "true",
-                KAPSULE_GPU_KEY: "true",
-                KAPSULE_NVIDIA_DRIVERS_KEY: "true",
-            },
+            config=instance_config_dict,
             description=None,
-            devices=_base_container_devices(host_rootfs=True),
+            devices=_base_container_devices(
+                host_rootfs=opts.host_rootfs, gpu=opts.gpu,
+            ),
             ephemeral=None,
             instance_type=None,
             restore=None,
@@ -841,169 +1326,14 @@ class ContainerService:
         try:
             operation = await self._incus.create_instance(instance_config, wait=True)
             if operation.status != "Success":
-                raise OperationError(f"Creation failed: {operation.err or operation.status}")
+                raise OperationError(
+                    f"Creation failed: {operation.err or operation.status}",
+                )
         except IncusError as e:
             raise OperationError(f"Failed to create container: {e}")
 
-        # Restore file capabilities stripped during image extraction
-        await self._fix_file_capabilities(None, name)
-
-    async def _setup_user_sync(
-        self,
-        container_name: str,
-        uid: int,
-        gid: int,
-        username: str,
-        home_dir: str,
-    ) -> None:
-        """Set up a host user in a container without progress reporting.
-
-        Args:
-            container_name: Container name
-            uid: User ID
-            gid: Group ID
-            username: Username
-            home_dir: Path to home directory on host
-        """
-        home_basename = os.path.basename(home_dir)
-        container_home = f"/home/{home_basename}"
-
-        # Check container settings
-        instance = await self._incus.get_instance(container_name)
-        instance_config = instance.config or {}
-        mount_home = instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
-        has_host_rootfs = instance_config.get(KAPSULE_HOST_ROOTFS_KEY) == "true"
-
-        # Mount home directory (if enabled)
-        if mount_home:
-            device_name = f"kapsule-home-{username}"
-            try:
-                await self._incus.add_instance_device(
-                    container_name,
-                    device_name,
-                    {
-                        "type": "disk",
-                        "source": home_dir,
-                        "path": container_home,
-                    },
-                )
-            except IncusError as e:
-                raise OperationError(f"Failed to mount home directory: {e}")
-        else:
-            # Ensure the home path exists inside the container
-            try:
-                await self._incus.mkdir(
-                    container_name, container_home, uid=uid, gid=gid, mode="0700",
-                )
-            except IncusError:
-                pass  # May already exist
-
-        # Mount custom directories
-        await self._mount_custom_dirs_sync(container_name, instance_config)
-
-        # When not using full host rootfs, add targeted mounts for
-        # /run/user/<uid> and /tmp/.X11-unix so socket symlinks work.
-
-        if not has_host_rootfs:
-            # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
-            hostrun_device = f"kapsule-hostrun-{uid}"
-            try:
-                await self._incus.add_instance_device(
-                    container_name,
-                    hostrun_device,
-                    {
-                        "type": "disk",
-                        "source": f"/run/user/{uid}",
-                        "path": f"/.kapsule/host/run/user/{uid}",
-                        "shift": "false",
-                        "recursive": "true",
-                        "propagation": "rslave",
-                    },
-                )
-            except IncusError as e:
-                raise OperationError(f"Failed to mount host runtime dir: {e}")
-
-            # Mount /tmp/.X11-unix at /.kapsule/host/tmp/.X11-unix for X11
-            try:
-                await self._incus.add_instance_device(
-                    container_name,
-                    "kapsule-x11",
-                    {
-                        "type": "disk",
-                        "source": "/tmp/.X11-unix",
-                        "path": "/.kapsule/host/tmp/.X11-unix",
-                        "shift": "false",
-                        "recursive": "true",
-                        "propagation": "rslave",
-                    },
-                )
-            except IncusError as e:
-                raise OperationError(f"Failed to mount host X11 dir: {e}")
-
-        # Create group
-        subprocess.run(
-            ["incus", "exec", container_name, "--", "groupadd", "-o", "-g", str(gid), username],
-            capture_output=True,
-        )
-
-        # Create user
-        subprocess.run(
-            [
-                "incus",
-                "exec",
-                container_name,
-                "--",
-                "useradd",
-                "-o",
-                "-M",
-                "-u",
-                str(uid),
-                "-g",
-                str(gid),
-                "-d",
-                container_home,
-                "-s",
-                "/bin/bash",
-                username,
-            ],
-            capture_output=True,
-        )
-
-        # Configure passwordless sudo
-        # Ensure /etc/sudoers.d/ exists (Alpine and other minimal images may lack it)
-        subprocess.run(
-            ["incus", "exec", container_name, "--", "mkdir", "-p", "/etc/sudoers.d"],
-            capture_output=True,
-        )
-        sudoers_content = f"{username} ALL=(ALL) NOPASSWD:ALL\n"
-        sudoers_file = f"/etc/sudoers.d/{username}"
-        try:
-            await self._incus.push_file(
-                container_name,
-                sudoers_file,
-                sudoers_content,
-                uid=0,
-                gid=0,
-                mode="0440",
-            )
-        except IncusError as e:
-            raise OperationError(f"Failed to configure sudo: {e}")
-
-        # Check if session mode is enabled and enable linger
-        session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
-
-        if session_mode:
-            subprocess.run(
-                ["incus", "exec", container_name, "--", "loginctl", "enable-linger", username],
-                capture_output=True,
-            )
-
-        # Mark user as mapped
-        user_mapped_key = f"user.kapsule.host-users.{uid}.mapped"
-        try:
-            await self._incus.patch_instance_config(container_name, {user_mapped_key: "true"})
-        except IncusError as e:
-            raise OperationError(f"Failed to update container config: {e}")
+        # Same post-create pipeline, silent
+        await self._run_post_create(name, opts)
 
     @staticmethod
     def _mount_env_fingerprint(env: dict[str, str]) -> str:
@@ -1033,7 +1363,8 @@ class ContainerService:
         point into /.kapsule/host/.
 
         Results are cached per (container, uid) and invalidated when the
-        container restarts or the caller's display/audio env vars change.
+        container restarts or the relevant env vars change (different
+        WAYLAND_DISPLAY, etc.).
 
         In session mode, the dbus socket is not mounted (the container has
         its own D-Bus session).
@@ -1064,7 +1395,7 @@ class ContainerService:
 
         # Ensure container runtime dirs exist
         try:
-            await self._incus.mkdir(container_name, "/run/user", uid=0, gid=0, mode="0755")
+            await self._incus.mkdir(container_name, "/run/user", uid=0, gid=0, mode="0255")
         except IncusError:
             pass
         try:
@@ -1201,103 +1532,6 @@ class ContainerService:
             capture_output=True,
         )
 
-    # -------------------------------------------------------------------------
-    # Private Helper Methods
-    # -------------------------------------------------------------------------
-
-    async def _mount_custom_dirs(
-        self,
-        progress: OperationReporter,
-        container_name: str,
-        instance_config: dict[str, str],
-    ) -> None:
-        """Mount custom directories specified at container creation.
-
-        Reads the ``user.kapsule.custom-mounts`` config key (a JSON array
-        of host paths) and adds each as an Incus disk device.
-
-        Args:
-            progress: Operation reporter
-            container_name: Container name
-            instance_config: Container config dict
-        """
-        import json as _json
-
-        raw = instance_config.get(KAPSULE_CUSTOM_MOUNTS_KEY, "")
-        if not raw:
-            return
-
-        try:
-            custom_mounts: list[str] = _json.loads(raw)
-        except _json.JSONDecodeError:
-            progress.warning(f"Invalid custom-mounts config: {raw}")
-            return
-
-        for mount_path in custom_mounts:
-            # Sanitise the path for use as an Incus device name
-            safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
-            device_name = f"kapsule-mount-{safe_name}"
-            container_path = mount_path  # Same path inside container
-
-            if not os.path.isdir(mount_path):
-                progress.warning(f"Custom mount source does not exist: {mount_path}")
-                continue
-
-            progress.info(f"Custom mount: {mount_path} -> {container_path}")
-            try:
-                await self._incus.add_instance_device(
-                    container_name,
-                    device_name,
-                    {
-                        "type": "disk",
-                        "source": mount_path,
-                        "path": container_path,
-                    },
-                )
-            except IncusError as e:
-                progress.warning(f"Failed to mount {mount_path}: {e}")
-
-    async def _mount_custom_dirs_sync(
-        self,
-        container_name: str,
-        instance_config: dict[str, str],
-    ) -> None:
-        """Mount custom directories (no-progress variant for _setup_user_sync).
-
-        Same logic as :meth:`_mount_custom_dirs` but without progress reporting.
-        """
-        import json as _json
-
-        raw = instance_config.get(KAPSULE_CUSTOM_MOUNTS_KEY, "")
-        if not raw:
-            return
-
-        try:
-            custom_mounts: list[str] = _json.loads(raw)
-        except _json.JSONDecodeError:
-            return
-
-        for mount_path in custom_mounts:
-            safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
-            device_name = f"kapsule-mount-{safe_name}"
-            container_path = mount_path
-
-            if not os.path.isdir(mount_path):
-                continue
-
-            try:
-                await self._incus.add_instance_device(
-                    container_name,
-                    device_name,
-                    {
-                        "type": "disk",
-                        "source": mount_path,
-                        "path": container_path,
-                    },
-                )
-            except IncusError:
-                pass  # Best effort
-
     def _parse_image_source(self, image: str) -> InstanceSource | None:
         """Parse an image string into an InstanceSource.
 
@@ -1342,254 +1576,4 @@ class ContainerService:
             secrets=None,
             source=None,
             **{"base-image": None},
-        )
-
-    async def _fix_file_capabilities(
-        self,
-        progress: OperationReporter | None,
-        name: str,
-    ) -> None:
-        """Restore file capabilities stripped during image extraction.
-
-        Container images from linuxcontainers.org lose ``security.capability``
-        extended attributes during image build or extraction.  Binaries like
-        ``newuidmap`` / ``newgidmap`` (from the ``shadow`` package) need file
-        capabilities (``cap_setuid+ep`` / ``cap_setgid+ep``) for rootless
-        Podman / Docker to set up user namespaces inside the container.
-
-        Upstream issue: https://github.com/lxc/lxc-ci/issues/955
-
-        This method restores the expected capabilities if the binaries exist
-        and ``setcap`` is available.
-
-        Args:
-            progress: Operation reporter (may be None for silent fixups)
-            name: Container name
-        """
-        caps: list[tuple[str, str]] = [
-            ("/usr/bin/newuidmap", "cap_setuid+ep"),
-            ("/usr/bin/newgidmap", "cap_setgid+ep"),
-        ]
-        for binary, cap in caps:
-            result = subprocess.run(
-                ["incus", "exec", name, "--", "setcap", cap, binary],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                # Binary or setcap may not exist on every image — not fatal
-                if progress:
-                    progress.warning(
-                        f"Could not set {cap} on {binary}: {result.stderr.strip()}"
-                    )
-            else:
-                if progress:
-                    progress.dim(f"Set {cap} on {binary}")
-
-    async def _apply_host_network_fixups(
-        self,
-        progress: OperationReporter,
-        name: str,
-    ) -> None:
-        """Apply fixups for containers using host networking (lxc.net.0.type=none).
-
-        Kapsule containers share the host's network namespace, so there are no
-        network interfaces for systemd-networkd to manage inside the container.
-        This causes systemd-networkd-wait-online.service to wait for a timeout
-        (~30s) before services like Docker can start.
-
-        We mask that service since the host network is already online.
-
-        Args:
-            progress: Operation reporter
-            name: Container name
-        """
-        # Mask systemd-networkd-wait-online.service by symlinking to /dev/null
-        # This is what `systemctl mask` does
-        progress.info("Masking systemd-networkd-wait-online.service (host networking)")
-        try:
-            await self._incus.create_symlink(
-                name,
-                "/etc/systemd/system/systemd-networkd-wait-online.service",
-                "/dev/null",
-                uid=0,
-                gid=0,
-            )
-        except IncusError as e:
-            # Not fatal - some images may not have systemd
-            progress.warning(f"Could not mask systemd-networkd-wait-online: {e}")
-
-    async def _configure_rootless_podman(
-        self,
-        progress: OperationReporter,
-        name: str,
-    ) -> None:
-        """Configure rootless Podman for non-session containers.
-
-        Kapsule's default (non-session) containers forward the host's D-Bus
-        session bus rather than running their own systemd user instance.
-        Podman defaults to ``cgroup_manager = "systemd"`` which asks systemd
-        to create a transient scope via sd-bus, but the host's systemd cannot
-        manage the container's PIDs so this fails with "No such process".
-
-        Dropping a config file into ``/etc/containers/containers.conf.d/``
-        switches rootless Podman to the ``cgroupfs`` cgroup manager which
-        writes cgroup entries directly instead of going through sd-bus.
-
-        Args:
-            progress: Operation reporter
-            name: Container name
-        """
-        parent_dir = "/etc/containers"
-        dropin_dir = f"{parent_dir}/containers.conf.d"
-        dropin_file = f"{dropin_dir}/50-kapsule-cgroupfs.conf"
-        dropin_content = (
-            "# Installed by Kapsule – non-session containers lack a systemd\n"
-            "# user instance, so the default systemd cgroup manager fails.\n"
-            "[engine]\n"
-            'cgroup_manager = "cgroupfs"\n'
-        )
-
-        # Create the full directory hierarchy – most images don't ship
-        # with Podman so /etc/containers/ won't exist yet.
-        for d in (parent_dir, dropin_dir):
-            try:
-                await self._incus.mkdir(name, d, uid=0, gid=0, mode="0755")
-            except IncusError:
-                pass  # Directory might already exist
-
-        try:
-            await self._incus.push_file(
-                name, dropin_file, dropin_content,
-                uid=0, gid=0, mode="0644",
-            )
-        except IncusError as e:
-            # Not fatal – best-effort config for when Podman is installed later
-            progress.warning(f"Could not configure rootless Podman: {e}")
-            return
-
-        progress.dim("Configured rootless Podman (cgroup_manager=cgroupfs)")
-
-    async def _setup_session_mode(
-        self,
-        progress: OperationReporter,
-        name: str,
-        dbus_mux: bool,
-    ) -> None:
-        """Set up session mode for a container.
-
-        Without D-Bus mux, the container's own systemd dbus.socket creates
-        /run/user/$uid/bus natively — no extra setup is needed (loginctl
-        enable-linger is handled by _setup_user_sync).
-
-        With D-Bus mux, we redirect the container's dbus.socket to a hostfs
-        path so the mux process can reach it from the host, then install the
-        kapsule-dbus-mux.service that listens at the normal /run/user/$uid/bus.
-
-        Args:
-            progress: Operation reporter
-            name: Container name
-            dbus_mux: Whether to set up D-Bus multiplexer
-        """
-        if not dbus_mux:
-            progress.info("Session mode: container will use its own D-Bus session bus")
-            return
-
-        # Use uid 1000 as placeholder - the drop-in uses %t so it works for any user
-        uid = 1000
-        host_socket_path = f"/run/user/{uid}/kapsule/{name}/dbus.socket"
-
-        progress.info(f"Configuring container D-Bus socket at: {host_socket_path}")
-
-        # Create the directory on host with correct ownership
-        kapsule_base_dir = f"/run/user/{uid}/kapsule"
-        host_socket_dir = os.path.dirname(host_socket_path)
-        os.makedirs(host_socket_dir, exist_ok=True)
-        # Set ownership of both the kapsule base dir and container-specific dir
-        os.chown(kapsule_base_dir, uid, uid)
-        os.chown(host_socket_dir, uid, uid)
-
-        # Create systemd user drop-in directory
-        dropin_dir = "/etc/systemd/user/dbus.socket.d"
-        try:
-            await self._incus.mkdir(name, dropin_dir, uid=0, gid=0, mode="0755")
-        except IncusError:
-            pass  # Directory might already exist
-
-        # Create the drop-in file
-        systemd_socket_path = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
-        dropin_content = f"""[Socket]
-# Kapsule: redirect D-Bus session socket to shared path
-# This makes the container's D-Bus accessible from the host
-# %t expands to XDG_RUNTIME_DIR (/run/user/UID)
-ListenStream=
-ListenStream={systemd_socket_path}
-"""
-        dropin_file = f"{dropin_dir}/kapsule.conf"
-        try:
-            await self._incus.push_file(name, dropin_file, dropin_content, uid=0, gid=0, mode="0644")
-        except IncusError as e:
-            raise OperationError(f"Failed to configure D-Bus socket: {e}")
-
-        # Set up D-Bus multiplexer if requested
-        if dbus_mux:
-            await self._setup_dbus_mux(progress, name)
-
-        # Reload systemd
-        progress.info("Reloading systemd user configuration...")
-        subprocess.run(
-            ["incus", "exec", name, "--", "systemctl", "--user", "--global", "daemon-reload"],
-            capture_output=True,
-        )
-
-    async def _setup_dbus_mux(self, progress: OperationReporter, name: str) -> None:
-        """Set up D-Bus multiplexer service in a container.
-
-        Args:
-            progress: Operation reporter
-            name: Container name
-        """
-        progress.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
-
-        service_dir = "/etc/systemd/user"
-        try:
-            await self._incus.mkdir(name, service_dir, uid=0, gid=0, mode="0755")
-        except IncusError:
-            pass  # Directory might already exist
-
-        container_dbus_socket = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
-        host_dbus_socket = "unix:path=/.kapsule/host%t/bus"
-        mux_listen_socket = "%t/bus"
-
-        service_content = f"""[Unit]
-Description=Kapsule D-Bus Multiplexer
-Documentation=man:kapsule(1)
-After=dbus.service
-Requires=dbus.service
-
-[Service]
-Type=simple
-Environment=RUST_LOG=trace
-ExecStart={KAPSULE_DBUS_MUX_BIN} \\
-    --log-level debug \\
-    --listen {mux_listen_socket} \\
-    --container-bus unix:path={container_dbus_socket} \\
-    --host-bus {host_dbus_socket}
-Restart=on-failure
-RestartSec=1
-
-[Install]
-WantedBy=default.target
-"""
-
-        service_file = f"{service_dir}/kapsule-dbus-mux.service"
-        try:
-            await self._incus.push_file(name, service_file, service_content, uid=0, gid=0, mode="0644")
-        except IncusError as e:
-            raise OperationError(f"Failed to install dbus-mux service: {e}")
-
-        progress.info("Enabling kapsule-dbus-mux.service globally")
-        subprocess.run(
-            ["incus", "exec", name, "--", "systemctl", "--user", "--global", "enable", "kapsule-dbus-mux.service"],
-            capture_output=True,
         )
