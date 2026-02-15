@@ -16,430 +16,9 @@ a function with the pipeline's ``step`` decorator to register it.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-import json
 import logging
 import os
-import pwd
-import subprocess
-from typing import TYPE_CHECKING, Generic, TypeVar, overload
 
-from .config import load_config
-from .container_options import ContainerOptions
-from .operations import OperationError, OperationReporter, OperationTracker, operation
-
-if TYPE_CHECKING:
-    from .service import KapsuleManagerInterface
-    from dbus_fast.aio import MessageBus
-
-# Import Incus client and models from local modules
-from .incus_client import IncusClient, IncusError
-from .models_generated import InstanceSource, InstancesPost
-
-
-# Config keys for kapsule metadata stored in container config
-KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
-KAPSULE_DBUS_MUX_KEY = "user.kapsule.dbus-mux"
-KAPSULE_HOST_ROOTFS_KEY = "user.kapsule.host-rootfs"
-KAPSULE_MOUNT_HOME_KEY = "user.kapsule.mount-home"
-KAPSULE_CUSTOM_MOUNTS_KEY = "user.kapsule.custom-mounts"
-KAPSULE_GPU_KEY = "user.kapsule.gpu"
-KAPSULE_NVIDIA_DRIVERS_KEY = "user.kapsule.nvidia-drivers"
-
-logger = logging.getLogger(__name__)
-
-# Absolute path to the NVIDIA container hook script (installed by CMake)
-NVIDIA_HOOK_PATH = "/usr/lib/kapsule/nvidia-container-hook.sh"
-
-# Path to kapsule-dbus-mux binary inside container (via hostfs mount)
-KAPSULE_DBUS_MUX_BIN = "/.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux"
-
-# D-Bus socket path template using %t (systemd specifier for XDG_RUNTIME_DIR)
-KAPSULE_DBUS_SOCKET_USER_PATH = "kapsule/{container}/dbus.socket"
-KAPSULE_DBUS_SOCKET_SYSTEMD = "/.kapsule/host%t/" + KAPSULE_DBUS_SOCKET_USER_PATH
-
-# Environment variables to skip when passing through to container
-_ENTER_ENV_SKIP = frozenset({
-    "_",              # Last command (set by shell)
-    "SHLVL",          # Shell nesting level
-    "OLDPWD",         # Previous directory
-    "PWD",            # Current directory (will be wrong in container)
-    "HOSTNAME",       # Host's hostname
-    "HOST",           # Host's hostname (zsh)
-    "LS_COLORS",      # Often huge and causes issues
-    "LESS_TERMCAP_mb", "LESS_TERMCAP_md", "LESS_TERMCAP_me",  # Less colors
-    "LESS_TERMCAP_se", "LESS_TERMCAP_so", "LESS_TERMCAP_ue", "LESS_TERMCAP_us",
-    "PATH",           # Only used to look up su, set by shell afterwards.
-})
-
-
-@dataclass(frozen=True)
-class BindMount:
-    source: str
-    target: str
-    uid: int
-    gid: int
-
-
-# =============================================================================
-# Pipeline
-# =============================================================================
-
-_Ctx = TypeVar("_Ctx")
-
-_StepFn = Callable[[_Ctx], Awaitable[None]]
-
-# Default order for steps that don't specify one.
-_DEFAULT_ORDER = 500
-
-
-class Pipeline(Generic[_Ctx]):
-    """A registry of async step functions executed by ``order``.
-
-    Create an instance at module level and use its :meth:`step` method
-    as a decorator.  When the steps are split across files, each file
-    just imports the pipeline instance and decorates its functions — no
-    central list to maintain.
-
-    Ordering
-    --------
-    Every step has a numeric *order* (default 500).  Steps run in
-    ascending order; steps with equal order run in registration
-    (decoration) order.  This keeps sequencing explicit even when
-    steps live in different modules with unpredictable import order.
-
-    Convention: use multiples of 100 so there's room to insert
-    steps between existing ones.
-
-    Example::
-
-        post_create = Pipeline[PostCreateContext]("post_create")
-
-        @post_create.step
-        async def fix_caps(ctx: PostCreateContext) -> None: ...
-
-        @post_create.step(order=900)
-        async def finalize(ctx: PostCreateContext) -> None: ...
-    """
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-        self._entries: list[tuple[int, int, _StepFn[_Ctx]]] = []
-        self._seq = 0  # registration counter for stable sort
-
-    @overload
-    def step(self, fn: _StepFn[_Ctx]) -> _StepFn[_Ctx]: ...
-    @overload
-    def step(self, *, order: int) -> Callable[[_StepFn[_Ctx]], _StepFn[_Ctx]]: ...
-
-    def step(
-        self,
-        fn: _StepFn[_Ctx] | None = None,
-        *,
-        order: int = _DEFAULT_ORDER,
-    ) -> _StepFn[_Ctx] | Callable[[_StepFn[_Ctx]], _StepFn[_Ctx]]:
-        """Register *fn* as a step in this pipeline.
-
-        Can be used bare (``@pipeline.step``) or with arguments
-        (``@pipeline.step(order=200)``).
-        """
-        def _register(f: _StepFn[_Ctx]) -> _StepFn[_Ctx]:
-            self._entries.append((order, self._seq, f))
-            self._seq += 1
-            return f
-
-        if fn is not None:
-            # Called as @pipeline.step (no parentheses)
-            return _register(fn)
-        # Called as @pipeline.step(order=...)
-        return _register
-
-    async def run(self, ctx: _Ctx) -> None:
-        """Execute every registered step in order."""
-        for _ord, _seq, s in sorted(self._entries):
-            await s(ctx)
-
-    def __len__(self) -> int:
-        return len(self._entries)
-
-    def __repr__(self) -> str:
-        ordered = sorted(self._entries)
-        names = ", ".join(f"{f.__name__}({o})" for o, _s, f in ordered)
-        return f"Pipeline({self.name!r}, [{names}])"
-
-
-# =============================================================================
-# Pipeline contexts
-# =============================================================================
-
-
-@dataclass
-class PostCreateContext:
-    """Context passed through post-creation setup steps.
-
-    Each step receives this context and performs its work on the
-    (already running) container.  Steps should guard their own
-    preconditions (e.g. check ``opts.session_mode`` before doing
-    session-mode work).
-    """
-
-    name: str
-    opts: ContainerOptions
-    incus: IncusClient
-    progress: OperationReporter | None
-
-    def info(self, msg: str) -> None:
-        if self.progress:
-            self.progress.info(msg)
-
-    def dim(self, msg: str) -> None:
-        if self.progress:
-            self.progress.dim(msg)
-
-    def warning(self, msg: str) -> None:
-        if self.progress:
-            self.progress.warning(msg)
-
-
-@dataclass
-class UserSetupContext:
-    """Context passed through user setup steps.
-
-    Each step receives this context and performs its work to
-    configure a host user inside a container.
-    """
-
-    container_name: str
-    uid: int
-    gid: int
-    username: str
-    home_dir: str
-    container_home: str
-    instance_config: dict[str, str]
-    incus: IncusClient
-    progress: OperationReporter | None
-
-    def info(self, msg: str) -> None:
-        if self.progress:
-            self.progress.info(msg)
-
-    def warning(self, msg: str) -> None:
-        if self.progress:
-            self.progress.warning(msg)
-
-
-# =============================================================================
-# Base config / device helpers
-# =============================================================================
-
-
-def _base_container_config(nvidia_drivers: bool) -> dict[str, str]:
-    """Base Incus config applied to every new Kapsule container.
-
-    Args:
-        nvidia_drivers: If True *and* the hook script is present on the host,
-            register an LXC mount hook that injects NVIDIA userspace drivers
-            into the container before pivot_root.
-
-    Returns:
-        Config dict with security and networking settings.
-    """
-    raw_lxc = "lxc.net.0.type=none\n"
-
-    # Register NVIDIA driver injection hook when enabled.
-    # We use our own hook rather than Incus's nvidia.runtime because
-    # upstream rejects that option on privileged containers.  See the
-    # header comment in data/nvidia-container-hook.sh for the full
-    # rationale.  The hook silently exits 0 when nvidia-container-cli
-    # or /dev/nvidia0 are absent, so this is safe on non-NVIDIA hosts.
-    if nvidia_drivers and os.path.isfile(NVIDIA_HOOK_PATH):
-        raw_lxc += f"lxc.hook.mount={NVIDIA_HOOK_PATH}\n"
-
-    return {
-        # In a future version, we might investigate what
-        # we can do with unprivileged containers.
-        "security.privileged": "true",
-        "security.nesting": "true",
-        # Use host networking (+ optional NVIDIA hook)
-        "raw.lxc": raw_lxc,
-    }
-
-
-def _base_container_devices(host_rootfs: bool, gpu: bool = True) -> dict[str, dict[str, str]]:
-    """Base Incus devices applied to every new Kapsule container.
-
-    Args:
-        host_rootfs: If True, mount the entire host filesystem at /.kapsule/host.
-            If False, only targeted mounts are added later during user setup.
-        gpu: If True, include GPU passthrough device.
-
-    Returns:
-        Devices dict with root disk, optionally GPU passthrough, and optionally host filesystem.
-    """
-    devices: dict[str, dict[str, str]] = {
-        # Root disk - required for container storage
-        "root": {
-            "type": "disk",
-            "path": "/",
-            "pool": "default",
-        },
-    }
-
-    if gpu:
-        # GPU passthrough — in privileged containers this exposes all GPU
-        # device nodes (/dev/nvidia*, /dev/dri/*, etc.) automatically.
-        devices["gpu"] = {
-            "type": "gpu",
-        }
-
-    if host_rootfs:
-        # Mount the entire host filesystem at /.kapsule/host
-        devices["hostfs"] = {
-            "type": "disk",
-            "source": "/",
-            "path": "/.kapsule/host",
-            "propagation": "rslave",
-            "recursive": "true",
-            "shift": "false",
-        }
-
-    return devices
-
-
-def _store_option_metadata(config: dict[str, str], opts: ContainerOptions) -> None:
-    """Store kapsule option values as ``user.kapsule.*`` config keys.
-
-    These metadata keys are read back later by user-setup and enter
-    steps to decide which features are active for a container.
-    """
-    if opts.session_mode:
-        config[KAPSULE_SESSION_MODE_KEY] = "true"
-    if opts.dbus_mux:
-        config[KAPSULE_DBUS_MUX_KEY] = "true"
-    config[KAPSULE_HOST_ROOTFS_KEY] = str(opts.host_rootfs).lower()
-    config[KAPSULE_MOUNT_HOME_KEY] = str(opts.mount_home).lower()
-    if opts.custom_mounts:
-        config[KAPSULE_CUSTOM_MOUNTS_KEY] = json.dumps(opts.custom_mounts)
-    config[KAPSULE_GPU_KEY] = str(opts.gpu).lower()
-    config[KAPSULE_NVIDIA_DRIVERS_KEY] = str(opts.gpu and opts.nvidia_drivers).lower()
-
-
-# =============================================================================
-# Post-create pipeline steps
-# =============================================================================
-
-post_create_pipeline = Pipeline[PostCreateContext]("post_create")
-
-
-@post_create_pipeline.step
-async def _post_create_host_network_fixups(ctx: PostCreateContext) -> None:
-    """Mask services that don't work with host networking.
-
-    Kapsule containers share the host's network namespace, so there are no
-    network interfaces for systemd-networkd to manage inside the container.
-    This causes systemd-networkd-wait-online.service to wait for a timeout
-    (~30s) before services like Docker can start.
-
-    We mask that service since the host network is already online.
-    """
-    ctx.info("Masking systemd-networkd-wait-online.service (host networking)")
-    try:
-        await ctx.incus.create_symlink(
-            ctx.name,
-            "/etc/systemd/system/systemd-networkd-wait-online.service",
-            "/dev/null",
-            uid=0,
-            gid=0,
-        )
-    except IncusError as e:
-        # Not fatal - some images may not have systemd
-        ctx.warning(f"Could not mask systemd-networkd-wait-online: {e}")
-
-
-@post_create_pipeline.step
-async def _post_create_fix_file_capabilities(ctx: PostCreateContext) -> None:
-    """Restore file capabilities stripped during image extraction.
-
-    Container images from linuxcontainers.org lose ``security.capability``
-    extended attributes during image build or extraction.  Binaries like
-    ``newuidmap`` / ``newgidmap`` (from the ``shadow`` package) need file
-    capabilities (``cap_setuid+ep`` / ``cap_setgid+ep``) for rootless
-    Podman / Docker to set up user namespaces inside the container.
-
-    Upstream issue: https://github.com/lxc/lxc-ci/issues/955
-    """
-    caps: list[tuple[str, str]] = [
-        ("/usr/bin/newuidmap", "cap_setuid+ep"),
-        ("/usr/bin/newgidmap", "cap_setgid+ep"),
-    ]
-    for binary, cap in caps:
-        result = subprocess.run(
-            ["incus", "exec", ctx.name, "--", "setcap", cap, binary],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            # Binary or setcap may not exist on every image — not fatal
-            ctx.warning(f"Could not set {cap} on {binary}: {result.stderr.strip()}")
-        else:
-            ctx.dim(f"Set {cap} on {binary}")
-
-
-@post_create_pipeline.step
-async def _post_create_session_mode(ctx: PostCreateContext) -> None:
-    """Set up session mode if enabled, otherwise configure rootless Podman."""
-    if ctx.opts.session_mode:
-        await _setup_session_mode_impl(
-            ctx.name, ctx.opts.dbus_mux, ctx.incus, ctx.progress,
-        )
-    else:
-        # Non-session containers lack a systemd user instance, so
-        # rootless Podman's default cgroup_manager=systemd will fail.
-        await _configure_rootless_podman_impl(ctx.name, ctx.incus, ctx.progress)
-
-
-async def _setup_session_mode_impl(
-    name: str,
-    dbus_mux: bool,
-    incus: IncusClient,
-    progress: OperationReporter | None,
-) -> None:
-    """Set up session mode for a container.
-
-    Without D-Bus mux, the container's own systemd dbus.socket creates
-    /run/user/$uid/bus natively — no extra setup is needed (loginctl
-    enable-linger is handled by the user setup pipeline).
-
-    With D-Bus mux, we redirect the container's dbus.socket to a hostfs
-    path so the mux process can reach it from the host, then install the
-    kapsule-dbus-mux.service that listens at the normal /run/user/$uid/bus.
-    """
-    if not dbus_mux:
-        if progress:
-            progress.info("Session mode: container will use its own D-Bus session bus")
-        return
-
-    # Use uid 1000 as placeholder - the drop-in uses %t so it works for any user
-    uid = 1000
-    host_socket_path = f"/run/user/{uid}/kapsule/{name}/dbus.socket"
-
-    if progress:
-        progress.info(f"Configuring container D-Bus socket at: {host_socket_path}")
-
-    # Create the directory on host with correct ownership
-    kapsule_base_dir = f"/run/user/{uid}/kapsule"
-    host_socket_dir = os.path.dirname(host_socket_path)
-    os.makedirs(host_socket_dir, exist_ok=True)
-    # Set ownership of both the kapsule base dir and container-specific dir
-    os.chown(kapsule_base_dir, uid, uid)
-    os.chown(host_socket_dir, uid, uid)
-
-    # Create systemd user drop-in directory
-    dropin_dir = "/etc/systemd/user/dbus.socket.d"
-    try:
-        await incus.mkdir(name, dropin_dir, uid=0, gid=0, mode="0755")
-    except IncusError:
         pass  # Directory might already exist
 
     # Create the drop-in file
@@ -799,6 +378,8 @@ async def _user_mark_mapped(ctx: UserSetupContext) -> None:
 # Container service
 # =============================================================================
 
+=======
+>>>>>>> 5252dc0 (Add user setup pipeline for container user configuration):src/daemon/container/service.py
 
 class ContainerService:
     """Container lifecycle operations exposed over D-Bus.
@@ -931,10 +512,10 @@ class ContainerService:
             raise OperationError(f"Invalid image format: {image}")
 
         # Build instance config — base settings + option metadata
-        instance_config_dict = _base_container_config(
+        instance_config_dict = base_container_config(
             nvidia_drivers=opts.gpu and opts.nvidia_drivers,
         )
-        _store_option_metadata(instance_config_dict, opts)
+        store_option_metadata(instance_config_dict, opts)
 
         instance_config = InstancesPost(
             name=name,
@@ -944,7 +525,7 @@ class ContainerService:
             architecture=None,
             config=instance_config_dict,
             description=None,
-            devices=_base_container_devices(host_rootfs=opts.host_rootfs, gpu=opts.gpu),
+            devices=base_container_devices(host_rootfs=opts.host_rootfs, gpu=opts.gpu),
             ephemeral=None,
             instance_type=None,
             restore=None,
@@ -1328,7 +909,7 @@ class ContainerService:
         env_args: list[str] = []
         whitelist_keys: list[str] = []
         for key, value in env.items():
-            if key in _ENTER_ENV_SKIP:
+            if key in ENTER_ENV_SKIP:
                 continue
             if "\n" in value or "\x00" in value:
                 continue
@@ -1389,10 +970,10 @@ class ContainerService:
             raise OperationError(f"Invalid image format: {image}")
 
         # Build instance config — base settings + option metadata
-        instance_config_dict = _base_container_config(
+        instance_config_dict = base_container_config(
             nvidia_drivers=opts.gpu and opts.nvidia_drivers,
         )
-        _store_option_metadata(instance_config_dict, opts)
+        store_option_metadata(instance_config_dict, opts)
 
         instance_config = InstancesPost(
             name=name,
@@ -1402,7 +983,7 @@ class ContainerService:
             architecture=None,
             config=instance_config_dict,
             description=None,
-            devices=_base_container_devices(
+            devices=base_container_devices(
                 host_rootfs=opts.host_rootfs, gpu=opts.gpu,
             ),
             ephemeral=None,
