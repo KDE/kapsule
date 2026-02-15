@@ -170,6 +170,21 @@ QCoro::Task<Container> KapsuleClient::container(const QString &name)
     co_return reply.value();
 }
 
+QCoro::Task<QString> KapsuleClient::getCreateSchema()
+{
+    if (!d->connected) {
+        co_return {};
+    }
+
+    auto reply = co_await d->interface->GetCreateSchema();
+    if (reply.isError()) {
+        qCWarning(KAPSULE_LOG) << "GetCreateSchema failed:" << reply.error().message();
+        co_return {};
+    }
+
+    co_return reply.value();
+}
+
 QCoro::Task<QVariantMap> KapsuleClient::config()
 {
     if (!d->connected) {
@@ -196,13 +211,20 @@ QCoro::Task<OperationResult> KapsuleClient::createContainer(
     const ContainerOptions &options,
     ProgressHandler progress)
 {
+    return createContainer(name, image, options.toVariantMap(), std::move(progress));
+}
+
+QCoro::Task<OperationResult> KapsuleClient::createContainer(
+    const QString &name,
+    const QString &image,
+    const QVariantMap &options,
+    ProgressHandler progress)
+{
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
     }
 
-    QVariantMap optionsMap = options.toVariantMap();
-
-    auto reply = co_await d->interface->CreateContainer(name, image, optionsMap);
+    auto reply = co_await d->interface->CreateContainer(name, image, options);
     if (reply.isError()) {
         co_return {false, reply.error().message()};
     }

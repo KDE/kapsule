@@ -6,30 +6,131 @@
 #include "types.h"
 #include "container.h"
 #include <QDBusMetaType>
-#include <QDBusVariant>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 namespace Kapsule {
+
+// =============================================================================
+// CreateSchemaOption helpers
+// =============================================================================
+
+QString CreateSchemaOption::cliFlag() const
+{
+    // Underscores → dashes: "mount_home" → "mount-home"
+    QString flag = key;
+    flag.replace(QLatin1Char('_'), QLatin1Char('-'));
+    return flag;
+}
+
+bool CreateSchemaOption::defaultsToTrue() const
+{
+    return defaultValue.isBool() && defaultValue.toBool();
+}
+
+// =============================================================================
+// CreateSchema helpers
+// =============================================================================
+
+QList<CreateSchemaOption> CreateSchema::allOptions() const
+{
+    QList<CreateSchemaOption> result;
+    for (const auto &section : sections) {
+        result.append(section.options);
+    }
+    return result;
+}
+
+std::optional<CreateSchemaOption> CreateSchema::option(const QString &key) const
+{
+    for (const auto &section : sections) {
+        for (const auto &opt : section.options) {
+            if (opt.key == key) {
+                return opt;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// =============================================================================
+// Schema parser
+// =============================================================================
+
+CreateSchema parseCreateSchema(const QString &json)
+{
+    CreateSchema schema;
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        return schema;
+    }
+
+    QJsonObject root = doc.object();
+    schema.version = root.value(QStringLiteral("version")).toInt();
+
+    const QJsonArray sections = root.value(QStringLiteral("sections")).toArray();
+    for (const QJsonValue &sectionVal : sections) {
+        QJsonObject sectionObj = sectionVal.toObject();
+
+        CreateSchemaSection section;
+        section.id = sectionObj.value(QStringLiteral("id")).toString();
+        section.title = sectionObj.value(QStringLiteral("title")).toString();
+
+        const QJsonArray options = sectionObj.value(QStringLiteral("options")).toArray();
+        for (const QJsonValue &optVal : options) {
+            QJsonObject optObj = optVal.toObject();
+
+            CreateSchemaOption opt;
+            opt.key = optObj.value(QStringLiteral("key")).toString();
+            opt.type = optObj.value(QStringLiteral("type")).toString();
+            opt.title = optObj.value(QStringLiteral("title")).toString();
+            opt.description = optObj.value(QStringLiteral("description")).toString();
+            opt.defaultValue = optObj.value(QStringLiteral("default"));
+
+            // Parse "requires" dict if present
+            if (optObj.contains(QStringLiteral("requires"))) {
+                QJsonObject reqObj = optObj.value(QStringLiteral("requires")).toObject();
+                for (auto it = reqObj.begin(); it != reqObj.end(); ++it) {
+                    opt.dependencies.insert(it.key(), it.value().toVariant());
+                }
+            }
+
+            section.options.append(opt);
+        }
+
+        schema.sections.append(section);
+    }
+
+    return schema;
+}
 
 QVariantMap ContainerOptions::toVariantMap() const
 {
     // Only include options that differ from schema defaults
     // to stay forward-compatible (daemon fills missing keys).
+    //
+    // Use plain QVariant values — Qt's D-Bus marshaller wraps each
+    // value in a variant automatically for a{sv}.  Wrapping in
+    // QDBusVariant would double-nest the variant on the wire.
     QVariantMap map;
 
     if (sessionMode)
-        map.insert(QStringLiteral("session_mode"), QVariant::fromValue(QDBusVariant(sessionMode)));
+        map.insert(QStringLiteral("session_mode"), sessionMode);
     if (dbusMux)
-        map.insert(QStringLiteral("dbus_mux"), QVariant::fromValue(QDBusVariant(dbusMux)));
+        map.insert(QStringLiteral("dbus_mux"), dbusMux);
     if (!hostRootfs)
-        map.insert(QStringLiteral("host_rootfs"), QVariant::fromValue(QDBusVariant(hostRootfs)));
+        map.insert(QStringLiteral("host_rootfs"), hostRootfs);
     if (!mountHome)
-        map.insert(QStringLiteral("mount_home"), QVariant::fromValue(QDBusVariant(mountHome)));
+        map.insert(QStringLiteral("mount_home"), mountHome);
     if (!customMounts.isEmpty())
-        map.insert(QStringLiteral("custom_mounts"), QVariant::fromValue(QDBusVariant(QVariant(customMounts))));
+        map.insert(QStringLiteral("custom_mounts"), QVariant::fromValue(customMounts));
     if (!gpu)
-        map.insert(QStringLiteral("gpu"), QVariant::fromValue(QDBusVariant(gpu)));
+        map.insert(QStringLiteral("gpu"), gpu);
     if (!nvidiaDrivers)
-        map.insert(QStringLiteral("nvidia_drivers"), QVariant::fromValue(QDBusVariant(nvidiaDrivers)));
+        map.insert(QStringLiteral("nvidia_drivers"), nvidiaDrivers);
 
     return map;
 }
