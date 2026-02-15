@@ -208,15 +208,6 @@ QCoro::Task<QVariantMap> KapsuleClient::config()
 QCoro::Task<OperationResult> KapsuleClient::createContainer(
     const QString &name,
     const QString &image,
-    const ContainerOptions &options,
-    ProgressHandler progress)
-{
-    return createContainer(name, image, options.toVariantMap(), std::move(progress));
-}
-
-QCoro::Task<OperationResult> KapsuleClient::createContainer(
-    const QString &name,
-    const QString &image,
     const QVariantMap &options,
     ProgressHandler progress)
 {

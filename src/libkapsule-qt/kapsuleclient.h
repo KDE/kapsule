@@ -122,27 +122,16 @@ public:
 
     /**
      * @brief Create a new container.
+     *
+     * Accepts a QVariantMap of option key→value pairs.  Only keys
+     * that differ from the schema defaults need to be included;
+     * the daemon fills in defaults for any omitted keys.
+     *
+     * Use getCreateSchema() + parseCreateSchema() to discover
+     * available options at runtime.
+     *
      * @param name The name for the new container.
      * @param image The base image to use (e.g., "ubuntu:24.04"), empty for default.
-     * @param options Container creation options (see ContainerOptions).
-     * @param progress Optional callback for progress messages.
-     * @return Operation result with success/error info.
-     */
-    QCoro::Task<OperationResult> createContainer(
-        const QString &name,
-        const QString &image,
-        const ContainerOptions &options = {},
-        ProgressHandler progress = {});
-
-    /**
-     * @brief Create a new container with a raw option map.
-     *
-     * This overload accepts a QVariantMap directly, allowing callers
-     * to pass through schema-driven options without needing to update
-     * ContainerOptions when new options are added to the daemon.
-     *
-     * @param name The name for the new container.
-     * @param image The base image to use, empty for default.
      * @param options Option key→value map (only non-default values).
      * @param progress Optional callback for progress messages.
      * @return Operation result with success/error info.
@@ -150,8 +139,8 @@ public:
     QCoro::Task<OperationResult> createContainer(
         const QString &name,
         const QString &image,
-        const QVariantMap &options,
-        ProgressHandler progress);
+        const QVariantMap &options = {},
+        ProgressHandler progress = {});
 
     /**
      * @brief Delete a container.
