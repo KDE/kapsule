@@ -10,19 +10,20 @@ using the operation decorator for automatic progress reporting.
 Container creation and user setup are structured as pipelines of
 step functions.  Each step receives a context dataclass, checks its
 own preconditions, and performs one concern.  This keeps individual
-steps small and makes adding new features straightforward — just
-append a function to the relevant step list.
+steps small and makes adding new features straightforward — decorate
+a function with the pipeline's ``step`` decorator to register it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import json
 import logging
 import os
 import pwd
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, TypeVar, overload
 
 from .config import load_config
 from .container_options import ContainerOptions
@@ -79,6 +80,93 @@ class BindMount:
     target: str
     uid: int
     gid: int
+
+
+# =============================================================================
+# Pipeline
+# =============================================================================
+
+_Ctx = TypeVar("_Ctx")
+
+_StepFn = Callable[[_Ctx], Awaitable[None]]
+
+# Default order for steps that don't specify one.
+_DEFAULT_ORDER = 500
+
+
+class Pipeline(Generic[_Ctx]):
+    """A registry of async step functions executed by ``order``.
+
+    Create an instance at module level and use its :meth:`step` method
+    as a decorator.  When the steps are split across files, each file
+    just imports the pipeline instance and decorates its functions — no
+    central list to maintain.
+
+    Ordering
+    --------
+    Every step has a numeric *order* (default 500).  Steps run in
+    ascending order; steps with equal order run in registration
+    (decoration) order.  This keeps sequencing explicit even when
+    steps live in different modules with unpredictable import order.
+
+    Convention: use multiples of 100 so there's room to insert
+    steps between existing ones.
+
+    Example::
+
+        post_create = Pipeline[PostCreateContext]("post_create")
+
+        @post_create.step
+        async def fix_caps(ctx: PostCreateContext) -> None: ...
+
+        @post_create.step(order=900)
+        async def finalize(ctx: PostCreateContext) -> None: ...
+    """
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self._entries: list[tuple[int, int, _StepFn[_Ctx]]] = []
+        self._seq = 0  # registration counter for stable sort
+
+    @overload
+    def step(self, fn: _StepFn[_Ctx]) -> _StepFn[_Ctx]: ...
+    @overload
+    def step(self, *, order: int) -> Callable[[_StepFn[_Ctx]], _StepFn[_Ctx]]: ...
+
+    def step(
+        self,
+        fn: _StepFn[_Ctx] | None = None,
+        *,
+        order: int = _DEFAULT_ORDER,
+    ) -> _StepFn[_Ctx] | Callable[[_StepFn[_Ctx]], _StepFn[_Ctx]]:
+        """Register *fn* as a step in this pipeline.
+
+        Can be used bare (``@pipeline.step``) or with arguments
+        (``@pipeline.step(order=200)``).
+        """
+        def _register(f: _StepFn[_Ctx]) -> _StepFn[_Ctx]:
+            self._entries.append((order, self._seq, f))
+            self._seq += 1
+            return f
+
+        if fn is not None:
+            # Called as @pipeline.step (no parentheses)
+            return _register(fn)
+        # Called as @pipeline.step(order=...)
+        return _register
+
+    async def run(self, ctx: _Ctx) -> None:
+        """Execute every registered step in order."""
+        for _ord, _seq, s in sorted(self._entries):
+            await s(ctx)
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def __repr__(self) -> str:
+        ordered = sorted(self._entries)
+        names = ", ".join(f"{f.__name__}({o})" for o, _s, f in ordered)
+        return f"Pipeline({self.name!r}, [{names}])"
 
 
 # =============================================================================
@@ -241,7 +329,10 @@ def _store_option_metadata(config: dict[str, str], opts: ContainerOptions) -> No
 # Post-create pipeline steps
 # =============================================================================
 
+post_create_pipeline = Pipeline[PostCreateContext]("post_create")
 
+
+@post_create_pipeline.step
 async def _post_create_host_network_fixups(ctx: PostCreateContext) -> None:
     """Mask services that don't work with host networking.
 
@@ -266,6 +357,7 @@ async def _post_create_host_network_fixups(ctx: PostCreateContext) -> None:
         ctx.warning(f"Could not mask systemd-networkd-wait-online: {e}")
 
 
+@post_create_pipeline.step
 async def _post_create_fix_file_capabilities(ctx: PostCreateContext) -> None:
     """Restore file capabilities stripped during image extraction.
 
@@ -294,6 +386,7 @@ async def _post_create_fix_file_capabilities(ctx: PostCreateContext) -> None:
             ctx.dim(f"Set {cap} on {binary}")
 
 
+@post_create_pipeline.step
 async def _post_create_session_mode(ctx: PostCreateContext) -> None:
     """Set up session mode if enabled, otherwise configure rootless Podman."""
     if ctx.opts.session_mode:
@@ -480,18 +573,14 @@ async def _configure_rootless_podman_impl(
         progress.dim("Configured rootless Podman (cgroup_manager=cgroupfs)")
 
 
-_POST_CREATE_STEPS = [
-    _post_create_host_network_fixups,
-    _post_create_fix_file_capabilities,
-    _post_create_session_mode,
-]
-
-
 # =============================================================================
 # User setup pipeline steps
 # =============================================================================
 
+user_setup_pipeline = Pipeline[UserSetupContext]("user_setup")
 
+
+@user_setup_pipeline.step(order=100)
 async def _user_mount_home(ctx: UserSetupContext) -> None:
     """Mount the user's home directory or create a container-local home."""
     mount_home = ctx.instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
@@ -523,6 +612,7 @@ async def _user_mount_home(ctx: UserSetupContext) -> None:
             pass  # May already exist
 
 
+@user_setup_pipeline.step(order=200)
 async def _user_mount_custom_dirs(ctx: UserSetupContext) -> None:
     """Mount custom directories specified at container creation.
 
@@ -564,6 +654,7 @@ async def _user_mount_custom_dirs(ctx: UserSetupContext) -> None:
             ctx.warning(f"Failed to mount {mount_path}: {e}")
 
 
+@user_setup_pipeline.step(order=300)
 async def _user_mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
     """Mount host runtime and X11 dirs when full rootfs is disabled.
 
@@ -611,6 +702,7 @@ async def _user_mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
         raise OperationError(f"Failed to mount host X11 dir: {e}")
 
 
+@user_setup_pipeline.step(order=400)
 async def _user_create_account(ctx: UserSetupContext) -> None:
     """Create user group and account in the container."""
     # Create group
@@ -647,6 +739,7 @@ async def _user_create_account(ctx: UserSetupContext) -> None:
         ctx.warning(f"useradd: {result.stderr.strip()}")
 
 
+@user_setup_pipeline.step(order=500)
 async def _user_configure_sudo(ctx: UserSetupContext) -> None:
     """Configure passwordless sudo for the user."""
     ctx.info(f"Configuring passwordless sudo for '{ctx.username}'")
@@ -670,6 +763,7 @@ async def _user_configure_sudo(ctx: UserSetupContext) -> None:
         raise OperationError(f"Failed to configure sudo: {e}")
 
 
+@user_setup_pipeline.step(order=600)
 async def _user_enable_linger(ctx: UserSetupContext) -> None:
     """Enable loginctl linger if session mode is active."""
     session_mode = ctx.instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
@@ -689,6 +783,7 @@ async def _user_enable_linger(ctx: UserSetupContext) -> None:
         ctx.warning(f"loginctl enable-linger: {result.stderr.strip()}")
 
 
+@user_setup_pipeline.step(order=900)
 async def _user_mark_mapped(ctx: UserSetupContext) -> None:
     """Mark the user as mapped in container config."""
     user_mapped_key = f"user.kapsule.host-users.{ctx.uid}.mapped"
@@ -698,17 +793,6 @@ async def _user_mark_mapped(ctx: UserSetupContext) -> None:
         )
     except IncusError as e:
         raise OperationError(f"Failed to update container config: {e}")
-
-
-_USER_SETUP_STEPS = [
-    _user_mount_home,
-    _user_mount_custom_dirs,
-    _user_mount_minimal_host_dirs,
-    _user_create_account,
-    _user_configure_sudo,
-    _user_enable_linger,
-    _user_mark_mapped,
-]
 
 
 # =============================================================================
@@ -771,8 +855,7 @@ class ContainerService:
         ctx = PostCreateContext(
             name=name, opts=opts, incus=self._incus, progress=progress,
         )
-        for step in _POST_CREATE_STEPS:
-            await step(ctx)
+        await post_create_pipeline.run(ctx)
 
     async def _run_user_setup(
         self,
@@ -796,8 +879,7 @@ class ContainerService:
             incus=self._incus,
             progress=progress,
         )
-        for step in _USER_SETUP_STEPS:
-            await step(ctx)
+        await user_setup_pipeline.run(ctx)
 
     # -------------------------------------------------------------------------
     # Container Lifecycle Operations
