@@ -121,10 +121,9 @@ QCoro::Task<int> asyncMain(const QStringList &args)
  * Build QCommandLineOption entries and a variant-map builder from the schema.
  *
  * For each schema option the mapping is:
- *   boolean, default true  → --no-<flag>        (inverted)
- *   boolean, default false → --<flag>
- *   string                 → --<flag> <value>
- *   array                  → --<flag> <value>    (repeatable)
+ *   boolean → --<flag> and --no-<flag>  (both registered, default marked)
+ *   string  → --<flag> <value>
+ *   array   → --<flag> <value>           (repeatable)
  *
  * Returns: list of options to add to the parser.
  */
@@ -135,17 +134,25 @@ static QList<QCommandLineOption> schemaToCliOptions(const CreateSchema &schema)
         const QString flag = opt.cliFlag();
 
         if (opt.type == QStringLiteral("boolean")) {
+            // Register both --<flag> and --no-<flag> so the user can
+            // explicitly enable or disable any boolean option.
             if (opt.defaultsToTrue()) {
-                // Default-on → user passes --no-<flag> to disable
+                cliOptions.append({
+                    flag,
+                    opt.description + QStringLiteral(" [default]")
+                });
                 cliOptions.append({
                     QStringLiteral("no-") + flag,
-                    opt.description
+                    QStringLiteral("Disable: ") + opt.title
                 });
             } else {
-                // Default-off → user passes --<flag> to enable
                 cliOptions.append({
                     flag,
                     opt.description
+                });
+                cliOptions.append({
+                    QStringLiteral("no-") + flag,
+                    QStringLiteral("Disable: ") + opt.title + QStringLiteral(" [default]")
                 });
             }
         } else if (opt.type == QStringLiteral("string")) {
@@ -178,14 +185,16 @@ static QVariantMap cliToVariantMap(const QCommandLineParser &parser,
         const QString flag = opt.cliFlag();
 
         if (opt.type == QStringLiteral("boolean")) {
-            if (opt.defaultsToTrue()) {
-                if (parser.isSet(QStringLiteral("no-") + flag)) {
-                    map.insert(opt.key, false);
-                }
-            } else {
-                if (parser.isSet(flag)) {
-                    map.insert(opt.key, true);
-                }
+            const bool hasPositive = parser.isSet(flag);
+            const bool hasNegative = parser.isSet(QStringLiteral("no-") + flag);
+
+            // Last-one-wins if the user passes both (unlikely but harmless).
+            // Only insert when explicitly set so the daemon uses its defaults
+            // for anything omitted.
+            if (hasPositive && !hasNegative) {
+                map.insert(opt.key, true);
+            } else if (hasNegative && !hasPositive) {
+                map.insert(opt.key, false);
             }
         } else if (opt.type == QStringLiteral("string")) {
             if (parser.isSet(flag)) {
