@@ -11,6 +11,7 @@
 #include <QMetaType>
 #include <QMetaEnum>
 #include <QDBusArgument>
+#include <QVariantMap>
 #include <functional>
 
 #include "kapsule_export.h"
@@ -68,6 +69,67 @@ struct KAPSULE_EXPORT OperationResult {
 };
 
 /**
+ * @brief Options for container creation.
+ *
+ * This struct mirrors the Python `ContainerOptions` dataclass and the
+ * Kapsule option schema defined in `container_options.py`.  Each field
+ * corresponds to a key in the schema; default values match the schema
+ * defaults so that a default-constructed `ContainerOptions{}` produces
+ * a standard container with all features enabled.
+ *
+ * The struct is serialised to a D-Bus `a{sv}` (variant dict) by
+ * toVariantMap().  Only fields that differ from the schema defaults
+ * are included in the dict, keeping messages small and ensuring
+ * forward compatibility — the daemon applies defaults for any keys
+ * the client omits.
+ *
+ * Clients can query the full schema programmatically by calling
+ * `GetCreateSchema()` on the daemon's Manager interface, which returns
+ * a JSON string describing all options, their types, defaults,
+ * grouping, and inter-field dependencies.
+ *
+ * ### CLI mapping
+ *
+ * | Field        | CLI flag           | Inverted? |
+ * |--------------|--------------------|-----------|
+ * | sessionMode  | --session          | no        |
+ * | dbusMux      | --dbus-mux         | no        |
+ * | hostRootfs   | --no-host-rootfs   | yes       |
+ * | mountHome    | --no-home          | yes       |
+ * | customMounts | --mount \<path\>   | no        |
+ * | gpu          | --no-gpu           | yes       |
+ * | nvidiaDrivers| --no-nvidia-drivers| yes       |
+ *
+ * @see ContainerOptions::toVariantMap()
+ * @see KapsuleClient::createContainer()
+ * @since 0.1
+ */
+struct KAPSULE_EXPORT ContainerOptions {
+    /// Enable session mode with container D-Bus.
+    bool sessionMode = false;
+    /// Enable D-Bus multiplexer (implies sessionMode).
+    bool dbusMux = false;
+    /// Mount entire host filesystem at /.kapsule/host.
+    bool hostRootfs = true;
+    /// Mount the user's home directory in the container.
+    bool mountHome = true;
+    /// Extra host directories to mount in the container.
+    QStringList customMounts;
+    /// Pass through GPU devices.
+    bool gpu = true;
+    /// Inject host NVIDIA userspace drivers on each start.
+    bool nvidiaDrivers = true;
+
+    /**
+     * @brief Serialize to a D-Bus a{sv} variant map.
+     *
+     * Only includes options that differ from schema defaults
+     * to keep the message small and forward-compatible.
+     */
+    [[nodiscard]] QVariantMap toVariantMap() const;
+};
+
+/**
  * @brief Progress callback for long-running operations.
  *
  * @param type The message type
@@ -103,6 +165,7 @@ KAPSULE_EXPORT const QDBusArgument &operator>>(const QDBusArgument &arg, EnterRe
 Q_DECLARE_METATYPE(Kapsule::ContainerMode)
 Q_DECLARE_METATYPE(Kapsule::MessageType)
 Q_DECLARE_METATYPE(Kapsule::OperationResult)
+Q_DECLARE_METATYPE(Kapsule::ContainerOptions)
 Q_DECLARE_METATYPE(Kapsule::EnterResult)
 
 #endif // KAPSULE_TYPES_H

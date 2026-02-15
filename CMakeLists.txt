@@ -79,6 +79,7 @@ if(INSTALL_PYTHON_DAEMON)
         src/daemon/__init__.py
         src/daemon/__main__.py
         src/daemon/config.py
+        src/daemon/container_options.py
         src/daemon/container_service.py
         src/daemon/dbus_types.py
         src/daemon/incus_client.py

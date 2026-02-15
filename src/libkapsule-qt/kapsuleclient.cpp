@@ -193,20 +193,16 @@ QCoro::Task<QVariantMap> KapsuleClient::config()
 QCoro::Task<OperationResult> KapsuleClient::createContainer(
     const QString &name,
     const QString &image,
-    ContainerMode mode,
-    bool hostRootfs,
-    bool gpu,
-    bool nvidiaDrivers,
+    const ContainerOptions &options,
     ProgressHandler progress)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
     }
 
-    bool sessionMode = (mode == ContainerMode::Session || mode == ContainerMode::DbusMux);
-    bool dbusMux = (mode == ContainerMode::DbusMux);
+    QVariantMap optionsMap = options.toVariantMap();
 
-    auto reply = co_await d->interface->CreateContainer(name, image, sessionMode, dbusMux, hostRootfs, gpu, nvidiaDrivers);
+    auto reply = co_await d->interface->CreateContainer(name, image, optionsMap);
     if (reply.isError()) {
         co_return {false, reply.error().message()};
     }

@@ -18,17 +18,23 @@ from dbus_fast.aio import MessageBus
 from dbus_fast.service import ServiceInterface, dbus_property, dbus_method
 from dbus_fast.constants import PropertyAccess
 from dbus_fast.annotations import DBusStr, DBusBool, DBusObjectPath, DBusSignature, DBusUInt32
-from dbus_fast import BusType, Message, MessageType
+from dbus_fast import BusType, Message, MessageType, Variant
 
 from .dbus_types import (
     DBusStrArray,
     DBusStrDict,
+    DBusVariantDict,
     DBusContainer,
     DBusContainerList,
     DBusEnterResult,
 )
 
 from . import __version__
+from .container_options import (
+    OptionValidationError,
+    get_create_schema_json,
+    parse_options,
+)
 from .container_service import ContainerService
 
 # Re-export IncusClient for use in __main__ and CLI
@@ -201,30 +207,48 @@ class KapsuleManagerInterface(ServiceInterface):
     # =========================================================================
 
     @dbus_method()
+    def GetCreateSchema(self) -> DBusStr:
+        """Get the option schema for CreateContainer.
+
+        Returns a JSON string describing all available options, their types,
+        defaults, and UI metadata. Clients can use this to dynamically
+        render creation forms.
+
+        Returns:
+            JSON string with the Kapsule option schema
+        """
+        return get_create_schema_json()
+
+    @dbus_method()
     async def CreateContainer(
         self,
         name: DBusStr,
         image: DBusStr,
-        session_mode: DBusBool,
-        dbus_mux: DBusBool,
-        host_rootfs: DBusBool,
-        gpu: DBusBool,
-        nvidia_drivers: DBusBool,
+        options: DBusVariantDict,
     ) -> DBusObjectPath:
         """Create a new container.
 
         Args:
             name: Container name
             image: Image to use (e.g., "archlinux"), empty for default from config
-            session_mode: Enable session mode with container D-Bus
-            dbus_mux: Enable D-Bus multiplexer (implies session_mode)
-            host_rootfs: Mount entire host filesystem at /.kapsule/host
-            gpu: Include GPU passthrough device
-            nvidia_drivers: Inject host NVIDIA userspace drivers on each start
+            options: Container options as a{sv} (see GetCreateSchema)
 
         Returns:
             D-Bus object path for tracking operation progress
         """
+        # Parse and validate options
+        try:
+            # Unwrap Variant values from dbus-fast
+            raw_options: dict[str, object] = {}
+            for key, value in options.items():
+                if isinstance(value, Variant):
+                    raw_options[key] = value.value
+                else:
+                    raw_options[key] = value
+            opts = parse_options(raw_options)
+        except OptionValidationError as e:
+            raise Exception(str(e))
+
         # If no image specified, look up default from caller's config
         actual_image = image
         if not image:
@@ -244,11 +268,7 @@ class KapsuleManagerInterface(ServiceInterface):
         return await self._service.create_container(
             name=name,
             image=actual_image,
-            session_mode=session_mode,
-            dbus_mux=dbus_mux,
-            host_rootfs=host_rootfs,
-            gpu=gpu,
-            nvidia_drivers=nvidia_drivers,
+            options=opts,
         )
 
     @dbus_method()

@@ -18,6 +18,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 from .config import load_config
+from .container_options import ContainerOptions
 from .operations import OperationError, OperationReporter, OperationTracker, operation
 
 if TYPE_CHECKING:
@@ -33,6 +34,8 @@ from .models_generated import InstanceSource, InstancesPost
 KAPSULE_SESSION_MODE_KEY = "user.kapsule.session-mode"
 KAPSULE_DBUS_MUX_KEY = "user.kapsule.dbus-mux"
 KAPSULE_HOST_ROOTFS_KEY = "user.kapsule.host-rootfs"
+KAPSULE_MOUNT_HOME_KEY = "user.kapsule.mount-home"
+KAPSULE_CUSTOM_MOUNTS_KEY = "user.kapsule.custom-mounts"
 KAPSULE_GPU_KEY = "user.kapsule.gpu"
 KAPSULE_NVIDIA_DRIVERS_KEY = "user.kapsule.nvidia-drivers"
 
@@ -199,11 +202,7 @@ class ContainerService:
         *,
         name: str,
         image: str,
-        session_mode: bool = False,
-        dbus_mux: bool = False,
-        host_rootfs: bool = True,
-        gpu: bool = True,
-        nvidia_drivers: bool,
+        options: ContainerOptions | None = None,
     ) -> None:
         """Create a new container.
 
@@ -211,37 +210,25 @@ class ContainerService:
             progress: Operation reporter (auto-injected)
             name: Container name
             image: Image to use (e.g., "images:archlinux")
-            session_mode: Enable session mode with container D-Bus
-            dbus_mux: Enable D-Bus multiplexer (implies session_mode)
-            host_rootfs: Mount entire host filesystem at /.kapsule/host.
-                When False, only targeted mounts are added during user setup.
-            gpu: Include GPU passthrough device.
-            nvidia_drivers: Inject host NVIDIA userspace drivers into the
-                container on each start.  Only effective when gpu is True
-                and nvidia-container-cli is available on the host.
+            options: Validated container options. If None, schema defaults
+                are used (all features enabled).
         """
-        # dbus_mux implies session_mode
-        if dbus_mux:
-            session_mode = True
-
-        # D-Bus mux requires the full host rootfs (the mux binary is
-        # accessed via /.kapsule/host/usr/lib/kapsule/kapsule-dbus-mux)
-        if dbus_mux and not host_rootfs:
-            raise OperationError(
-                "D-Bus multiplexer requires --host-rootfs "
-                "(the mux binary is accessed via the host filesystem mount)"
-            )
+        opts = options or ContainerOptions()
 
         # Check if container already exists
         if await self._incus.instance_exists(name):
             raise OperationError(f"Container '{name}' already exists")
 
         progress.info(f"Image: {image}")
-        if not host_rootfs:
+        if not opts.host_rootfs:
             progress.info("Minimal host mounts (no full rootfs)")
-        if not gpu:
+        if not opts.mount_home:
+            progress.info("Home directory mount: disabled")
+        if opts.custom_mounts:
+            progress.info(f"Custom mounts: {', '.join(opts.custom_mounts)}")
+        if not opts.gpu:
             progress.info("GPU passthrough: disabled")
-        if gpu and not nvidia_drivers:
+        if opts.gpu and not opts.nvidia_drivers:
             progress.info("NVIDIA driver injection: disabled")
 
         # Parse image source
@@ -250,14 +237,23 @@ class ContainerService:
             raise OperationError(f"Invalid image format: {image}")
 
         # Build instance config — base settings applied directly
-        instance_config_dict = _base_container_config(nvidia_drivers=gpu and nvidia_drivers)
-        if session_mode:
+        instance_config_dict = _base_container_config(
+            nvidia_drivers=opts.gpu and opts.nvidia_drivers
+        )
+        if opts.session_mode:
             instance_config_dict[KAPSULE_SESSION_MODE_KEY] = "true"
-        if dbus_mux:
+        if opts.dbus_mux:
             instance_config_dict[KAPSULE_DBUS_MUX_KEY] = "true"
-        instance_config_dict[KAPSULE_HOST_ROOTFS_KEY] = str(host_rootfs).lower()
-        instance_config_dict[KAPSULE_GPU_KEY] = str(gpu).lower()
-        instance_config_dict[KAPSULE_NVIDIA_DRIVERS_KEY] = str(gpu and nvidia_drivers).lower()
+        instance_config_dict[KAPSULE_HOST_ROOTFS_KEY] = str(opts.host_rootfs).lower()
+        instance_config_dict[KAPSULE_MOUNT_HOME_KEY] = str(opts.mount_home).lower()
+        if opts.custom_mounts:
+            # Store as JSON array in Incus config (config values are strings)
+            import json
+            instance_config_dict[KAPSULE_CUSTOM_MOUNTS_KEY] = json.dumps(opts.custom_mounts)
+        instance_config_dict[KAPSULE_GPU_KEY] = str(opts.gpu).lower()
+        instance_config_dict[KAPSULE_NVIDIA_DRIVERS_KEY] = str(
+            opts.gpu and opts.nvidia_drivers
+        ).lower()
 
         instance_config = InstancesPost(
             name=name,
@@ -267,7 +263,7 @@ class ContainerService:
             architecture=None,
             config=instance_config_dict,
             description=None,
-            devices=_base_container_devices(host_rootfs=host_rootfs, gpu=gpu),
+            devices=_base_container_devices(host_rootfs=opts.host_rootfs, gpu=opts.gpu),
             ephemeral=None,
             instance_type=None,
             restore=None,
@@ -294,8 +290,8 @@ class ContainerService:
         await self._fix_file_capabilities(progress, name)
 
         # Set up session mode if enabled
-        if session_mode:
-            await self._setup_session_mode(progress, name, dbus_mux)
+        if opts.session_mode:
+            await self._setup_session_mode(progress, name, opts.dbus_mux)
         else:
             # Non-session containers lack a systemd user instance, so
             # rootless Podman's default cgroup_manager=systemd will fail.
@@ -463,21 +459,39 @@ class ContainerService:
         home_basename = os.path.basename(home_dir)
         container_home = f"/home/{home_basename}"
 
-        # Mount home directory
-        progress.info(f"Mounting home directory: {home_dir} -> {container_home}")
-        device_name = f"kapsule-home-{username}"
-        try:
-            await self._incus.add_instance_device(
-                container_name,
-                device_name,
-                {
-                    "type": "disk",
-                    "source": home_dir,
-                    "path": container_home,
-                },
-            )
-        except IncusError as e:
-            raise OperationError(f"Failed to mount home directory: {e}")
+        # Check if home directory mounting is enabled
+        instance = await self._incus.get_instance(container_name)
+        instance_config = instance.config or {}
+        mount_home = instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
+
+        if mount_home:
+            # Mount home directory
+            progress.info(f"Mounting home directory: {home_dir} -> {container_home}")
+            device_name = f"kapsule-home-{username}"
+            try:
+                await self._incus.add_instance_device(
+                    container_name,
+                    device_name,
+                    {
+                        "type": "disk",
+                        "source": home_dir,
+                        "path": container_home,
+                    },
+                )
+            except IncusError as e:
+                raise OperationError(f"Failed to mount home directory: {e}")
+        else:
+            progress.info("Home directory mount: skipped (disabled)")
+            # Ensure the home path exists inside the container
+            try:
+                await self._incus.mkdir(
+                    container_name, container_home, uid=uid, gid=gid, mode="0700",
+                )
+            except IncusError:
+                pass  # May already exist
+
+        # Mount custom directories
+        await self._mount_custom_dirs(progress, container_name, instance_config)
 
         # Create group
         progress.info(f"Creating group '{username}' (gid={gid})")
@@ -538,8 +552,6 @@ class ContainerService:
             raise OperationError(f"Failed to configure sudo: {e}")
 
         # Check if session mode is enabled
-        instance = await self._incus.get_instance(container_name)
-        instance_config = instance.config or {}
         session_mode = instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
 
         if session_mode:
@@ -856,26 +868,41 @@ class ContainerService:
         home_basename = os.path.basename(home_dir)
         container_home = f"/home/{home_basename}"
 
-        # Mount home directory
-        device_name = f"kapsule-home-{username}"
-        try:
-            await self._incus.add_instance_device(
-                container_name,
-                device_name,
-                {
-                    "type": "disk",
-                    "source": home_dir,
-                    "path": container_home,
-                },
-            )
-        except IncusError as e:
-            raise OperationError(f"Failed to mount home directory: {e}")
+        # Check container settings
+        instance = await self._incus.get_instance(container_name)
+        instance_config = instance.config or {}
+        mount_home = instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
+        has_host_rootfs = instance_config.get(KAPSULE_HOST_ROOTFS_KEY) == "true"
+
+        # Mount home directory (if enabled)
+        if mount_home:
+            device_name = f"kapsule-home-{username}"
+            try:
+                await self._incus.add_instance_device(
+                    container_name,
+                    device_name,
+                    {
+                        "type": "disk",
+                        "source": home_dir,
+                        "path": container_home,
+                    },
+                )
+            except IncusError as e:
+                raise OperationError(f"Failed to mount home directory: {e}")
+        else:
+            # Ensure the home path exists inside the container
+            try:
+                await self._incus.mkdir(
+                    container_name, container_home, uid=uid, gid=gid, mode="0700",
+                )
+            except IncusError:
+                pass  # May already exist
+
+        # Mount custom directories
+        await self._mount_custom_dirs_sync(container_name, instance_config)
 
         # When not using full host rootfs, add targeted mounts for
         # /run/user/<uid> and /tmp/.X11-unix so socket symlinks work.
-        instance = await self._incus.get_instance(container_name)
-        instance_config = instance.config or {}
-        has_host_rootfs = instance_config.get(KAPSULE_HOST_ROOTFS_KEY) == "true"
 
         if not has_host_rootfs:
             # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
@@ -1177,6 +1204,99 @@ class ContainerService:
     # -------------------------------------------------------------------------
     # Private Helper Methods
     # -------------------------------------------------------------------------
+
+    async def _mount_custom_dirs(
+        self,
+        progress: OperationReporter,
+        container_name: str,
+        instance_config: dict[str, str],
+    ) -> None:
+        """Mount custom directories specified at container creation.
+
+        Reads the ``user.kapsule.custom-mounts`` config key (a JSON array
+        of host paths) and adds each as an Incus disk device.
+
+        Args:
+            progress: Operation reporter
+            container_name: Container name
+            instance_config: Container config dict
+        """
+        import json as _json
+
+        raw = instance_config.get(KAPSULE_CUSTOM_MOUNTS_KEY, "")
+        if not raw:
+            return
+
+        try:
+            custom_mounts: list[str] = _json.loads(raw)
+        except _json.JSONDecodeError:
+            progress.warning(f"Invalid custom-mounts config: {raw}")
+            return
+
+        for mount_path in custom_mounts:
+            # Sanitise the path for use as an Incus device name
+            safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
+            device_name = f"kapsule-mount-{safe_name}"
+            container_path = mount_path  # Same path inside container
+
+            if not os.path.isdir(mount_path):
+                progress.warning(f"Custom mount source does not exist: {mount_path}")
+                continue
+
+            progress.info(f"Custom mount: {mount_path} -> {container_path}")
+            try:
+                await self._incus.add_instance_device(
+                    container_name,
+                    device_name,
+                    {
+                        "type": "disk",
+                        "source": mount_path,
+                        "path": container_path,
+                    },
+                )
+            except IncusError as e:
+                progress.warning(f"Failed to mount {mount_path}: {e}")
+
+    async def _mount_custom_dirs_sync(
+        self,
+        container_name: str,
+        instance_config: dict[str, str],
+    ) -> None:
+        """Mount custom directories (no-progress variant for _setup_user_sync).
+
+        Same logic as :meth:`_mount_custom_dirs` but without progress reporting.
+        """
+        import json as _json
+
+        raw = instance_config.get(KAPSULE_CUSTOM_MOUNTS_KEY, "")
+        if not raw:
+            return
+
+        try:
+            custom_mounts: list[str] = _json.loads(raw)
+        except _json.JSONDecodeError:
+            return
+
+        for mount_path in custom_mounts:
+            safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
+            device_name = f"kapsule-mount-{safe_name}"
+            container_path = mount_path
+
+            if not os.path.isdir(mount_path):
+                continue
+
+            try:
+                await self._incus.add_instance_device(
+                    container_name,
+                    device_name,
+                    {
+                        "type": "disk",
+                        "source": mount_path,
+                        "path": container_path,
+                    },
+                )
+            except IncusError:
+                pass  # Best effort
 
     def _parse_image_source(self, image: str) -> InstanceSource | None:
         """Parse an image string into an InstanceSource.

@@ -88,6 +88,7 @@ src/daemon/
 ├── __main__.py          # Entry point: python -m kapsule.daemon
 ├── service.py           # KapsuleManagerInterface (D-Bus service)
 ├── container_service.py # Container lifecycle operations
+├── container_options.py # Option schema, validation, ContainerOptions
 ├── operations.py        # @operation decorator, progress reporting
 ├── incus_client.py      # Typed async Incus REST client
 ├── models_generated.py  # Pydantic models from Incus OpenAPI spec
@@ -105,7 +106,8 @@ Singleton service at `/org/kde/kapsule`:
 
 ```python
 # Methods - return operation object path immediately
-CreateContainer(name: str, image: str, ...) -> object_path
+GetCreateSchema() -> str  # JSON option schema for CreateContainer
+CreateContainer(name: str, image: str, options: a{sv}) -> object_path
 DeleteContainer(name: str, force: bool) -> object_path
 StartContainer(name: str) -> object_path
 StopContainer(name: str, force: bool) -> object_path
@@ -204,8 +206,7 @@ class KapsuleClient : public QObject {
     QCoro::Task<OperationResult> createContainer(
         const QString &name,
         const QString &image,
-        ContainerMode mode = ContainerMode::Default,
-        bool hostRootfs = true,
+        const ContainerOptions &options = {},
         ProgressHandler progress = {});
     
     QCoro::Task<EnterResult> prepareEnter(
@@ -239,8 +240,11 @@ Callbacks receive progress from operation D-Bus signals:
 using ProgressHandler = std::function<void(MessageType, const QString &, int)>;
 
 // Usage
-co_await client.createContainer("dev", "ubuntu:24.04",
-    ContainerMode::Default, true,
+ContainerOptions opts;
+opts.hostRootfs = false;
+opts.mountHome = false;
+opts.customMounts = {"/opt/data", "/srv/builds"};
+co_await client.createContainer("dev", "ubuntu:24.04", opts,
     [](MessageType type, const QString &msg, int indent) {
         // Display progress to user
     });
@@ -279,6 +283,182 @@ o.hint("Is the daemon running? Try: systemctl status kapsule-daemon");
 
 ---
 
+## Container Creation Options (Schema-Driven)
+
+Container creation is driven by a **Kapsule option schema** — a purpose-built
+format that serves as the single source of truth for the daemon, CLI, and
+any future GUI (KCM).
+
+### Why Not Positional D-Bus Parameters?
+
+D-Bus method parameters are positional and have no default values at the
+wire level.  Adding a parameter changes the method signature, which is an
+ABI break — the daemon and all clients must update in lockstep.  With a
+growing set of options (session mode, host mounts, GPU, NVIDIA drivers,
+home directory, custom mounts, …) this becomes unsustainable.
+
+Instead, `CreateContainer` accepts a stable `a{sv}` (variant dict):
+
+```
+CreateContainer(name: s, image: s, options: a{sv}) → o
+```
+
+Clients send only the keys they care about; the daemon fills defaults for
+the rest.  New options can be added without any D-Bus signature change.
+
+### Why Not JSON Schema?
+
+JSON Schema is a powerful validation spec, but it's a poor fit here:
+- **Unordered**: `properties` is an object — no display order for forms.
+- **No grouping**: no concept of UI sections.
+- **No UI hints**: `type: "string"` says nothing about directory pickers.
+- **Heavyweight**: the full spec includes `$ref`, `allOf`/`anyOf`, etc.
+  — Kapsule would use 5% and carry the weight of the other 95%.
+- **Expectations**: calling it "JSON Schema" invites bug reports for
+  unsupported features.
+
+Kapsule uses its own small format that borrows familiar vocabulary
+(`type`, `title`, `description`, `default`, `items`) but is
+unambiguously purpose-built.
+
+### Schema Format
+
+The schema is returned by `GetCreateSchema()` as a JSON string.
+
+#### Top-Level Structure
+
+```json
+{
+  "version": 1,
+  "sections": [ ... ]
+}
+```
+
+`version` is bumped when the schema format itself changes (not when
+options are added — adding options is always backwards-compatible).
+
+#### Section
+
+An ordered group of related options. The order defines UI layout.
+
+```json
+{
+  "id": "mounts",
+  "title": "Host Mounts",
+  "options": [ ... ]
+}
+```
+
+| Field     | Type   | Description                        |
+|-----------|--------|------------------------------------|
+| `id`      | string | Stable identifier for the section  |
+| `title`   | string | Human-readable heading             |
+| `options` | array  | Ordered list of option descriptors |
+
+#### Option Descriptor
+
+```json
+{
+  "key": "mount_home",
+  "type": "boolean",
+  "title": "Mount Home Directory",
+  "description": "Mount the user's home directory in the container",
+  "default": true
+}
+```
+
+| Field         | Type   | Required | Description                                    |
+|---------------|--------|----------|------------------------------------------------|
+| `key`         | string | yes      | The key used in the `a{sv}` dict               |
+| `type`        | string | yes      | `"boolean"`, `"string"`, or `"array"`          |
+| `title`       | string | yes      | Short label for UI rendering                   |
+| `description` | string | yes      | Longer explanatory text                        |
+| `default`     | varies | yes      | Value used when the key is omitted             |
+| `items`       | object | array    | Element descriptor for `"array"` types         |
+| `requires`    | object | no       | Inter-field dependency (see below)             |
+
+#### Array Items
+
+When `type` is `"array"`, the `items` field describes the element type:
+
+```json
+{
+  "type": "string",
+  "format": "directory-path"
+}
+```
+
+The `format` field is a UI hint — `"directory-path"` tells a GUI to show
+a directory picker.
+
+#### Inter-Field Dependencies (`requires`)
+
+```json
+{
+  "key": "nvidia_drivers",
+  "type": "boolean",
+  "default": true,
+  "requires": {"gpu": true}
+}
+```
+
+When `requires` is present, the option is only valid when **all** listed
+prerequisites have the specified value.  UIs should disable/hide the
+control when the prerequisite is not met.  The daemon enforces this
+server-side as well.
+
+### Schema Consumers
+
+| Consumer         | How it uses the schema                              |
+|------------------|-----------------------------------------------------|
+| **Daemon**       | `parse_options()` validates `a{sv}` against it      |
+| **CLI**          | Manual `--flag` mapping today (could be automated)  |
+| **KCM** (future) | `Repeater` over sections → Kirigami `FormCard` delegates |
+| **QML**          | `type` → widget: `boolean` → `SwitchDelegate`, `array` → list + file dialog |
+
+### Data Flow
+
+```
+ Client                         D-Bus                          Daemon
+───────                        ─────                          ──────
+GetCreateSchema()  ──────────────────────────────►  returns JSON string
+                                                    (from CREATE_SCHEMA)
+
+  ◄── JSON schema ──────────────────────────────
+
+  Render UI / --help from schema
+
+  User sets: mount_home=false,
+             custom_mounts=["/opt"]
+
+  Build a{sv}: {"mount_home": false,             CreateContainer(name,
+                "custom_mounts": ["/opt"]}  ────► image, options)
+                                                       │
+                                                  parse_options(raw)
+                                                       │ rejects unknown keys
+                                                       │ fills defaults
+                                                       │ type-checks values
+                                                       │ enforces constraints
+                                                       ▼
+                                                  ContainerOptions(
+                                                    mount_home=False,
+                                                    custom_mounts=["/opt"],
+                                                    # everything else = default
+                                                  )
+```
+
+### Adding a New Option
+
+1. Add an entry to `CREATE_SCHEMA` in `container_options.py`.
+2. Add a matching field to `ContainerOptions` (Python dataclass).
+3. Handle the field in `container_service.py`.
+4. Add the field to `Kapsule::ContainerOptions` in `types.h` and
+   `toVariantMap()` in `types.cpp`.
+5. Optionally add a CLI `--flag` in `main.cpp`.
+6. **No D-Bus signature change.  No introspection XML regeneration.**
+
+---
+
 ## Container Configuration
 
 Kapsule applies configuration directly to each container at creation time
@@ -296,6 +476,8 @@ raw.lxc: "lxc.net.0.type=none"  # Host networking
 - **root**: Container root filesystem
 - **gpu**: GPU passthrough for graphics (device nodes: `/dev/nvidia*`, `/dev/dri/*`)
 - **hostfs** (default): Host filesystem at `/.kapsule/host` (for tooling access)
+- **kapsule-home-{user}**: User's home directory bind-mount (unless `mount_home=false`)
+- **kapsule-mount-{name}**: Custom directory bind-mounts from `custom_mounts` option
 
 ### NVIDIA GPU Support
 
