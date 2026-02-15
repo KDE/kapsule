@@ -49,6 +49,7 @@ _ENTER_ENV_SKIP = frozenset({
     "LS_COLORS",      # Often huge and causes issues
     "LESS_TERMCAP_mb", "LESS_TERMCAP_md", "LESS_TERMCAP_me",  # Less colors
     "LESS_TERMCAP_se", "LESS_TERMCAP_so", "LESS_TERMCAP_ue", "LESS_TERMCAP_us",
+    "PATH",           # Only used to look up su, set by shell afterwards.
 })
 
 
@@ -671,6 +672,12 @@ class ContainerService:
                 continue
             env_args.extend(["--env", f"{key}={value}"])
             whitelist_keys.append(key)
+
+        # Set fixed PATH for su lookup.
+        # Our host system PATH might not have the right PATH to find su inside the container.
+        # e.g. NixOS on the host, Arch as the guest.
+        # NixOS does not have /usr/bin in PATH, so finding su in the guest would fail.
+        env_args.extend(["--env", "PATH=/usr/bin:/bin"])
 
         # Build the command to run inside the container.
         #
