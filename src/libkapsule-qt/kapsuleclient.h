@@ -103,6 +103,18 @@ public:
     QCoro::Task<Container> container(const QString &name);
 
     /**
+     * @brief Get the option schema for container creation.
+     *
+     * Returns the JSON schema string describing all available options,
+     * their types, defaults, sections, and inter-field dependencies.
+     * Clients can use this to dynamically render creation forms or
+     * CLI flags.
+     *
+     * @return JSON schema string, or empty string on error.
+     */
+    QCoro::Task<QString> getCreateSchema();
+
+    /**
      * @brief Get user configuration from daemon.
      * @return Map of config keys to values.
      */
@@ -121,6 +133,25 @@ public:
         const QString &image,
         const ContainerOptions &options = {},
         ProgressHandler progress = {});
+
+    /**
+     * @brief Create a new container with a raw option map.
+     *
+     * This overload accepts a QVariantMap directly, allowing callers
+     * to pass through schema-driven options without needing to update
+     * ContainerOptions when new options are added to the daemon.
+     *
+     * @param name The name for the new container.
+     * @param image The base image to use, empty for default.
+     * @param options Option key→value map (only non-default values).
+     * @param progress Optional callback for progress messages.
+     * @return Operation result with success/error info.
+     */
+    QCoro::Task<OperationResult> createContainer(
+        const QString &name,
+        const QString &image,
+        const QVariantMap &options,
+        ProgressHandler progress);
 
     /**
      * @brief Delete a container.

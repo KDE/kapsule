@@ -102,8 +102,9 @@ Adding a new option
 1. Add an entry to :data:`CREATE_SCHEMA` (in the appropriate section).
 2. Add a corresponding field to :class:`ContainerOptions`.
 3. Handle the new field in ``container_service.py``.
-4. *Optionally* add a CLI flag in ``main.cpp`` — or leave it for the
-   KCM to pick up from the schema automatically.
+4. **The CLI picks up the new option automatically** — it fetches
+   the schema from the daemon at runtime and generates ``--flags``
+   dynamically.  No C++ change is needed.
 5. **No D-Bus signature change.  No proxy regeneration.**
 """
 

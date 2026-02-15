@@ -117,37 +117,124 @@ QCoro::Task<int> asyncMain(const QStringList &args)
 // Command: create
 // =============================================================================
 
+/**
+ * Build QCommandLineOption entries and a variant-map builder from the schema.
+ *
+ * For each schema option the mapping is:
+ *   boolean, default true  → --no-<flag>        (inverted)
+ *   boolean, default false → --<flag>
+ *   string                 → --<flag> <value>
+ *   array                  → --<flag> <value>    (repeatable)
+ *
+ * Returns: list of options to add to the parser.
+ */
+static QList<QCommandLineOption> schemaToCliOptions(const CreateSchema &schema)
+{
+    QList<QCommandLineOption> cliOptions;
+    for (const auto &opt : schema.allOptions()) {
+        const QString flag = opt.cliFlag();
+
+        if (opt.type == QStringLiteral("boolean")) {
+            if (opt.defaultsToTrue()) {
+                // Default-on → user passes --no-<flag> to disable
+                cliOptions.append({
+                    QStringLiteral("no-") + flag,
+                    opt.description
+                });
+            } else {
+                // Default-off → user passes --<flag> to enable
+                cliOptions.append({
+                    flag,
+                    opt.description
+                });
+            }
+        } else if (opt.type == QStringLiteral("string")) {
+            cliOptions.append({
+                flag,
+                opt.description,
+                opt.title  // value name shown in help
+            });
+        } else if (opt.type == QStringLiteral("array")) {
+            cliOptions.append({
+                flag,
+                opt.description + QStringLiteral(" (repeatable)"),
+                opt.title
+            });
+        }
+    }
+    return cliOptions;
+}
+
+/**
+ * After parsing, walk the schema and build a QVariantMap containing only
+ * the options the user explicitly set (non-default values).  The daemon
+ * fills in defaults for anything omitted.
+ */
+static QVariantMap cliToVariantMap(const QCommandLineParser &parser,
+                                   const CreateSchema &schema)
+{
+    QVariantMap map;
+    for (const auto &opt : schema.allOptions()) {
+        const QString flag = opt.cliFlag();
+
+        if (opt.type == QStringLiteral("boolean")) {
+            if (opt.defaultsToTrue()) {
+                if (parser.isSet(QStringLiteral("no-") + flag)) {
+                    map.insert(opt.key, false);
+                }
+            } else {
+                if (parser.isSet(flag)) {
+                    map.insert(opt.key, true);
+                }
+            }
+        } else if (opt.type == QStringLiteral("string")) {
+            if (parser.isSet(flag)) {
+                map.insert(opt.key, parser.value(flag));
+            }
+        } else if (opt.type == QStringLiteral("array")) {
+            QStringList values = parser.values(flag);
+            if (!values.isEmpty()) {
+                map.insert(opt.key, values);
+            }
+        }
+    }
+    return map;
+}
+
 QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
 {
     auto &o = out();
 
+    // ---- Fetch the option schema from the daemon ----
+    QString schemaJson = co_await client.getCreateSchema();
+    if (schemaJson.isEmpty()) {
+        o.error("Failed to retrieve create-container schema from daemon");
+        co_return 1;
+    }
+    CreateSchema schema = parseCreateSchema(schemaJson);
+    if (schema.version == 0) {
+        o.error("Failed to parse create-container schema");
+        co_return 1;
+    }
+
+    // ---- Build parser dynamically ----
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Create a new kapsule container"));
     parser.addHelpOption();
     parser.addPositionalArgument(QStringLiteral("name"), QStringLiteral("Name of the container to create"));
 
-    parser.addOptions({
-        {{QStringLiteral("i"), QStringLiteral("image")},
-         QStringLiteral("Base image to use (e.g., images:ubuntu/24.04)"),
-         QStringLiteral("image")},
-        {{QStringLiteral("s"), QStringLiteral("session")},
-         QStringLiteral("Enable session mode with container D-Bus")},
-        {{QStringLiteral("m"), QStringLiteral("dbus-mux")},
-         QStringLiteral("Enable D-Bus multiplexer (implies --session)")},
-        {QStringLiteral("no-host-rootfs"),
-         QStringLiteral("Don't mount the full host filesystem (use minimal mounts)")},
-        {QStringLiteral("no-home"),
-         QStringLiteral("Don't mount the user's home directory")},
-        {QStringLiteral("mount"),
-         QStringLiteral("Mount a host directory in the container (repeatable)"),
-         QStringLiteral("path")},
-        {QStringLiteral("no-gpu"),
-         QStringLiteral("Don't pass through GPU devices to the container")},
-        {QStringLiteral("no-nvidia-drivers"),
-         QStringLiteral("Don't inject host NVIDIA userspace drivers into the container")},
-    });
+    // The --image flag is not part of the schema (it is a separate D-Bus parameter)
+    parser.addOption({{QStringLiteral("i"), QStringLiteral("image")},
+                      QStringLiteral("Base image to use (e.g., images:ubuntu/24.04)"),
+                      QStringLiteral("image")});
 
-    // Parse with program name for help text
+    // Add schema-driven flags
+    const auto schemaOptions = schemaToCliOptions(schema);
+    for (const auto &cliOpt : schemaOptions) {
+        parser.addOption(cliOpt);
+    }
+
+    // ---- Parse ----
     QStringList fullArgs = QStringList{programName + QStringLiteral(" create")} + args;
     if (!parser.parse(fullArgs)) {
         o.error(parser.errorText().toStdString());
@@ -155,7 +242,6 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
     }
 
     if (parser.isSet(QStringLiteral("help"))) {
-        // QCommandLineParser prints to stdout
         std::cout << parser.helpText().toStdString();
         co_return 0;
     }
@@ -170,19 +256,12 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
     QString name = positional.at(0);
     QString image = parser.value(QStringLiteral("image"));
 
-    // Build ContainerOptions from CLI flags
-    ContainerOptions options;
-    options.sessionMode = parser.isSet(QStringLiteral("session")) || parser.isSet(QStringLiteral("dbus-mux"));
-    options.dbusMux = parser.isSet(QStringLiteral("dbus-mux"));
-    options.hostRootfs = !parser.isSet(QStringLiteral("no-host-rootfs"));
-    options.mountHome = !parser.isSet(QStringLiteral("no-home"));
-    options.customMounts = parser.values(QStringLiteral("mount"));
-    options.gpu = !parser.isSet(QStringLiteral("no-gpu"));
-    options.nvidiaDrivers = !parser.isSet(QStringLiteral("no-nvidia-drivers"));
+    // Build variant map from user-specified flags only
+    QVariantMap optionsMap = cliToVariantMap(parser, schema);
 
     o.section(QStringLiteral("Creating container: %1").arg(name).toStdString());
 
-    auto result = co_await client.createContainer(name, image, options,
+    auto result = co_await client.createContainer(name, image, optionsMap,
         [&o](MessageType type, const QString &msg, int indent) {
             o.print(type, msg.toStdString(), indent);
         });

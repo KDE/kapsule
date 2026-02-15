@@ -12,7 +12,9 @@
 #include <QMetaEnum>
 #include <QDBusArgument>
 #include <QVariantMap>
+#include <QJsonValue>
 #include <functional>
+#include <optional>
 
 #include "kapsule_export.h"
 
@@ -27,6 +29,61 @@ struct KAPSULE_EXPORT EnterResult {
     QString error;
     QStringList execArgs;
 };
+
+// =========================================================================
+// Schema types — mirror the Python CREATE_SCHEMA format
+// =========================================================================
+
+/**
+ * @brief A single option in the create-container schema.
+ *
+ * Parsed from the JSON returned by GetCreateSchema().
+ * Carries everything needed to generate a CLI flag or GUI widget.
+ */
+struct KAPSULE_EXPORT CreateSchemaOption {
+    QString key;                       ///< D-Bus a{sv} dict key (e.g. "mount_home")
+    QString type;                      ///< "boolean", "string", or "array"
+    QString title;                     ///< Short UI label
+    QString description;               ///< Longer help text
+    QJsonValue defaultValue;           ///< Schema default
+    QVariantMap dependencies;          ///< Inter-option dependencies (key → required value)
+
+    /// Convert key to CLI flag name (underscores → dashes).
+    [[nodiscard]] QString cliFlag() const;
+
+    /// True when the default is `true` (boolean options that default on).
+    [[nodiscard]] bool defaultsToTrue() const;
+};
+
+/**
+ * @brief A section grouping related options.
+ */
+struct KAPSULE_EXPORT CreateSchemaSection {
+    QString id;
+    QString title;
+    QList<CreateSchemaOption> options;
+};
+
+/**
+ * @brief The full create-container schema.
+ */
+struct KAPSULE_EXPORT CreateSchema {
+    int version = 0;
+    QList<CreateSchemaSection> sections;
+
+    /// Flat list of every option across all sections.
+    [[nodiscard]] QList<CreateSchemaOption> allOptions() const;
+
+    /// Look up an option by key.
+    [[nodiscard]] std::optional<CreateSchemaOption> option(const QString &key) const;
+};
+
+/**
+ * @brief Parse the JSON string returned by GetCreateSchema().
+ * @param json The raw JSON string.
+ * @return Parsed schema, or empty schema on parse error.
+ */
+KAPSULE_EXPORT CreateSchema parseCreateSchema(const QString &json);
 
 /**
  * @brief Register D-Bus metatypes. Call once at startup.
@@ -90,15 +147,11 @@ struct KAPSULE_EXPORT OperationResult {
  *
  * ### CLI mapping
  *
- * | Field        | CLI flag           | Inverted? |
- * |--------------|--------------------|-----------|
- * | sessionMode  | --session          | no        |
- * | dbusMux      | --dbus-mux         | no        |
- * | hostRootfs   | --no-host-rootfs   | yes       |
- * | mountHome    | --no-home          | yes       |
- * | customMounts | --mount \<path\>   | no        |
- * | gpu          | --no-gpu           | yes       |
- * | nvidiaDrivers| --no-nvidia-drivers| yes       |
+ * CLI flags are generated dynamically from the schema.
+ * Boolean options that default to true get `--no-<flag>`;
+ * boolean options that default to false get `--<flag>`;
+ * string/array options get `--<flag> <value>`.
+ * The key `mount_home` becomes the flag `--no-mount-home`, etc.
  *
  * @see ContainerOptions::toVariantMap()
  * @see KapsuleClient::createContainer()

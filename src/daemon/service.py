@@ -238,13 +238,14 @@ class KapsuleManagerInterface(ServiceInterface):
         """
         # Parse and validate options
         try:
-            # Unwrap Variant values from dbus-fast
+            # Unwrap Variant values from dbus-fast.  Variants may be
+            # nested (e.g. when Qt's QDBusVariant is used inside an
+            # a{sv} map), so peel all layers.
             raw_options: dict[str, object] = {}
             for key, value in options.items():
-                if isinstance(value, Variant):
-                    raw_options[key] = value.value
-                else:
-                    raw_options[key] = value
+                while isinstance(value, Variant):
+                    value = value.value
+                raw_options[key] = value
             opts = parse_options(raw_options)
         except OptionValidationError as e:
             raise Exception(str(e))
