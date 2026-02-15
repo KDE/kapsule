@@ -6,8 +6,33 @@
 #include "types.h"
 #include "container.h"
 #include <QDBusMetaType>
+#include <QDBusVariant>
 
 namespace Kapsule {
+
+QVariantMap ContainerOptions::toVariantMap() const
+{
+    // Only include options that differ from schema defaults
+    // to stay forward-compatible (daemon fills missing keys).
+    QVariantMap map;
+
+    if (sessionMode)
+        map.insert(QStringLiteral("session_mode"), QVariant::fromValue(QDBusVariant(sessionMode)));
+    if (dbusMux)
+        map.insert(QStringLiteral("dbus_mux"), QVariant::fromValue(QDBusVariant(dbusMux)));
+    if (!hostRootfs)
+        map.insert(QStringLiteral("host_rootfs"), QVariant::fromValue(QDBusVariant(hostRootfs)));
+    if (!mountHome)
+        map.insert(QStringLiteral("mount_home"), QVariant::fromValue(QDBusVariant(mountHome)));
+    if (!customMounts.isEmpty())
+        map.insert(QStringLiteral("custom_mounts"), QVariant::fromValue(QDBusVariant(QVariant(customMounts))));
+    if (!gpu)
+        map.insert(QStringLiteral("gpu"), QVariant::fromValue(QDBusVariant(gpu)));
+    if (!nvidiaDrivers)
+        map.insert(QStringLiteral("nvidia_drivers"), QVariant::fromValue(QDBusVariant(nvidiaDrivers)));
+
+    return map;
+}
 
 // D-Bus argument streaming for EnterResult (bsas)
 QDBusArgument &operator<<(QDBusArgument &arg, const EnterResult &result)

@@ -112,20 +112,14 @@ public:
      * @brief Create a new container.
      * @param name The name for the new container.
      * @param image The base image to use (e.g., "ubuntu:24.04"), empty for default.
-     * @param mode The D-Bus integration mode.
-     * @param hostRootfs Mount entire host filesystem at /.kapsule/host.
-     * @param gpu Include GPU passthrough device.
-     * @param nvidiaDrivers Inject host NVIDIA userspace drivers on each start.
+     * @param options Container creation options (see ContainerOptions).
      * @param progress Optional callback for progress messages.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> createContainer(
         const QString &name,
         const QString &image,
-        ContainerMode mode = ContainerMode::Default,
-        bool hostRootfs = true,
-        bool gpu = true,
-        bool nvidiaDrivers = true,
+        const ContainerOptions &options = {},
         ProgressHandler progress = {});
 
     /**

@@ -51,6 +51,9 @@ DBusStrArray = Annotated[list[str], DBusSignature("as")]
 DBusStrDict = Annotated[dict[str, str], DBusSignature("a{ss}")]
 """D-Bus dictionary string->string (signature: a{ss})"""
 
+DBusVariantDict = Annotated[dict[str, object], DBusSignature("a{sv}")]
+"""D-Bus variant dictionary (signature: a{sv})"""
+
 
 # =============================================================================
 # Kapsule Composite Types
@@ -78,6 +81,7 @@ __all__ = [
     # Convenience types
     "DBusStrArray",
     "DBusStrDict",
+    "DBusVariantDict",
     # Kapsule composite types
     "DBusContainer",
     "DBusContainerList",

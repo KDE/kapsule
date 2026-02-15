@@ -136,6 +136,11 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
          QStringLiteral("Enable D-Bus multiplexer (implies --session)")},
         {QStringLiteral("no-host-rootfs"),
          QStringLiteral("Don't mount the full host filesystem (use minimal mounts)")},
+        {QStringLiteral("no-home"),
+         QStringLiteral("Don't mount the user's home directory")},
+        {QStringLiteral("mount"),
+         QStringLiteral("Mount a host directory in the container (repeatable)"),
+         QStringLiteral("path")},
         {QStringLiteral("no-gpu"),
          QStringLiteral("Don't pass through GPU devices to the container")},
         {QStringLiteral("no-nvidia-drivers"),
@@ -164,23 +169,20 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
 
     QString name = positional.at(0);
     QString image = parser.value(QStringLiteral("image"));
-    bool sessionMode = parser.isSet(QStringLiteral("session"));
-    bool dbusMux = parser.isSet(QStringLiteral("dbus-mux"));
-    bool hostRootfs = !parser.isSet(QStringLiteral("no-host-rootfs"));
-    bool gpu = !parser.isSet(QStringLiteral("no-gpu"));
-    bool nvidiaDrivers = !parser.isSet(QStringLiteral("no-nvidia-drivers"));
 
-    // Determine container mode
-    ContainerMode mode = ContainerMode::Default;
-    if (dbusMux) {
-        mode = ContainerMode::DbusMux;
-    } else if (sessionMode) {
-        mode = ContainerMode::Session;
-    }
+    // Build ContainerOptions from CLI flags
+    ContainerOptions options;
+    options.sessionMode = parser.isSet(QStringLiteral("session")) || parser.isSet(QStringLiteral("dbus-mux"));
+    options.dbusMux = parser.isSet(QStringLiteral("dbus-mux"));
+    options.hostRootfs = !parser.isSet(QStringLiteral("no-host-rootfs"));
+    options.mountHome = !parser.isSet(QStringLiteral("no-home"));
+    options.customMounts = parser.values(QStringLiteral("mount"));
+    options.gpu = !parser.isSet(QStringLiteral("no-gpu"));
+    options.nvidiaDrivers = !parser.isSet(QStringLiteral("no-nvidia-drivers"));
 
     o.section(QStringLiteral("Creating container: %1").arg(name).toStdString());
 
-    auto result = co_await client.createContainer(name, image, mode, hostRootfs, gpu, nvidiaDrivers,
+    auto result = co_await client.createContainer(name, image, options,
         [&o](MessageType type, const QString &msg, int indent) {
             o.print(type, msg.toStdString(), indent);
         });
