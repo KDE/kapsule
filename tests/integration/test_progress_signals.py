@@ -30,7 +30,7 @@ import pytest
 from dataclasses import dataclass, field
 
 from dbus_fast.aio import MessageBus
-from dbus_fast import BusType, Message, MessageType
+from dbus_fast import BusType, Message, MessageType, Variant
 
 from conftest import ssh_run_on_vm
 
@@ -138,8 +138,8 @@ async def call_create_container(
             path=DBUS_PATH,
             interface=DBUS_INTERFACE,
             member="CreateContainer",
-            signature="ssbbbbb",
-            body=[name, image, False, False, True, True, True],
+            signature="ssa{sv}",
+            body=[name, image, {}],
         )
     )
     if reply.message_type == MessageType.ERROR:
