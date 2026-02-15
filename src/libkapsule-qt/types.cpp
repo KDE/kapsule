@@ -107,34 +107,6 @@ CreateSchema parseCreateSchema(const QString &json)
     return schema;
 }
 
-QVariantMap ContainerOptions::toVariantMap() const
-{
-    // Only include options that differ from schema defaults
-    // to stay forward-compatible (daemon fills missing keys).
-    //
-    // Use plain QVariant values — Qt's D-Bus marshaller wraps each
-    // value in a variant automatically for a{sv}.  Wrapping in
-    // QDBusVariant would double-nest the variant on the wire.
-    QVariantMap map;
-
-    if (sessionMode)
-        map.insert(QStringLiteral("session_mode"), sessionMode);
-    if (dbusMux)
-        map.insert(QStringLiteral("dbus_mux"), dbusMux);
-    if (!hostRootfs)
-        map.insert(QStringLiteral("host_rootfs"), hostRootfs);
-    if (!mountHome)
-        map.insert(QStringLiteral("mount_home"), mountHome);
-    if (!customMounts.isEmpty())
-        map.insert(QStringLiteral("custom_mounts"), QVariant::fromValue(customMounts));
-    if (!gpu)
-        map.insert(QStringLiteral("gpu"), gpu);
-    if (!nvidiaDrivers)
-        map.insert(QStringLiteral("nvidia_drivers"), nvidiaDrivers);
-
-    return map;
-}
-
 // D-Bus argument streaming for EnterResult (bsas)
 QDBusArgument &operator<<(QDBusArgument &arg, const EnterResult &result)
 {
