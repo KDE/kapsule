@@ -10,13 +10,14 @@
 #include <QStringList>
 #include <QMetaType>
 #include <QMetaEnum>
-#include <QDBusArgument>
 #include <QVariantMap>
 #include <QJsonValue>
 #include <functional>
 #include <optional>
 
 #include "kapsule_export.h"
+
+class QDBusArgument;
 
 namespace Kapsule {
 Q_NAMESPACE_EXPORT(KAPSULE_EXPORT)
