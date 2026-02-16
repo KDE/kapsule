@@ -530,6 +530,11 @@ class ContainerService:
             env_args.extend(["--env", f"{key}={value}"])
             whitelist_keys.append(key)
 
+        # Set fixed PATH for su lookup.
+        # Host PATH may not include directories expected by the guest
+        # (for example, NixOS host with an Arch guest).
+        env_args.extend(["--env", "PATH=/usr/bin:/bin"])
+
         # Build the command to run inside the container.
         #
         # Always use su -l for consistent behavior whether entering a

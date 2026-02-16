@@ -41,6 +41,7 @@ ENTER_ENV_SKIP = frozenset({
     "LS_COLORS",      # Often huge and causes issues
     "LESS_TERMCAP_mb", "LESS_TERMCAP_md", "LESS_TERMCAP_me",  # Less colors
     "LESS_TERMCAP_se", "LESS_TERMCAP_so", "LESS_TERMCAP_ue", "LESS_TERMCAP_us",
+    "PATH",           # Set explicitly for su lookup inside container.
 })
 
 
