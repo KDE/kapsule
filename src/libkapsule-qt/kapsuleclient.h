@@ -197,19 +197,6 @@ Q_SIGNALS:
      */
     void connectedChanged(bool connected);
 
-    /**
-     * @brief Emitted when a container's state changes.
-     * @param name The name of the container.
-     * @param state The new state.
-     */
-    void containerStateChanged(const QString &name, Container::State state);
-
-    /**
-     * @brief Emitted when an error occurs.
-     * @param message The error message.
-     */
-    void errorOccurred(const QString &message);
-
 private:
     std::unique_ptr<KapsuleClientPrivate> d;
 };

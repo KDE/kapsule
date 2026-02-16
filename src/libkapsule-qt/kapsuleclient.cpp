@@ -12,6 +12,7 @@
 #include <QDBusConnection>
 #include <QDBusObjectPath>
 #include <QDBusPendingReply>
+#include <QDBusServiceWatcher>
 
 #include <qcoro/qcorodbuspendingreply.h>
 #include <qcoro/qcorosignal.h>
@@ -32,17 +33,33 @@ public:
         const QString &objectPath,
         ProgressHandler progress);
 
+    void setConnected(bool value);
+
     KapsuleClient *q_ptr;
     std::unique_ptr<OrgKdeKapsuleManagerInterface> interface;
+    QDBusServiceWatcher serviceWatcher;
     QString daemonVersion;
     bool connected = false;
 };
 
 KapsuleClientPrivate::KapsuleClientPrivate(KapsuleClient *q)
     : q_ptr(q)
+    , serviceWatcher(QStringLiteral("org.kde.kapsule"),
+                     QDBusConnection::systemBus(),
+                     QDBusServiceWatcher::WatchForRegistration
+                         | QDBusServiceWatcher::WatchForUnregistration)
 {
     // Register D-Bus types before any D-Bus operations
     registerDBusTypes();
+
+    QObject::connect(&serviceWatcher, &QDBusServiceWatcher::serviceRegistered,
+        q, [this](const QString &) { connectToDaemon(); });
+    QObject::connect(&serviceWatcher, &QDBusServiceWatcher::serviceUnregistered,
+        q, [this](const QString &) {
+            qCDebug(KAPSULE_LOG) << "kapsule-daemon disappeared from the bus";
+            setConnected(false);
+        });
+
     connectToDaemon();
 }
 
@@ -61,11 +78,20 @@ void KapsuleClientPrivate::connectToDaemon()
     if (interface->lastError().isValid()) {
         qCWarning(KAPSULE_LOG) << "Failed to connect to kapsule-daemon:"
                                << interface->lastError().message();
-        connected = false;
+        setConnected(false);
     } else {
-        connected = true;
         qCDebug(KAPSULE_LOG) << "Connected to kapsule-daemon version" << daemonVersion;
+        setConnected(true);
     }
+}
+
+void KapsuleClientPrivate::setConnected(bool value)
+{
+    if (connected == value) {
+        return;
+    }
+    connected = value;
+    Q_EMIT q_ptr->connectedChanged(value);
 }
 
 QCoro::Task<OperationResult> KapsuleClientPrivate::waitForOperation(
