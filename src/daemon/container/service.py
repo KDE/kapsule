@@ -488,65 +488,12 @@ class ContainerService:
             options: Validated container options. If None, schema defaults
                 are used (all features enabled).
         """
-        opts = options or ContainerOptions()
-
-        # Check if container already exists
-        if await self._incus.instance_exists(name):
-            raise OperationError(f"Container '{name}' already exists")
-
-        progress.info(f"Image: {image}")
-        if not opts.host_rootfs:
-            progress.info("Minimal host mounts (no full rootfs)")
-        if not opts.mount_home:
-            progress.info("Home directory mount: disabled")
-        if opts.custom_mounts:
-            progress.info(f"Custom mounts: {', '.join(opts.custom_mounts)}")
-        if not opts.gpu:
-            progress.info("GPU passthrough: disabled")
-        if opts.gpu and not opts.nvidia_drivers:
-            progress.info("NVIDIA driver injection: disabled")
-
-        # Parse image source
-        instance_source = self._parse_image_source(image)
-        if instance_source is None:
-            raise OperationError(f"Invalid image format: {image}")
-
-        # Build instance config — base settings + option metadata
-        instance_config_dict = base_container_config(
-            nvidia_drivers=opts.gpu and opts.nvidia_drivers,
-        )
-        store_option_metadata(instance_config_dict, opts)
-
-        instance_config = InstancesPost(
+        await self._create_container_internal(
             name=name,
-            profiles=[],
-            source=instance_source,
-            start=True,
-            architecture=None,
-            config=instance_config_dict,
-            description=None,
-            devices=base_container_devices(host_rootfs=opts.host_rootfs, gpu=opts.gpu),
-            ephemeral=None,
-            instance_type=None,
-            restore=None,
-            stateful=None,
-            type=None,
+            image=image,
+            options=options,
+            progress=progress,
         )
-
-        # Create the container
-        if NVIDIA_HOOK_PATH in instance_config_dict.get("raw.lxc", ""):
-            progress.dim("NVIDIA userspace drivers will be injected on start")
-
-        progress.info("Downloading image and creating container...")
-        try:
-            operation = await self._incus.create_instance(instance_config, wait=True)
-            if operation.status != "Success":
-                raise OperationError(f"Creation failed: {operation.err or operation.status}")
-        except IncusError as e:
-            raise OperationError(f"Failed to create container: {e}")
-
-        # Post-create pipeline
-        await self._run_post_create(name, opts, progress)
 
         progress.success(f"Container '{name}' created successfully")
 
@@ -869,8 +816,11 @@ class ContainerService:
             if container_name == config.default_container:
                 # Create the container (this is a synchronous operation here)
                 try:
-                    await self._create_default_container(
-                        container_name, config.default_image
+                    await self._create_container_internal(
+                        name=container_name,
+                        image=config.default_image,
+                        options=ContainerOptions(),
+                        progress=None,
                     )
                 except OperationError as e:
                     return (False, str(e), [])
@@ -955,14 +905,31 @@ class ContainerService:
     # Private Helper Methods
     # -------------------------------------------------------------------------
 
-    async def _create_default_container(self, name: str, image: str) -> None:
-        """Create the default container without progress reporting.
+    async def _create_container_internal(
+        self,
+        *,
+        name: str,
+        image: str,
+        options: ContainerOptions | None,
+        progress: OperationReporter | None,
+    ) -> None:
+        """Shared implementation for container creation.
 
-        Args:
-            name: Container name
-            image: Image to use
+        Used by both operation-tracked creation and internal default
+        container bootstrap paths.
         """
-        opts = ContainerOptions()
+        opts = options or ContainerOptions()
+
+        # Check if container already exists
+        if await self._incus.instance_exists(name):
+            raise OperationError(f"Container '{name}' already exists")
+
+        if progress is not None:
+            progress.info(f"Image: {image}")
+            if not opts.gpu:
+                progress.info("GPU passthrough: disabled")
+            if opts.gpu and not opts.nvidia_drivers:
+                progress.info("NVIDIA driver injection: disabled")
 
         # Parse image source
         instance_source = self._parse_image_source(image)
@@ -977,15 +944,13 @@ class ContainerService:
 
         instance_config = InstancesPost(
             name=name,
-            profiles=None,
+            profiles=[],
             source=instance_source,
             start=True,
             architecture=None,
             config=instance_config_dict,
             description=None,
-            devices=base_container_devices(
-                host_rootfs=opts.host_rootfs, gpu=opts.gpu,
-            ),
+            devices=base_container_devices(host_rootfs=opts.host_rootfs, gpu=opts.gpu),
             ephemeral=None,
             instance_type=None,
             restore=None,
@@ -993,17 +958,19 @@ class ContainerService:
             type=None,
         )
 
+        if progress is not None:
+            if NVIDIA_HOOK_PATH in instance_config_dict.get("raw.lxc", ""):
+                progress.dim("NVIDIA userspace drivers will be injected on start")
+            progress.info("Downloading image and creating container...")
+
         try:
             operation = await self._incus.create_instance(instance_config, wait=True)
             if operation.status != "Success":
-                raise OperationError(
-                    f"Creation failed: {operation.err or operation.status}",
-                )
+                raise OperationError(f"Creation failed: {operation.err or operation.status}")
         except IncusError as e:
             raise OperationError(f"Failed to create container: {e}")
 
-        # Same post-create pipeline, silent
-        await self._run_post_create(name, opts)
+        await self._run_post_create(name, opts, progress)
 
     @staticmethod
     def _mount_env_fingerprint(env: dict[str, str]) -> str:
