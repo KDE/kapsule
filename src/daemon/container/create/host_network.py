@@ -2,15 +2,15 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Post-create step: mask services incompatible with host networking."""
+"""Creation pipeline step: mask services incompatible with host networking."""
 
 from ...incus_client import IncusError
-from ..contexts import PostCreateContext
-from . import post_create_pipeline
+from ..contexts import CreateContext
+from . import create_pipeline
 
 
-@post_create_pipeline.step
-async def host_network_fixups(ctx: PostCreateContext) -> None:
+@create_pipeline.step(order=100)
+async def host_network_fixups(ctx: CreateContext) -> None:
     """Mask services that don't work with host networking.
 
     Kapsule containers share the host's network namespace, so there are no

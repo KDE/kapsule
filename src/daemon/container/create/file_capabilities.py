@@ -2,16 +2,16 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Post-create step: restore file capabilities stripped during image extraction."""
+"""Creation pipeline step: restore file capabilities stripped during image extraction."""
 
 import subprocess
 
-from ..contexts import PostCreateContext
-from . import post_create_pipeline
+from ..contexts import CreateContext
+from . import create_pipeline
 
 
-@post_create_pipeline.step
-async def fix_file_capabilities(ctx: PostCreateContext) -> None:
+@create_pipeline.step(order=200)
+async def fix_file_capabilities(ctx: CreateContext) -> None:
     """Restore file capabilities stripped during image extraction.
 
     Container images from linuxcontainers.org lose ``security.capability``

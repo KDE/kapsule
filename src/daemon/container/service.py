@@ -25,9 +25,7 @@ from typing import TYPE_CHECKING
 from ..config import load_config
 from ..container_options import ContainerOptions
 from ..incus_client import IncusClient, IncusError
-from ..models_generated import InstanceSource, InstancesPost
 from ..operations import OperationError, OperationReporter, OperationTracker, operation
-from .config_helpers import base_container_config, base_container_devices, store_option_metadata
 from .constants import (
     ENTER_ENV_SKIP,
     KAPSULE_DBUS_MUX_KEY,
@@ -35,8 +33,8 @@ from .constants import (
     NVIDIA_HOOK_PATH,
     BindMount,
 )
-from .contexts import PostCreateContext, UserSetupContext
-from .post_create import post_create_pipeline
+from .contexts import CreateContext, UserSetupContext
+from .create import create_pipeline
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
@@ -91,17 +89,19 @@ class ContainerService:
     # Pipeline runners
     # -------------------------------------------------------------------------
 
-    async def _run_post_create(
+    async def _run_create(
         self,
         name: str,
+        image: str,
         opts: ContainerOptions,
         progress: OperationReporter | None = None,
     ) -> None:
-        """Run the post-creation setup pipeline."""
-        ctx = PostCreateContext(
-            name=name, opts=opts, incus=self._incus, progress=progress,
+        """Run the full container creation pipeline."""
+        ctx = CreateContext(
+            name=name, image=image, opts=opts,
+            incus=self._incus, progress=progress,
         )
-        await post_create_pipeline.run(ctx)
+        await create_pipeline.run(ctx)
 
     async def _run_user_setup(
         self,
@@ -153,10 +153,10 @@ class ContainerService:
             options: Validated container options. If None, schema defaults
                 are used (all features enabled).
         """
-        await self._create_container_internal(
+        await self._run_create(
             name=name,
             image=image,
-            options=options,
+            opts=options or ContainerOptions(),
             progress=progress,
         )
 
@@ -481,11 +481,10 @@ class ContainerService:
             if container_name == config.default_container:
                 # Create the container (this is a synchronous operation here)
                 try:
-                    await self._create_container_internal(
+                    await self._run_create(
                         name=container_name,
                         image=config.default_image,
-                        options=ContainerOptions(),
-                        progress=None,
+                        opts=ContainerOptions(),
                     )
                 except OperationError as e:
                     return (False, str(e), [])
@@ -563,73 +562,6 @@ class ContainerService:
     # -------------------------------------------------------------------------
     # Private Helper Methods
     # -------------------------------------------------------------------------
-
-    async def _create_container_internal(
-        self,
-        *,
-        name: str,
-        image: str,
-        options: ContainerOptions | None,
-        progress: OperationReporter | None,
-    ) -> None:
-        """Shared implementation for container creation.
-
-        Used by both operation-tracked creation and internal default
-        container bootstrap paths.
-        """
-        opts = options or ContainerOptions()
-
-        # Check if container already exists
-        if await self._incus.instance_exists(name):
-            raise OperationError(f"Container '{name}' already exists")
-
-        if progress is not None:
-            progress.info(f"Image: {image}")
-            if not opts.gpu:
-                progress.info("GPU passthrough: disabled")
-            if opts.gpu and not opts.nvidia_drivers:
-                progress.info("NVIDIA driver injection: disabled")
-
-        # Parse image source
-        instance_source = self._parse_image_source(image)
-        if instance_source is None:
-            raise OperationError(f"Invalid image format: {image}")
-
-        # Build instance config — base settings + option metadata
-        instance_config_dict = base_container_config(
-            nvidia_drivers=opts.gpu and opts.nvidia_drivers,
-        )
-        store_option_metadata(instance_config_dict, opts)
-
-        instance_config = InstancesPost(
-            name=name,
-            profiles=[],
-            source=instance_source,
-            start=True,
-            architecture=None,
-            config=instance_config_dict,
-            description=None,
-            devices=base_container_devices(host_rootfs=opts.host_rootfs, gpu=opts.gpu),
-            ephemeral=None,
-            instance_type=None,
-            restore=None,
-            stateful=None,
-            type=None,
-        )
-
-        if progress is not None:
-            if NVIDIA_HOOK_PATH in instance_config_dict.get("raw.lxc", ""):
-                progress.dim("NVIDIA userspace drivers will be injected on start")
-            progress.info("Downloading image and creating container...")
-
-        try:
-            operation = await self._incus.create_instance(instance_config, wait=True)
-            if operation.status != "Success":
-                raise OperationError(f"Creation failed: {operation.err or operation.status}")
-        except IncusError as e:
-            raise OperationError(f"Failed to create container: {e}")
-
-        await self._run_post_create(name, opts, progress)
 
     @staticmethod
     def _mount_env_fingerprint(env: dict[str, str]) -> str:
@@ -826,50 +758,4 @@ class ContainerService:
                 "sh", "-c", script, "sh", *args,
             ],
             capture_output=True,
-        )
-
-    def _parse_image_source(self, image: str) -> InstanceSource | None:
-        """Parse an image string into an InstanceSource.
-
-        Args:
-            image: Image string like "images:archlinux" or "ubuntu:24.04"
-
-        Returns:
-            InstanceSource or None if invalid
-        """
-        # Map common server aliases to URLs
-        server_map = {
-            "images": "https://images.linuxcontainers.org",
-            "ubuntu": "https://cloud-images.ubuntu.com/releases",
-        }
-
-        if ":" in image:
-            server_alias, image_alias = image.split(":", 1)
-            server_url = server_map.get(server_alias)
-            if not server_url:
-                return None
-        else:
-            server_url = "https://images.linuxcontainers.org"
-            image_alias = image
-
-        return InstanceSource(
-            type="image",
-            protocol="simplestreams",
-            server=server_url,
-            alias=image_alias,
-            allow_inconsistent=None,
-            certificate=None,
-            fingerprint=None,
-            instance_only=None,
-            live=None,
-            mode=None,
-            operation=None,
-            project=None,
-            properties=None,
-            refresh=None,
-            refresh_exclude_older=None,
-            secret=None,
-            secrets=None,
-            source=None,
-            **{"base-image": None},
         )

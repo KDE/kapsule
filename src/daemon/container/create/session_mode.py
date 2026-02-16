@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Post-create step: configure session mode / rootless Podman."""
+"""Creation pipeline step: configure session mode / rootless Podman."""
 
 from __future__ import annotations
 
@@ -15,12 +15,12 @@ from ..constants import (
     KAPSULE_DBUS_MUX_BIN,
     KAPSULE_DBUS_SOCKET_SYSTEMD,
 )
-from ..contexts import PostCreateContext
-from . import post_create_pipeline
+from ..contexts import CreateContext
+from . import create_pipeline
 
 
-@post_create_pipeline.step
-async def session_mode(ctx: PostCreateContext) -> None:
+@create_pipeline.step(order=300)
+async def session_mode(ctx: CreateContext) -> None:
     """Set up session mode if enabled, otherwise configure rootless Podman."""
     if ctx.opts.session_mode:
         await _setup_session_mode_impl(
