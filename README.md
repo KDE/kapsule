@@ -75,8 +75,8 @@ kde-builder kapsule
 | `kapsule create <name>` | Create a new container |
 | `kapsule enter <name>` | Enter a container (interactive shell) |
 | `kapsule enter <name> -- <cmd>` | Run a command in a container |
-| `kapsule list` | List running containers |
-| `kapsule list --all` | List all containers |
+| `kapsule list` | List all containers |
+| `kapsule list --running` | List running containers |
 | `kapsule start <name>` | Start a stopped container |
 | `kapsule stop <name>` | Stop a running container |
 | `kapsule rm <name>` | Remove a container |

@@ -477,8 +477,10 @@ QCoro::Task<int> cmdList(KapsuleClient &client, const QStringList &args)
     parser.setApplicationDescription(QStringLiteral("List kapsule containers"));
     parser.addHelpOption();
     parser.addOptions({
+        {{QStringLiteral("r"), QStringLiteral("running")},
+         QStringLiteral("Show only running containers")},
         {{QStringLiteral("a"), QStringLiteral("all")},
-         QStringLiteral("Show all containers including stopped")},
+         QStringLiteral("Show all containers including stopped (default)")},
     });
 
     QStringList fullArgs = QStringList{programName + QStringLiteral(" list")} + args;
@@ -492,7 +494,7 @@ QCoro::Task<int> cmdList(KapsuleClient &client, const QStringList &args)
         co_return 0;
     }
 
-    bool showAll = parser.isSet(QStringLiteral("all"));
+    const bool showRunningOnly = parser.isSet(QStringLiteral("running"));
 
     auto containers = co_await client.listContainers();
 
@@ -501,15 +503,15 @@ QCoro::Task<int> cmdList(KapsuleClient &client, const QStringList &args)
         co_return 0;
     }
 
-    // Filter if not --all
-    if (!showAll) {
+    // Filter if --running
+    if (showRunningOnly) {
         containers.erase(
             std::remove_if(containers.begin(), containers.end(),
                 [](const Container &c) { return c.state() != Container::State::Running; }),
             containers.end());
 
         if (containers.isEmpty()) {
-            o.dim("No running containers. Use --all to see stopped containers.");
+            o.dim("No running containers.");
             co_return 0;
         }
     }
