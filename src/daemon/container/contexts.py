@@ -6,27 +6,36 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..container_options import ContainerOptions
 from ..incus_client import IncusClient
+from ..models_generated import InstanceSource
 from ..operations import OperationReporter
 
 
 @dataclass
-class PostCreateContext:
-    """Context passed through post-creation setup steps.
+class CreateContext:
+    """Context passed through the container creation pipeline.
 
-    Each step receives this context and performs its work on the
-    (already running) container.  Steps should guard their own
-    preconditions (e.g. check ``opts.session_mode`` before doing
-    session-mode work).
+    Pre-creation steps build up ``instance_config``, ``devices``, and
+    ``source``; the creation step calls the Incus API; post-creation
+    steps configure the running container.
+
+    Steps should guard their own preconditions (e.g. check
+    ``opts.session_mode`` before doing session-mode work).
     """
 
     name: str
+    image: str
     opts: ContainerOptions
     incus: IncusClient
     progress: OperationReporter | None
+
+    # Built up by pipeline steps
+    instance_config: dict[str, str] = field(default_factory=lambda: dict[str, str]())
+    devices: dict[str, dict[str, str]] = field(default_factory=lambda: dict[str, dict[str, str]]())
+    source: InstanceSource | None = None
 
     def info(self, msg: str) -> None:
         if self.progress:

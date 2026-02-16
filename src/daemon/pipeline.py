@@ -43,13 +43,13 @@ class Pipeline(Generic[_Ctx]):
 
     Example::
 
-        post_create = Pipeline[PostCreateContext]("post_create")
+        create = Pipeline[CreateContext]("create")
 
-        @post_create.step
-        async def fix_caps(ctx: PostCreateContext) -> None: ...
+        @create.step
+        async def fix_caps(ctx: CreateContext) -> None: ...
 
-        @post_create.step(order=900)
-        async def finalize(ctx: PostCreateContext) -> None: ...
+        @create.step(order=900)
+        async def finalize(ctx: CreateContext) -> None: ...
     """
 
     def __init__(self, name: str) -> None:

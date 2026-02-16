@@ -18,368 +18,31 @@ from __future__ import annotations
 
 import logging
 import os
+import pwd
+import subprocess
+from typing import TYPE_CHECKING
 
-        pass  # Directory might already exist
+from ..config import load_config
+from ..container_options import ContainerOptions
+from ..incus_client import IncusClient, IncusError
+from ..operations import OperationError, OperationReporter, OperationTracker, operation
+from .constants import (
+    ENTER_ENV_SKIP,
+    KAPSULE_DBUS_MUX_KEY,
+    KAPSULE_SESSION_MODE_KEY,
+    NVIDIA_HOOK_PATH,
+    BindMount,
+)
+from .contexts import CreateContext, UserSetupContext
+from .create import create_pipeline
+from .user_setup import user_setup_pipeline
 
-    # Create the drop-in file
-    systemd_socket_path = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
-    dropin_content = f"""[Socket]
-# Kapsule: redirect D-Bus session socket to shared path
-# This makes the container's D-Bus accessible from the host
-# %t expands to XDG_RUNTIME_DIR (/run/user/UID)
-ListenStream=
-ListenStream={systemd_socket_path}
-"""
-    dropin_file = f"{dropin_dir}/kapsule.conf"
-    try:
-        await incus.push_file(name, dropin_file, dropin_content, uid=0, gid=0, mode="0644")
-    except IncusError as e:
-        raise OperationError(f"Failed to configure D-Bus socket: {e}")
+if TYPE_CHECKING:
+    from ..service import KapsuleManagerInterface
+    from dbus_fast.aio import MessageBus
 
-    # Install D-Bus multiplexer service
-    await _setup_dbus_mux_impl(name, incus, progress)
+logger = logging.getLogger(__name__)
 
-    # Reload systemd
-    if progress:
-        progress.info("Reloading systemd user configuration...")
-    subprocess.run(
-        ["incus", "exec", name, "--", "systemctl", "--user", "--global", "daemon-reload"],
-        capture_output=True,
-    )
-
-
-async def _setup_dbus_mux_impl(
-    name: str,
-    incus: IncusClient,
-    progress: OperationReporter | None,
-) -> None:
-    """Install kapsule-dbus-mux.service in a container."""
-    if progress:
-        progress.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
-
-    service_dir = "/etc/systemd/user"
-    try:
-        await incus.mkdir(name, service_dir, uid=0, gid=0, mode="0755")
-    except IncusError:
-        pass  # Directory might already exist
-
-    container_dbus_socket = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
-    host_dbus_socket = "unix:path=/.kapsule/host%t/bus"
-    mux_listen_socket = "%t/bus"
-
-    service_content = f"""[Unit]
-Description=Kapsule D-Bus Multiplexer
-Documentation=man:kapsule(1)
-After=dbus.service
-Requires=dbus.service
-
-[Service]
-Type=simple
-Environment=RUST_LOG=trace
-ExecStart={KAPSULE_DBUS_MUX_BIN} \\
-    --log-level debug \\
-    --listen {mux_listen_socket} \\
-    --container-bus unix:path={container_dbus_socket} \\
-    --host-bus {host_dbus_socket}
-Restart=on-failure
-RestartSec=1
-
-[Install]
-WantedBy=default.target
-"""
-
-    service_file = f"{service_dir}/kapsule-dbus-mux.service"
-    try:
-        await incus.push_file(name, service_file, service_content, uid=0, gid=0, mode="0644")
-    except IncusError as e:
-        raise OperationError(f"Failed to install dbus-mux service: {e}")
-
-    if progress:
-        progress.info("Enabling kapsule-dbus-mux.service globally")
-    subprocess.run(
-        ["incus", "exec", name, "--", "systemctl", "--user", "--global", "enable", "kapsule-dbus-mux.service"],
-        capture_output=True,
-    )
-
-
-async def _configure_rootless_podman_impl(
-    name: str,
-    incus: IncusClient,
-    progress: OperationReporter | None,
-) -> None:
-    """Configure rootless Podman for non-session containers.
-
-    Kapsule's default (non-session) containers forward the host's D-Bus
-    session bus rather than running their own systemd user instance.
-    Podman defaults to ``cgroup_manager = "systemd"`` which asks systemd
-    to create a transient scope via sd-bus, but the host's systemd cannot
-    manage the container's PIDs so this fails with "No such process".
-
-    Dropping a config file into ``/etc/containers/containers.conf.d/``
-    switches rootless Podman to the ``cgroupfs`` cgroup manager which
-    writes cgroup entries directly instead of going through sd-bus.
-    """
-    parent_dir = "/etc/containers"
-    dropin_dir = f"{parent_dir}/containers.conf.d"
-    dropin_file = f"{dropin_dir}/50-kapsule-cgroupfs.conf"
-    dropin_content = (
-        "# Installed by Kapsule – non-session containers lack a systemd\n"
-        "# user instance, so the default systemd cgroup manager fails.\n"
-        "[engine]\n"
-        'cgroup_manager = "cgroupfs"\n'
-    )
-
-    # Create the full directory hierarchy – most images don't ship
-    # with Podman so /etc/containers/ won't exist yet.
-    for d in (parent_dir, dropin_dir):
-        try:
-            await incus.mkdir(name, d, uid=0, gid=0, mode="0755")
-        except IncusError:
-            pass  # Directory might already exist
-
-    try:
-        await incus.push_file(
-            name, dropin_file, dropin_content,
-            uid=0, gid=0, mode="0644",
-        )
-    except IncusError as e:
-        # Not fatal – best-effort config for when Podman is installed later
-        if progress:
-            progress.warning(f"Could not configure rootless Podman: {e}")
-        return
-
-    if progress:
-        progress.dim("Configured rootless Podman (cgroup_manager=cgroupfs)")
-
-
-# =============================================================================
-# User setup pipeline steps
-# =============================================================================
-
-user_setup_pipeline = Pipeline[UserSetupContext]("user_setup")
-
-
-@user_setup_pipeline.step(order=100)
-async def _user_mount_home(ctx: UserSetupContext) -> None:
-    """Mount the user's home directory or create a container-local home."""
-    mount_home = ctx.instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
-
-    if mount_home:
-        ctx.info(f"Mounting home directory: {ctx.home_dir} -> {ctx.container_home}")
-        device_name = f"kapsule-home-{ctx.username}"
-        try:
-            await ctx.incus.add_instance_device(
-                ctx.container_name,
-                device_name,
-                {
-                    "type": "disk",
-                    "source": ctx.home_dir,
-                    "path": ctx.container_home,
-                },
-            )
-        except IncusError as e:
-            raise OperationError(f"Failed to mount home directory: {e}")
-    else:
-        ctx.info("Home directory mount: skipped (disabled)")
-        # Ensure the home path exists inside the container
-        try:
-            await ctx.incus.mkdir(
-                ctx.container_name, ctx.container_home,
-                uid=ctx.uid, gid=ctx.gid, mode="0700",
-            )
-        except IncusError:
-            pass  # May already exist
-
-
-@user_setup_pipeline.step(order=200)
-async def _user_mount_custom_dirs(ctx: UserSetupContext) -> None:
-    """Mount custom directories specified at container creation.
-
-    Reads the ``user.kapsule.custom-mounts`` config key (a JSON array
-    of host paths) and adds each as an Incus disk device.
-    """
-    raw = ctx.instance_config.get(KAPSULE_CUSTOM_MOUNTS_KEY, "")
-    if not raw:
-        return
-
-    try:
-        custom_mounts: list[str] = json.loads(raw)
-    except json.JSONDecodeError:
-        ctx.warning(f"Invalid custom-mounts config: {raw}")
-        return
-
-    for mount_path in custom_mounts:
-        # Sanitise the path for use as an Incus device name
-        safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
-        device_name = f"kapsule-mount-{safe_name}"
-        container_path = mount_path  # Same path inside container
-
-        if not os.path.isdir(mount_path):
-            ctx.warning(f"Custom mount source does not exist: {mount_path}")
-            continue
-
-        ctx.info(f"Custom mount: {mount_path} -> {container_path}")
-        try:
-            await ctx.incus.add_instance_device(
-                ctx.container_name,
-                device_name,
-                {
-                    "type": "disk",
-                    "source": mount_path,
-                    "path": container_path,
-                },
-            )
-        except IncusError as e:
-            ctx.warning(f"Failed to mount {mount_path}: {e}")
-
-
-@user_setup_pipeline.step(order=300)
-async def _user_mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
-    """Mount host runtime and X11 dirs when full rootfs is disabled.
-
-    When the container doesn't have the complete host filesystem mounted
-    at ``/.kapsule/host``, we add targeted mounts for ``/run/user/<uid>``
-    and ``/tmp/.X11-unix`` so socket symlinks work.
-    """
-    has_host_rootfs = ctx.instance_config.get(KAPSULE_HOST_ROOTFS_KEY) == "true"
-    if has_host_rootfs:
-        return
-
-    # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
-    hostrun_device = f"kapsule-hostrun-{ctx.uid}"
-    try:
-        await ctx.incus.add_instance_device(
-            ctx.container_name,
-            hostrun_device,
-            {
-                "type": "disk",
-                "source": f"/run/user/{ctx.uid}",
-                "path": f"/.kapsule/host/run/user/{ctx.uid}",
-                "shift": "false",
-                "recursive": "true",
-                "propagation": "rslave",
-            },
-        )
-    except IncusError as e:
-        raise OperationError(f"Failed to mount host runtime dir: {e}")
-
-    # Mount /tmp/.X11-unix at /.kapsule/host/tmp/.X11-unix for X11
-    try:
-        await ctx.incus.add_instance_device(
-            ctx.container_name,
-            "kapsule-x11",
-            {
-                "type": "disk",
-                "source": "/tmp/.X11-unix",
-                "path": "/.kapsule/host/tmp/.X11-unix",
-                "shift": "false",
-                "recursive": "true",
-                "propagation": "rslave",
-            },
-        )
-    except IncusError as e:
-        raise OperationError(f"Failed to mount host X11 dir: {e}")
-
-
-@user_setup_pipeline.step(order=400)
-async def _user_create_account(ctx: UserSetupContext) -> None:
-    """Create user group and account in the container."""
-    # Create group
-    ctx.info(f"Creating group '{ctx.username}' (gid={ctx.gid})")
-    result = subprocess.run(
-        [
-            "incus", "exec", ctx.container_name, "--",
-            "groupadd", "-o", "-g", str(ctx.gid), ctx.username,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0 and "already exists" not in result.stderr:
-        ctx.warning(f"groupadd: {result.stderr.strip()}")
-
-    # Create user
-    ctx.info(f"Creating user '{ctx.username}' (uid={ctx.uid})")
-    result = subprocess.run(
-        [
-            "incus", "exec", ctx.container_name, "--",
-            "useradd",
-            "-o",  # Allow duplicate UID
-            "-M",  # Don't create home directory
-            "-u", str(ctx.uid),
-            "-g", str(ctx.gid),
-            "-d", ctx.container_home,
-            "-s", "/bin/bash",
-            ctx.username,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0 and "already exists" not in result.stderr:
-        ctx.warning(f"useradd: {result.stderr.strip()}")
-
-
-@user_setup_pipeline.step(order=500)
-async def _user_configure_sudo(ctx: UserSetupContext) -> None:
-    """Configure passwordless sudo for the user."""
-    ctx.info(f"Configuring passwordless sudo for '{ctx.username}'")
-    # Ensure /etc/sudoers.d/ exists (Alpine and other minimal images may lack it)
-    subprocess.run(
-        ["incus", "exec", ctx.container_name, "--", "mkdir", "-p", "/etc/sudoers.d"],
-        capture_output=True,
-    )
-    sudoers_content = f"{ctx.username} ALL=(ALL) NOPASSWD:ALL\n"
-    sudoers_file = f"/etc/sudoers.d/{ctx.username}"
-    try:
-        await ctx.incus.push_file(
-            ctx.container_name,
-            sudoers_file,
-            sudoers_content,
-            uid=0,
-            gid=0,
-            mode="0440",
-        )
-    except IncusError as e:
-        raise OperationError(f"Failed to configure sudo: {e}")
-
-
-@user_setup_pipeline.step(order=600)
-async def _user_enable_linger(ctx: UserSetupContext) -> None:
-    """Enable loginctl linger if session mode is active."""
-    session_mode = ctx.instance_config.get(KAPSULE_SESSION_MODE_KEY) == "true"
-    if not session_mode:
-        return
-
-    ctx.info(f"Enabling linger for '{ctx.username}' (session mode)")
-    result = subprocess.run(
-        [
-            "incus", "exec", ctx.container_name, "--",
-            "loginctl", "enable-linger", ctx.username,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        ctx.warning(f"loginctl enable-linger: {result.stderr.strip()}")
-
-
-@user_setup_pipeline.step(order=900)
-async def _user_mark_mapped(ctx: UserSetupContext) -> None:
-    """Mark the user as mapped in container config."""
-    user_mapped_key = f"user.kapsule.host-users.{ctx.uid}.mapped"
-    try:
-        await ctx.incus.patch_instance_config(
-            ctx.container_name, {user_mapped_key: "true"},
-        )
-    except IncusError as e:
-        raise OperationError(f"Failed to update container config: {e}")
-
-
-# =============================================================================
-# Container service
-# =============================================================================
-
-=======
->>>>>>> 5252dc0 (Add user setup pipeline for container user configuration):src/daemon/container/service.py
 
 class ContainerService:
     """Container lifecycle operations exposed over D-Bus.
@@ -426,17 +89,19 @@ class ContainerService:
     # Pipeline runners
     # -------------------------------------------------------------------------
 
-    async def _run_post_create(
+    async def _run_create(
         self,
         name: str,
+        image: str,
         opts: ContainerOptions,
         progress: OperationReporter | None = None,
     ) -> None:
-        """Run the post-creation setup pipeline."""
-        ctx = PostCreateContext(
-            name=name, opts=opts, incus=self._incus, progress=progress,
+        """Run the full container creation pipeline."""
+        ctx = CreateContext(
+            name=name, image=image, opts=opts,
+            incus=self._incus, progress=progress,
         )
-        await post_create_pipeline.run(ctx)
+        await create_pipeline.run(ctx)
 
     async def _run_user_setup(
         self,
@@ -488,10 +153,10 @@ class ContainerService:
             options: Validated container options. If None, schema defaults
                 are used (all features enabled).
         """
-        await self._create_container_internal(
+        await self._run_create(
             name=name,
             image=image,
-            options=options,
+            opts=options or ContainerOptions(),
             progress=progress,
         )
 
@@ -816,11 +481,10 @@ class ContainerService:
             if container_name == config.default_container:
                 # Create the container (this is a synchronous operation here)
                 try:
-                    await self._create_container_internal(
+                    await self._run_create(
                         name=container_name,
                         image=config.default_image,
-                        options=ContainerOptions(),
-                        progress=None,
+                        opts=ContainerOptions(),
                     )
                 except OperationError as e:
                     return (False, str(e), [])
@@ -866,12 +530,6 @@ class ContainerService:
             env_args.extend(["--env", f"{key}={value}"])
             whitelist_keys.append(key)
 
-        # Set fixed PATH for su lookup.
-        # Our host system PATH might not have the right PATH to find su inside the container.
-        # e.g. NixOS on the host, Arch as the guest.
-        # NixOS does not have /usr/bin in PATH, so finding su in the guest would fail.
-        env_args.extend(["--env", "PATH=/usr/bin:/bin"])
-
         # Build the command to run inside the container.
         #
         # Always use su -l for consistent behavior whether entering a
@@ -904,73 +562,6 @@ class ContainerService:
     # -------------------------------------------------------------------------
     # Private Helper Methods
     # -------------------------------------------------------------------------
-
-    async def _create_container_internal(
-        self,
-        *,
-        name: str,
-        image: str,
-        options: ContainerOptions | None,
-        progress: OperationReporter | None,
-    ) -> None:
-        """Shared implementation for container creation.
-
-        Used by both operation-tracked creation and internal default
-        container bootstrap paths.
-        """
-        opts = options or ContainerOptions()
-
-        # Check if container already exists
-        if await self._incus.instance_exists(name):
-            raise OperationError(f"Container '{name}' already exists")
-
-        if progress is not None:
-            progress.info(f"Image: {image}")
-            if not opts.gpu:
-                progress.info("GPU passthrough: disabled")
-            if opts.gpu and not opts.nvidia_drivers:
-                progress.info("NVIDIA driver injection: disabled")
-
-        # Parse image source
-        instance_source = self._parse_image_source(image)
-        if instance_source is None:
-            raise OperationError(f"Invalid image format: {image}")
-
-        # Build instance config — base settings + option metadata
-        instance_config_dict = base_container_config(
-            nvidia_drivers=opts.gpu and opts.nvidia_drivers,
-        )
-        store_option_metadata(instance_config_dict, opts)
-
-        instance_config = InstancesPost(
-            name=name,
-            profiles=[],
-            source=instance_source,
-            start=True,
-            architecture=None,
-            config=instance_config_dict,
-            description=None,
-            devices=base_container_devices(host_rootfs=opts.host_rootfs, gpu=opts.gpu),
-            ephemeral=None,
-            instance_type=None,
-            restore=None,
-            stateful=None,
-            type=None,
-        )
-
-        if progress is not None:
-            if NVIDIA_HOOK_PATH in instance_config_dict.get("raw.lxc", ""):
-                progress.dim("NVIDIA userspace drivers will be injected on start")
-            progress.info("Downloading image and creating container...")
-
-        try:
-            operation = await self._incus.create_instance(instance_config, wait=True)
-            if operation.status != "Success":
-                raise OperationError(f"Creation failed: {operation.err or operation.status}")
-        except IncusError as e:
-            raise OperationError(f"Failed to create container: {e}")
-
-        await self._run_post_create(name, opts, progress)
 
     @staticmethod
     def _mount_env_fingerprint(env: dict[str, str]) -> str:
@@ -1167,50 +758,4 @@ class ContainerService:
                 "sh", "-c", script, "sh", *args,
             ],
             capture_output=True,
-        )
-
-    def _parse_image_source(self, image: str) -> InstanceSource | None:
-        """Parse an image string into an InstanceSource.
-
-        Args:
-            image: Image string like "images:archlinux" or "ubuntu:24.04"
-
-        Returns:
-            InstanceSource or None if invalid
-        """
-        # Map common server aliases to URLs
-        server_map = {
-            "images": "https://images.linuxcontainers.org",
-            "ubuntu": "https://cloud-images.ubuntu.com/releases",
-        }
-
-        if ":" in image:
-            server_alias, image_alias = image.split(":", 1)
-            server_url = server_map.get(server_alias)
-            if not server_url:
-                return None
-        else:
-            server_url = "https://images.linuxcontainers.org"
-            image_alias = image
-
-        return InstanceSource(
-            type="image",
-            protocol="simplestreams",
-            server=server_url,
-            alias=image_alias,
-            allow_inconsistent=None,
-            certificate=None,
-            fingerprint=None,
-            instance_only=None,
-            live=None,
-            mode=None,
-            operation=None,
-            project=None,
-            properties=None,
-            refresh=None,
-            refresh_exclude_older=None,
-            secret=None,
-            secrets=None,
-            source=None,
-            **{"base-image": None},
         )

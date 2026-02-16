@@ -99,13 +99,15 @@ if(INSTALL_PYTHON_DAEMON)
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container"
     )
 
-    # Install post_create pipeline package
+    # Install create pipeline package
     install(FILES
-        src/daemon/container/post_create/__init__.py
-        src/daemon/container/post_create/file_capabilities.py
-        src/daemon/container/post_create/host_network.py
-        src/daemon/container/post_create/session_mode.py
-        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container/post_create"
+        src/daemon/container/create/__init__.py
+        src/daemon/container/create/build_config.py
+        src/daemon/container/create/create_instance.py
+        src/daemon/container/create/file_capabilities.py
+        src/daemon/container/create/host_network.py
+        src/daemon/container/create/session_mode.py
+        DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container/create"
     )
 
     # Install user_setup pipeline package
