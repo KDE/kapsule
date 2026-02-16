@@ -161,6 +161,7 @@ class ContainerService:
         )
 
         progress.success(f"Container '{name}' created successfully")
+        self._interface.ContainersChanged()
 
     @operation(
         "delete",
@@ -210,6 +211,7 @@ class ContainerService:
             raise OperationError(f"Failed to delete container: {e}")
 
         progress.success(f"Container '{name}' removed successfully")
+        self._interface.ContainersChanged()
 
     @operation(
         "start",
@@ -249,6 +251,7 @@ class ContainerService:
             raise OperationError(f"Failed to start container: {e}")
 
         progress.success(f"Container '{name}' started successfully")
+        self._interface.ContainersChanged()
 
     @operation(
         "stop",
@@ -286,6 +289,7 @@ class ContainerService:
             raise OperationError(f"Failed to stop container: {e}")
 
         progress.success(f"Container '{name}' stopped successfully")
+        self._interface.ContainersChanged()
 
     # -------------------------------------------------------------------------
     # User Setup Operations

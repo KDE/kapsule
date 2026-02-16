@@ -71,6 +71,11 @@ void KapsuleClientPrivate::connectToDaemon()
         QDBusConnection::systemBus()
     );
 
+    // Forward D-Bus ContainersChanged signal to the Qt signal
+    QObject::connect(interface.get(),
+        &OrgKdeKapsuleManagerInterface::ContainersChanged,
+        q_ptr, &KapsuleClient::containersChanged);
+
     // Read a property instead of checking isValid() — an actual D-Bus call
     // triggers bus activation so the daemon starts via systemd if needed.
     daemonVersion = interface->version();

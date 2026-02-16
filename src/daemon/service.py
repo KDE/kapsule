@@ -15,7 +15,7 @@ import logging
 from typing import Annotated
 
 from dbus_fast.aio import MessageBus
-from dbus_fast.service import ServiceInterface, dbus_property, dbus_method
+from dbus_fast.service import ServiceInterface, dbus_property, dbus_method, dbus_signal
 from dbus_fast.constants import PropertyAccess
 from dbus_fast.annotations import DBusStr, DBusBool, DBusObjectPath, DBusSignature, DBusUInt32
 from dbus_fast import BusType, Message, MessageType, Variant
@@ -188,6 +188,18 @@ class KapsuleManagerInterface(ServiceInterface):
     def Version(self) -> DBusStr:
         """Daemon version."""
         return self._version
+
+    # =========================================================================
+    # Signals
+    # =========================================================================
+
+    @dbus_signal()
+    def ContainersChanged(self) -> None:
+        """Emitted when the container list changes.
+
+        Fired after a container is created, deleted, started, or stopped.
+        Clients should re-fetch the container list when this signal is received.
+        """
 
     # =========================================================================
     # Methods - Operations Query

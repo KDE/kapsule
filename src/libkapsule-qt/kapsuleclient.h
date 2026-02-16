@@ -197,6 +197,14 @@ Q_SIGNALS:
      */
     void connectedChanged(bool connected);
 
+    /**
+     * @brief Emitted when the container list changes.
+     *
+     * Fired after a container is created, deleted, started, or stopped.
+     * Clients should re-fetch the container list when this signal is received.
+     */
+    void containersChanged();
+
 private:
     std::unique_ptr<KapsuleClientPrivate> d;
 };
