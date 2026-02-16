@@ -11,10 +11,11 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QSharedDataPointer>
-#include <QDBusArgument>
 
 #include "kapsule_export.h"
 #include "types.h"
+
+class QDBusArgument;
 
 namespace Kapsule {
 

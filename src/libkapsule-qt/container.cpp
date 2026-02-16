@@ -5,6 +5,7 @@
 
 #include "container.h"
 
+#include <QDBusArgument>
 #include <QSharedData>
 
 namespace Kapsule {
