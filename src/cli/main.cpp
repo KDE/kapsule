@@ -18,7 +18,9 @@
 #include <qcoro/qcorocore.h>
 
 #include <unistd.h>
+#include <sys/wait.h>
 #include <cerrno>
+#include <csignal>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -27,6 +29,39 @@ using namespace Kapsule;
 
 // Program name (kap or kapsule) - set at startup
 static QString programName;
+
+static bool shouldEmitOsc777()
+{
+    return isatty(STDOUT_FILENO) == 1;
+}
+
+static QString sanitizeOsc777Field(const QString &value)
+{
+    QString sanitized = value;
+    sanitized.remove(QLatin1Char(';'));
+    sanitized.remove(QLatin1Char('\a'));
+    sanitized.remove(QLatin1Char('\u001b'));
+    return sanitized;
+}
+
+static void emitOsc777ContainerPush(const QString &containerName)
+{
+    if (!shouldEmitOsc777()) {
+        return;
+    }
+
+    const QByteArray safeName = sanitizeOsc777Field(containerName).toUtf8();
+    std::cout << "\033]777;container;push;" << safeName.constData() << ";kapsule\a" << std::flush;
+}
+
+static void emitOsc777ContainerPop()
+{
+    if (!shouldEmitOsc777()) {
+        return;
+    }
+
+    std::cout << "\033]777;container;pop;;\a" << std::flush;
+}
 
 // Forward declarations for command handlers
 QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args);
@@ -382,10 +417,51 @@ QCoro::Task<int> cmdEnter(KapsuleClient &client, const QStringList &args)
     }
     execArgv.push_back(nullptr);
 
-    execvp(execArgv[0], execArgv.data());
+    if (!shouldEmitOsc777()) {
+        execvp(execArgv[0], execArgv.data());
 
-    // If we get here, exec failed
-    o.error(QStringLiteral("Failed to exec: %1").arg(QString::fromLocal8Bit(strerror(errno))).toStdString());
+        // If we get here, exec failed
+        o.error(QStringLiteral("Failed to exec: %1").arg(QString::fromLocal8Bit(strerror(errno))).toStdString());
+        co_return 1;
+    }
+
+    pid_t childPid = fork();
+    if (childPid < 0) {
+        o.error(QStringLiteral("Failed to fork: %1").arg(QString::fromLocal8Bit(strerror(errno))).toStdString());
+        co_return 1;
+    }
+
+    if (childPid == 0) {
+        emitOsc777ContainerPush(targetContainer);
+        execvp(execArgv[0], execArgv.data());
+        std::cerr << "Failed to exec: " << strerror(errno) << '\n';
+        _exit(127);
+    }
+
+    int status = 0;
+    pid_t waited = -1;
+    do {
+        waited = waitpid(childPid, &status, 0);
+    } while (waited == -1 && errno == EINTR);
+
+    emitOsc777ContainerPop();
+
+    if (waited == -1) {
+        o.error(QStringLiteral("Failed to wait for child: %1").arg(QString::fromLocal8Bit(strerror(errno))).toStdString());
+        co_return 1;
+    }
+
+    if (WIFEXITED(status)) {
+        co_return WEXITSTATUS(status);
+    }
+
+    if (WIFSIGNALED(status)) {
+        const int sig = WTERMSIG(status);
+        std::signal(sig, SIG_DFL);
+        std::raise(sig);
+        co_return 128 + sig;
+    }
+
     co_return 1;
 }
 

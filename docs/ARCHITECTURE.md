@@ -281,6 +281,20 @@ o.error("Something went wrong");
 o.hint("Is the daemon running? Try: systemctl status kapsule-daemon");
 ```
 
+### Terminal Container Detection (OSC 777)
+
+`kapsule enter` emits OSC 777 markers so compatible terminals can track container context:
+
+- Enter marker: `ESC ] 777 ; container ; push ; <container> ; kapsule BEL`
+- Exit marker: `ESC ] 777 ; container ; pop ; ; BEL`
+
+Implementation details:
+- Markers are only emitted when stdout is a TTY.
+- The push marker is emitted in the forked child just before `execvp(...)`.
+- The pop marker is emitted by the parent after `waitpid(...)` returns.
+
+This mirrors the lifecycle of the entered session while avoiding push/pop emission on fork failure.
+
 ---
 
 ## Container Creation Options (Schema-Driven)

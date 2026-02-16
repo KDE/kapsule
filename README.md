@@ -15,6 +15,7 @@ A distrobox-like tool using Incus as the container/VM backend, designed for KDE 
 - **Nested containerization** - Create containers that can run Docker/Podman inside them
 - **Host integration** - Containers share your home directory, user account, environment, Wayland/PipeWire sockets, and D-Bus session
 - **KDE/Plasma integration** - Konsole integration, KIO worker, System Settings module (planned)
+- **Terminal container markers** - `kapsule enter` emits OSC 777 `container;push/pop` markers so compatible terminals can detect container sessions
 
 ## Quick Start
 
@@ -117,6 +118,12 @@ On first `enter`, Kapsule automatically:
 - Creates your user account in the container (matching host UID/GID)
 - Mounts your home directory
 - Sets up XDG_RUNTIME_DIR symlink for Wayland/PipeWire
+
+When `kapsule enter` runs in an interactive terminal (TTY), Kapsule emits OSC 777 markers:
+- Enter: `container;push;<container-name>;kapsule`
+- Exit: `container;pop;;`
+
+This allows terminals such as Konsole and Ptyxis to track when the shell is inside a Kapsule container.
 
 ## Architecture
 
