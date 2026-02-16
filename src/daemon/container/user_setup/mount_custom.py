@@ -30,6 +30,9 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
         ctx.warning(f"Invalid custom-mounts config: {raw}")
         return
 
+    if custom_mounts:
+        ctx.info(f"Custom mounts: {', '.join(custom_mounts)}")
+
     for mount_path in custom_mounts:
         # Sanitise the path for use as an Incus device name
         safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")

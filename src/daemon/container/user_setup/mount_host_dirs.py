@@ -23,6 +23,8 @@ async def mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
     if has_host_rootfs:
         return
 
+    ctx.info("Minimal host mounts (no full rootfs)")
+
     # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
     hostrun_device = f"kapsule-hostrun-{ctx.uid}"
     try:
