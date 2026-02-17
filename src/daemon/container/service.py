@@ -156,7 +156,7 @@ class ContainerService:
         await self._run_create(
             name=name,
             image=image,
-            opts=options or ContainerOptions(),
+            opts=options or ContainerOptions.default(),
             progress=progress,
         )
 
@@ -488,7 +488,7 @@ class ContainerService:
                     await self._run_create(
                         name=container_name,
                         image=config.default_image,
-                        opts=ContainerOptions(),
+                        opts=ContainerOptions.default(),
                     )
                 except OperationError as e:
                     return (False, str(e), [])

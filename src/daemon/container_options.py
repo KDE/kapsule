@@ -111,7 +111,7 @@ Adding a new option
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -255,23 +255,29 @@ _TYPE_CHECK: dict[str, type | tuple[type, ...]] = {
 class ContainerOptions:
     """Validated container creation options.
 
-    Constructed from a D-Bus ``a{sv}`` dict via :func:`parse_options`.
-    All fields have defaults matching the schema.  The 1:1 mapping
-    between schema keys and dataclass fields is intentional — the
-    schema is the external contract, this class is the internal
-    representation.
+    Constructed from a D-Bus ``a{sv}`` dict via :func:`parse_options`
+    or from schema defaults via :meth:`default`.
+
+    Fields have **no** Python-level defaults — the schema is the single
+    source of truth for default values.  Use :meth:`default` to get an
+    instance with all schema defaults applied.
 
     The C++ mirror of this class is ``Kapsule::ContainerOptions`` in
     ``types.h``, which serialises to ``a{sv}`` via ``toVariantMap()``.
     """
 
-    session_mode: bool = False
-    dbus_mux: bool = False
-    host_rootfs: bool = True
-    mount_home: bool = True
-    custom_mounts: list[str] = field(default_factory=lambda: list[str]())
-    gpu: bool = True
-    nvidia_drivers: bool = False
+    session_mode: bool
+    dbus_mux: bool
+    host_rootfs: bool
+    mount_home: bool
+    custom_mounts: list[str]
+    gpu: bool
+    nvidia_drivers: bool
+
+    @classmethod
+    def default(cls) -> ContainerOptions:
+        """Return an instance with all schema defaults applied."""
+        return cls(**_DEFAULTS)
 
 
 class OptionValidationError(Exception):
