@@ -20,7 +20,18 @@ sudo rm -rf "$install_dir"
 mkdir -p "$install_dir"
 
 # Start by building kapsule with kde-builder
-kde-builder --no-src --build-when-unchanged kapsule
+# --install-dir /usr so hardcoded paths are correct for the sysext.
+# DESTDIR redirects the actual file installation to the staging directory.
+DESTDIR="$install_dir" kde-builder --no-src --build-when-unchanged \
+    --install-dir /usr \
+    kapsule
+
+# Build konsole with kapsule support
+DESTDIR="$install_dir" kde-builder --no-src --build-when-unchanged \
+    --no-include-dependencies \
+    --install-dir /usr \
+    --cmake-options "-DCMAKE_PREFIX_PATH=$install_dir/usr -DWITH_KAPSULE=ON" \
+    konsole
 
 # add kapsule-dbus-mux to the sysext
 # this will eventually come from the AUR or something
