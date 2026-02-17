@@ -198,7 +198,7 @@ CREATE_SCHEMA: dict[str, Any] = {
                     "type": "boolean",
                     "title": "NVIDIA Driver Injection",
                     "description": "Inject host NVIDIA userspace drivers on each start",
-                    "default": True,
+                    "default": False,
                     "requires": {"gpu": True},
                 },
             ],
@@ -271,7 +271,7 @@ class ContainerOptions:
     mount_home: bool = True
     custom_mounts: list[str] = field(default_factory=lambda: list[str]())
     gpu: bool = True
-    nvidia_drivers: bool = True
+    nvidia_drivers: bool = False
 
 
 class OptionValidationError(Exception):
