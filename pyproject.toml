@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kapsule"
-version = "0.1.0"
+version = "0.2.1"
 description = "Incus-based container management with KDE integration"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}

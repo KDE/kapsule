@@ -793,7 +793,7 @@ int main(int argc, char *argv[])
     }
     
     app.setApplicationName(programName);
-    app.setApplicationVersion(QStringLiteral("0.1.0"));  // TODO: Get from build
+    app.setApplicationVersion(QStringLiteral("0.2.1"));  // TODO: Get from build
     app.setOrganizationDomain(QStringLiteral("kde.org"));
     app.setOrganizationName(QStringLiteral("KDE"));
 

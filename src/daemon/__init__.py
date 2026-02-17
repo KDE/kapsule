@@ -7,7 +7,7 @@
 Provides container management services over D-Bus.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
 
 from .service import KapsuleService, KapsuleManagerInterface
 from .container import ContainerService
