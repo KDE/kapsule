@@ -59,7 +59,7 @@ ecm_generate_export_header(KapsuleQt
     EXPORT_FILE_NAME kapsule_export.h
     GROUP_BASE_NAME KDE
     VERSION ${KAPSULE_VERSION}
-    USE_VERSION_HEADER "${CMAKE_BINARY_DIR}/kapsule_version.h"
+    USE_VERSION_HEADER
     DEPRECATED_BASE_VERSION 0
     DEPRECATION_VERSIONS
     EXCLUDE_DEPRECATED_BEFORE_AND_AT ${EXCLUDE_DEPRECATED_BEFORE_AND_AT}
@@ -89,8 +89,10 @@ target_include_directories(KapsuleQt
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>"
+        "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>"
     INTERFACE
         "$<INSTALL_INTERFACE:${KDE_INSTALL_INCLUDEDIR}/Kapsule>"
+        "$<INSTALL_INTERFACE:${KDE_INSTALL_INCLUDEDIR}/Kapsule/kapsule>"
 )
 
 target_link_libraries(KapsuleQt
@@ -126,6 +128,7 @@ install(TARGETS KapsuleQt EXPORT KapsuleTargets ${KDE_INSTALL_TARGETS_DEFAULT_AR
 install(FILES
     ${kapsule_HEADERS}
     ${CMAKE_CURRENT_BINARY_DIR}/kapsule_export.h
+    ${CMAKE_BINARY_DIR}/kapsule_version.h
     DESTINATION ${KDE_INSTALL_INCLUDEDIR}/Kapsule/kapsule
     COMPONENT Devel
 )
