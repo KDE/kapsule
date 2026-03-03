@@ -34,21 +34,25 @@ from .models_generated import (
 # List wrapper models for typed API responses
 class InstanceList(RootModel[list[Instance]]):
     """List of Instance objects."""
+
     pass
 
 
 class StringList(RootModel[list[str]]):
     """List of string URLs/paths."""
+
     pass
 
 
 class StoragePoolList(RootModel[list[StoragePool]]):
     """List of StoragePool objects."""
+
     pass
 
 
 class EmptyResponse(BaseModel):
     """Empty response from Incus API (for PUT/POST that return {})."""
+
     pass
 
     class Config:
@@ -58,6 +62,7 @@ class EmptyResponse(BaseModel):
 # Wrapper for async operation responses (the full response, not just metadata)
 class AsyncOperationResponse(BaseModel):
     """Async operation response wrapper."""
+
     type: str
     status: str
     status_code: int
@@ -119,7 +124,12 @@ class IncusClient:
             self._client = None
 
     async def _request(
-        self, method: str, path: str, *, response_type: type[T], json: dict[str, Any] | None = None
+        self,
+        method: str,
+        path: str,
+        *,
+        response_type: type[T],
+        json: dict[str, Any] | None = None,
     ) -> T:
         """Make request and handle Incus response format.
 
@@ -243,7 +253,9 @@ class IncusClient:
         Returns:
             Instance object.
         """
-        return await self._request("GET", f"/1.0/instances/{name}", response_type=Instance)
+        return await self._request(
+            "GET", f"/1.0/instances/{name}", response_type=Instance
+        )
 
     async def get_instance_state(self, name: str) -> InstanceState:
         """Get the runtime state of an instance.
@@ -277,7 +289,9 @@ class IncusClient:
     # Instance creation
     # -------------------------------------------------------------------------
 
-    async def create_instance(self, instance: InstancesPost, wait: bool = False) -> Operation:
+    async def create_instance(
+        self, instance: InstancesPost, wait: bool = False
+    ) -> Operation:
         """Create a new instance (container or VM).
 
         Args:
@@ -288,7 +302,8 @@ class IncusClient:
             Operation with status info.
         """
         response = await self._request(
-            "POST", "/1.0/instances",
+            "POST",
+            "/1.0/instances",
             response_type=AsyncOperationResponse,
             json=instance.model_dump(exclude_none=True),
         )
@@ -326,7 +341,8 @@ class IncusClient:
             Operation object with final status.
         """
         return await self._request(
-            "GET", f"/1.0/operations/{operation_id}/wait?timeout={timeout}",
+            "GET",
+            f"/1.0/operations/{operation_id}/wait?timeout={timeout}",
             response_type=Operation,
         )
 
@@ -363,7 +379,8 @@ class IncusClient:
             Operation with status info.
         """
         response = await self._request(
-            "PUT", f"/1.0/instances/{name}/state",
+            "PUT",
+            f"/1.0/instances/{name}/state",
             response_type=AsyncOperationResponse,
             json=state.model_dump(exclude_none=True),
         )
@@ -431,7 +448,8 @@ class IncusClient:
             Operation with status info.
         """
         response = await self._request(
-            "DELETE", f"/1.0/instances/{name}",
+            "DELETE",
+            f"/1.0/instances/{name}",
             response_type=AsyncOperationResponse,
         )
 
@@ -487,7 +505,9 @@ class IncusClient:
         )
 
         if response.status_code >= 400:
-            raise IncusError(f"Failed to push file {path}: {response.text}", response.status_code)
+            raise IncusError(
+                f"Failed to push file {path}: {response.text}", response.status_code
+            )
 
     async def create_symlink(
         self,
@@ -520,7 +540,10 @@ class IncusClient:
         )
 
         if response.status_code >= 400:
-            raise IncusError(f"Failed to create symlink {path}: {response.text}", response.status_code)
+            raise IncusError(
+                f"Failed to create symlink {path}: {response.text}",
+                response.status_code,
+            )
 
     async def mkdir(
         self,
@@ -554,7 +577,10 @@ class IncusClient:
         )
 
         if response.status_code >= 400:
-            raise IncusError(f"Failed to create directory {path}: {response.text}", response.status_code)
+            raise IncusError(
+                f"Failed to create directory {path}: {response.text}",
+                response.status_code,
+            )
 
     # -------------------------------------------------------------------------
     # Instance configuration
@@ -658,7 +684,9 @@ class IncusClient:
             List of StoragePool objects.
         """
         if recursion == 0:
-            result = await self._request("GET", "/1.0/storage-pools", response_type=StringList)
+            result = await self._request(
+                "GET", "/1.0/storage-pools", response_type=StringList
+            )
             return [
                 StoragePool(
                     name=url.split("/")[-1],
@@ -673,7 +701,9 @@ class IncusClient:
             ]
 
         result = await self._request(
-            "GET", f"/1.0/storage-pools?recursion={recursion}", response_type=StoragePoolList
+            "GET",
+            f"/1.0/storage-pools?recursion={recursion}",
+            response_type=StoragePoolList,
         )
         return result.root
 
@@ -689,7 +719,9 @@ class IncusClient:
         pools = await self.list_storage_pools(recursion=0)
         return any(p.name == name for p in pools)
 
-    async def create_storage_pool(self, name: str, driver: str, config: dict[str, str] | None = None) -> None:
+    async def create_storage_pool(
+        self, name: str, driver: str, config: dict[str, str] | None = None
+    ) -> None:
         """Create a new storage pool.
 
         Args:
@@ -704,7 +736,8 @@ class IncusClient:
             description=None,
         )
         await self._request(
-            "POST", "/1.0/storage-pools",
+            "POST",
+            "/1.0/storage-pools",
             response_type=EmptyResponse,
             json=pool.model_dump(exclude_none=True),
         )
@@ -735,7 +768,8 @@ class IncusClient:
 
         put_data = ServerPut(config=new_config)
         await self._request(
-            "PUT", "/1.0",
+            "PUT",
+            "/1.0",
             response_type=EmptyResponse,
             json=put_data.model_dump(exclude_none=True),
         )

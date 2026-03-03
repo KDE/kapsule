@@ -34,7 +34,9 @@ class CreateContext:
 
     # Built up by pipeline steps
     instance_config: dict[str, str] = field(default_factory=lambda: dict[str, str]())
-    devices: dict[str, dict[str, str]] = field(default_factory=lambda: dict[str, dict[str, str]]())
+    devices: dict[str, dict[str, str]] = field(
+        default_factory=lambda: dict[str, dict[str, str]]()
+    )
     source: InstanceSource | None = None
 
     def info(self, msg: str) -> None:

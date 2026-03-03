@@ -98,8 +98,11 @@ class ContainerService:
     ) -> None:
         """Run the full container creation pipeline."""
         ctx = CreateContext(
-            name=name, image=image, opts=opts,
-            incus=self._incus, progress=progress,
+            name=name,
+            image=image,
+            opts=opts,
+            incus=self._incus,
+            progress=progress,
         )
         await create_pipeline.run(ctx)
 
@@ -190,7 +193,9 @@ class ContainerService:
         is_running = instance.status and instance.status.lower() == "running"
 
         if is_running and not force:
-            raise OperationError(f"Container '{name}' is running. Use force=True to remove anyway.")
+            raise OperationError(
+                f"Container '{name}' is running. Use force=True to remove anyway."
+            )
 
         if is_running:
             progress.info("Stopping container...")
@@ -324,7 +329,12 @@ class ContainerService:
             home_dir: Path to home directory on host
         """
         await self._run_user_setup(
-            container_name, uid, gid, username, home_dir, progress,
+            container_name,
+            uid,
+            gid,
+            username,
+            home_dir,
+            progress,
         )
         progress.success(f"User '{username}' configured")
 
@@ -504,7 +514,11 @@ class ContainerService:
             try:
                 op = await self._incus.start_instance(container_name, wait=True)
                 if op.status != "Success":
-                    return (False, f"Failed to start container: {op.err or op.status}", [])
+                    return (
+                        False,
+                        f"Failed to start container: {op.err or op.status}",
+                        [],
+                    )
             except IncusError as e:
                 return (False, f"Failed to start container: {e}", [])
 
@@ -512,7 +526,11 @@ class ContainerService:
         if not await self.is_user_setup(container_name, uid):
             try:
                 await self._run_user_setup(
-                    container_name, uid, gid, username, home_dir,
+                    container_name,
+                    uid,
+                    gid,
+                    username,
+                    home_dir,
                 )
             except OperationError as e:
                 return (False, str(e), [])
@@ -552,7 +570,15 @@ class ContainerService:
         # that are needed for PulseAudio/PipeWire socket discovery.
         whitelist_arg = ",".join(whitelist_keys) if whitelist_keys else ""
         if command:
-            exec_cmd = ["su", "-l", "-w", whitelist_arg, "-c", " ".join(command), username]
+            exec_cmd = [
+                "su",
+                "-l",
+                "-w",
+                whitelist_arg,
+                "-c",
+                " ".join(command),
+                username,
+            ]
         else:
             exec_cmd = ["su", "-l", "-w", whitelist_arg, username]
 
@@ -632,11 +658,15 @@ class ContainerService:
 
         # Ensure container runtime dirs exist
         try:
-            await self._incus.mkdir(container_name, "/run/user", uid=0, gid=0, mode="0255")
+            await self._incus.mkdir(
+                container_name, "/run/user", uid=0, gid=0, mode="0255"
+            )
         except IncusError:
             pass
         try:
-            await self._incus.mkdir(container_name, runtime_dir, uid=uid, gid=gid, mode="0700")
+            await self._incus.mkdir(
+                container_name, runtime_dir, uid=uid, gid=gid, mode="0700"
+            )
         except IncusError:
             pass
 
@@ -679,31 +709,41 @@ class ContainerService:
             container_x11_dir = "/tmp/.X11-unix"
             try:
                 await self._incus.mkdir(
-                    container_name, container_x11_dir, uid=0, gid=0, mode="1777",
+                    container_name,
+                    container_x11_dir,
+                    uid=0,
+                    gid=0,
+                    mode="1777",
                 )
             except IncusError:
                 pass
-            mounts.append(BindMount(
-                source=host_x11,
-                target=f"{container_x11_dir}/{x11_socket}",
-                uid=0,
-                gid=0,
-            ))
+            mounts.append(
+                BindMount(
+                    source=host_x11,
+                    target=f"{container_x11_dir}/{x11_socket}",
+                    uid=0,
+                    gid=0,
+                )
+            )
 
         # PulseAudio: create a real pulse/ directory and bind-mount native inside.
         # PulseAudio refuses to use pulse/ if it's itself a symlink (security check).
         pulse_dir = f"{runtime_dir}/pulse"
         host_pulse_native = f"{host_runtime_dir}/pulse/native"
         try:
-            await self._incus.mkdir(container_name, pulse_dir, uid=uid, gid=gid, mode="0700")
+            await self._incus.mkdir(
+                container_name, pulse_dir, uid=uid, gid=gid, mode="0700"
+            )
         except IncusError:
             pass
-        mounts.append(BindMount(
-            source=host_pulse_native,
-            target=f"{pulse_dir}/native",
-            uid=uid,
-            gid=gid,
-        ))
+        mounts.append(
+            BindMount(
+                source=host_pulse_native,
+                target=f"{pulse_dir}/native",
+                uid=uid,
+                gid=gid,
+            )
+        )
 
         # XAUTHORITY: the env value is a full path (e.g. /run/user/1000/xauth_LAPpeP).
         # Bind-mount just the basename inside the container's runtime dir to the
@@ -713,7 +753,9 @@ class ContainerService:
             xauth_basename = os.path.basename(xauth_path)
             host_xauth = f"{host_runtime_dir}/{xauth_basename}"
             target_xauth = f"{runtime_dir}/{xauth_basename}"
-            mounts.append(BindMount(source=host_xauth, target=target_xauth, uid=uid, gid=gid))
+            mounts.append(
+                BindMount(source=host_xauth, target=target_xauth, uid=uid, gid=gid)
+            )
 
         # --- Execute all mounts via nsenter into the container namespace ---
         if mounts and state.pid:
@@ -747,14 +789,14 @@ class ContainerService:
         # Build a self-contained sh script that reads quad-tuples from args.
         # Usage: sh -c '<script>' sh src1 tgt1 uid1 gid1 src2 tgt2 uid2 gid2 ...
         script = (
-            'while [ $# -ge 4 ]; do '
-            'src=$1; tgt=$2; u=$3; g=$4; shift 4; '
+            "while [ $# -ge 4 ]; do "
+            "src=$1; tgt=$2; u=$3; g=$4; shift 4; "
             'mountpoint -q "$tgt" 2>/dev/null && continue; '
             'rm -f "$tgt"; '
             '[ -e "$src" ] || continue; '
             'touch "$tgt" && chown "$u:$g" "$tgt" && '
             'mount --bind "$src" "$tgt"; '
-            'done'
+            "done"
         )
 
         args: list[str] = []
@@ -763,8 +805,16 @@ class ContainerService:
 
         subprocess.run(
             [
-                "nsenter", "-t", str(container_pid), "-m", "--",
-                "sh", "-c", script, "sh", *args,
+                "nsenter",
+                "-t",
+                str(container_pid),
+                "-m",
+                "--",
+                "sh",
+                "-c",
+                script,
+                "sh",
+                *args,
             ],
             capture_output=True,
         )

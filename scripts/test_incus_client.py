@@ -30,13 +30,19 @@ def main():
         response = client.get("/1.0")
         response.raise_for_status()
         server_info = response.json()
-        print(f"API Version: {server_info.get('metadata', {}).get('api_version', 'unknown')}")
-        print(f"Environment: {server_info.get('metadata', {}).get('environment', {}).get('server_name', 'unknown')}")
+        print(
+            f"API Version: {server_info.get('metadata', {}).get('api_version', 'unknown')}"
+        )
+        print(
+            f"Environment: {server_info.get('metadata', {}).get('environment', {}).get('server_name', 'unknown')}"
+        )
     except Exception as e:
         print(f"Error connecting to Incus: {e}")
         print("\nMake sure:")
         print("  1. Incus is running: systemctl status incus")
-        print("  2. You have permission to access the socket (user in 'incus' or 'incus-admin' group)")
+        print(
+            "  2. You have permission to access the socket (user in 'incus' or 'incus-admin' group)"
+        )
         print("  3. Socket exists at /var/lib/incus/unix.socket")
         return 1
 
@@ -45,7 +51,7 @@ def main():
     response = client.get("/1.0/instances")
     response.raise_for_status()
     data = response.json()
-    
+
     instance_urls = data.get("metadata", [])
     if not instance_urls:
         print("No instances found.")
@@ -71,7 +77,7 @@ def main():
                 instance = Instance.model_validate(inst_data)
                 status = inst_data.get("status", "Unknown")
                 inst_type = inst_data.get("type", "container")
-                
+
                 print(f"\n  {instance.name}:")
                 print(f"    Type: {inst_type}")
                 print(f"    Status: {status}")
@@ -94,14 +100,14 @@ def main():
         response = client.get(f"/1.0/instances/{first_name}/state")
         response.raise_for_status()
         state_data = response.json().get("metadata", {})
-        
+
         print(f"  Status: {state_data.get('status', 'unknown')}")
         print(f"  PID: {state_data.get('pid', 'N/A')}")
-        
+
         cpu = state_data.get("cpu", {})
         if cpu:
             print(f"  CPU Usage: {cpu.get('usage', 0) / 1_000_000_000:.2f}s")
-        
+
         memory = state_data.get("memory", {})
         if memory:
             usage_mb = memory.get("usage", 0) / 1024 / 1024

@@ -16,7 +16,8 @@ async def mark_mapped(ctx: UserSetupContext) -> None:
     user_mapped_key = f"user.kapsule.host-users.{ctx.uid}.mapped"
     try:
         await ctx.incus.patch_instance_config(
-            ctx.container_name, {user_mapped_key: "true"},
+            ctx.container_name,
+            {user_mapped_key: "true"},
         )
     except IncusError as e:
         raise OperationError(f"Failed to update container config: {e}")

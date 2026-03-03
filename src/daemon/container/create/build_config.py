@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from ...models_generated import InstanceSource
 from ...operations import OperationError
-from ..config_helpers import base_container_config, base_container_devices, store_option_metadata
+from ..config_helpers import (
+    base_container_config,
+    base_container_devices,
+    store_option_metadata,
+)
 from ..constants import (
     NVIDIA_HOOK_PATH,
 )

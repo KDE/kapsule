@@ -47,6 +47,7 @@ TEST_IMAGE = "images:alpine/edge"
 # Signal collector
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SignalCollector:
     """Collects D-Bus signals during a test."""
@@ -108,6 +109,7 @@ def make_signal_handler(collector: SignalCollector, operation_path: str | None =
 # D-Bus helpers
 # ---------------------------------------------------------------------------
 
+
 async def cleanup_container(name: str) -> None:
     """Force delete a container on the VM, ignoring errors."""
     proc = await ssh_run_on_vm("incus", "delete", name, "--force")
@@ -128,9 +130,7 @@ async def subscribe_kapsule_signals(bus: MessageBus) -> None:
     )
 
 
-async def call_create_container(
-    bus: MessageBus, name: str, image: str
-) -> str:
+async def call_create_container(bus: MessageBus, name: str, image: str) -> str:
     """Call CreateContainer via D-Bus and return operation path."""
     reply = await bus.call(
         Message(
@@ -147,9 +147,7 @@ async def call_create_container(
     return reply.body[0]  # Operation object path
 
 
-async def call_delete_container(
-    bus: MessageBus, name: str, force: bool = True
-) -> str:
+async def call_delete_container(bus: MessageBus, name: str, force: bool = True) -> str:
     """Call DeleteContainer via D-Bus and return operation path."""
     reply = await bus.call(
         Message(
@@ -186,6 +184,7 @@ async def wait_for_completed(
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def bus():
@@ -234,7 +233,8 @@ class TestOperationSignals:
 
         # InterfacesAdded should have fired for our operation
         our_adds = [
-            (path, ifaces) for path, ifaces in collector.interfaces_added
+            (path, ifaces)
+            for path, ifaces in collector.interfaces_added
             if path == op_path
         ]
         assert len(our_adds) >= 1, "No InterfacesAdded for our operation"
@@ -268,8 +268,7 @@ class TestOperationSignals:
         await asyncio.sleep(8)
 
         our_removals = [
-            path for path, _ in collector.interfaces_removed
-            if path == op_path
+            path for path, _ in collector.interfaces_removed if path == op_path
         ]
         assert len(our_removals) >= 1, "Operation was not unexported"
 
@@ -323,8 +322,7 @@ class TestProgressSignals:
             for pid, values in by_id.items():
                 for i in range(1, len(values)):
                     assert values[i] >= values[i - 1], (
-                        f"Progress decreased for {pid}: "
-                        f"{values[i - 1]} -> {values[i]}"
+                        f"Progress decreased for {pid}: {values[i - 1]} -> {values[i]}"
                     )
 
     async def test_completed_signal_received(

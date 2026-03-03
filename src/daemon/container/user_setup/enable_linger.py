@@ -21,8 +21,13 @@ async def enable_linger(ctx: UserSetupContext) -> None:
     ctx.info(f"Enabling linger for '{ctx.username}' (session mode)")
     result = subprocess.run(
         [
-            "incus", "exec", ctx.container_name, "--",
-            "loginctl", "enable-linger", ctx.username,
+            "incus",
+            "exec",
+            ctx.container_name,
+            "--",
+            "loginctl",
+            "enable-linger",
+            ctx.username,
         ],
         capture_output=True,
         text=True,

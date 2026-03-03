@@ -23,20 +23,21 @@ from dbus_fast.annotations import DBusSignature
 
 class CppType:
     """Marker class for specifying the corresponding C++ type name.
-    
+
     Use as additional metadata in Annotated types to specify what C++ type
     should be used in the D-Bus introspection XML annotations.
-    
+
     Example:
         DBusContainer = Annotated[
-            tuple[str, str, str, str, str], 
-            DBusSignature("(sssss)"), 
+            tuple[str, str, str, str, str],
+            DBusSignature("(sssss)"),
             CppType("Kapsule::Container")
         ]
     """
+
     def __init__(self, cpp_type: str) -> None:
         self.cpp_type = cpp_type
-    
+
     def __repr__(self) -> str:
         return f"CppType({self.cpp_type!r})"
 
@@ -62,17 +63,23 @@ DBusVariantDict = Annotated[dict[str, object], DBusSignature("a{sv}")]
 # QDBusArgument streaming operators defined.
 
 DBusContainer = Annotated[
-    tuple[str, str, str, str, str], DBusSignature("(sssss)"), CppType("Kapsule::Container")
+    tuple[str, str, str, str, str],
+    DBusSignature("(sssss)"),
+    CppType("Kapsule::Container"),
 ]
 """Container info tuple: (name, status, image, created, mode)"""
 
 DBusContainerList = Annotated[
-    list[tuple[str, str, str, str, str]], DBusSignature("a(sssss)"), CppType("QList<Kapsule::Container>")
+    list[tuple[str, str, str, str, str]],
+    DBusSignature("a(sssss)"),
+    CppType("QList<Kapsule::Container>"),
 ]
 """List of container info tuples"""
 
 DBusEnterResult = Annotated[
-    tuple[bool, str, list[str]], DBusSignature("(bsas)"), CppType("Kapsule::EnterResult")
+    tuple[bool, str, list[str]],
+    DBusSignature("(bsas)"),
+    CppType("Kapsule::EnterResult"),
 ]
 """PrepareEnter result: (success, error_message, command_array)"""
 

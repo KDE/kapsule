@@ -251,7 +251,9 @@ class OperationInterface(ServiceInterface):
         self._status = "completed" if success else "failed"
         if self._cancel_requested and not success:
             self._status = "cancelled"
-        print(f"[Operation {self._op_id}] Emitting Completed signal: success={success}, message={message!r}")
+        print(
+            f"[Operation {self._op_id}] Emitting Completed signal: success={success}, message={message!r}"
+        )
         result = self.Completed(success, message)
         print(f"[Operation {self._op_id}] Signal emitted, result={result}")
 
@@ -460,7 +462,9 @@ def _make_operations_dict() -> dict[str, RunningOperation]:
 class OperationTracker:
     """Tracks all running operations in the daemon."""
 
-    _operations: dict[str, RunningOperation] = field(default_factory=_make_operations_dict)
+    _operations: dict[str, RunningOperation] = field(
+        default_factory=_make_operations_dict
+    )
     _bus: MessageBus | None = None
     _cleanup_delay: float = 5.0  # Seconds to keep completed operations
 
@@ -473,7 +477,9 @@ class OperationTracker:
         """Register a running operation and export it to D-Bus."""
         self._operations[op.id] = op
         if self._bus:
-            print(f"[OperationTracker] Exporting operation {op.id} to {op.interface.object_path}")
+            print(
+                f"[OperationTracker] Exporting operation {op.id} to {op.interface.object_path}"
+            )
             self._bus.export(op.interface.object_path, op.interface)
             print(f"[OperationTracker] Export complete for {op.id}")
 
@@ -609,9 +615,11 @@ def operation(
             # or miss signals emitted early in execution
             if hasattr(self, "_tracker"):
                 # Create the task but don't start it yet (just create the Task object)
-                task = asyncio.create_task(run_operation(), name=f"op-{operation_type}-{op_id[:8]}")
+                task = asyncio.create_task(
+                    run_operation(), name=f"op-{operation_type}-{op_id[:8]}"
+                )
                 op_interface.set_task(task)
-                
+
                 print(f"[Operation {op_id}] Created task, adding to tracker")
                 # Export to D-Bus before the task starts running
                 self._tracker.add(
@@ -626,7 +634,9 @@ def operation(
                 print(f"[Operation {op_id}] Added to tracker")
             else:
                 # No tracker - just create the task
-                task = asyncio.create_task(run_operation(), name=f"op-{operation_type}-{op_id[:8]}")
+                task = asyncio.create_task(
+                    run_operation(), name=f"op-{operation_type}-{op_id[:8]}"
+                )
                 op_interface.set_task(task)
 
             # Return the D-Bus object path

@@ -24,7 +24,10 @@ async def session_mode(ctx: CreateContext) -> None:
     """Set up session mode if enabled, otherwise configure rootless Podman."""
     if ctx.opts.session_mode:
         await _setup_session_mode_impl(
-            ctx.name, ctx.opts.dbus_mux, ctx.incus, ctx.progress,
+            ctx.name,
+            ctx.opts.dbus_mux,
+            ctx.incus,
+            ctx.progress,
         )
     else:
         # Non-session containers lack a systemd user instance, so
@@ -86,7 +89,9 @@ ListenStream={systemd_socket_path}
 """
     dropin_file = f"{dropin_dir}/kapsule.conf"
     try:
-        await incus.push_file(name, dropin_file, dropin_content, uid=0, gid=0, mode="0644")
+        await incus.push_file(
+            name, dropin_file, dropin_content, uid=0, gid=0, mode="0644"
+        )
     except IncusError as e:
         raise OperationError(f"Failed to configure D-Bus socket: {e}")
 
@@ -97,7 +102,16 @@ ListenStream={systemd_socket_path}
     if progress:
         progress.info("Reloading systemd user configuration...")
     subprocess.run(
-        ["incus", "exec", name, "--", "systemctl", "--user", "--global", "daemon-reload"],
+        [
+            "incus",
+            "exec",
+            name,
+            "--",
+            "systemctl",
+            "--user",
+            "--global",
+            "daemon-reload",
+        ],
         capture_output=True,
     )
 
@@ -144,14 +158,26 @@ WantedBy=default.target
 
     service_file = f"{service_dir}/kapsule-dbus-mux.service"
     try:
-        await incus.push_file(name, service_file, service_content, uid=0, gid=0, mode="0644")
+        await incus.push_file(
+            name, service_file, service_content, uid=0, gid=0, mode="0644"
+        )
     except IncusError as e:
         raise OperationError(f"Failed to install dbus-mux service: {e}")
 
     if progress:
         progress.info("Enabling kapsule-dbus-mux.service globally")
     subprocess.run(
-        ["incus", "exec", name, "--", "systemctl", "--user", "--global", "enable", "kapsule-dbus-mux.service"],
+        [
+            "incus",
+            "exec",
+            name,
+            "--",
+            "systemctl",
+            "--user",
+            "--global",
+            "enable",
+            "kapsule-dbus-mux.service",
+        ],
         capture_output=True,
     )
 
@@ -193,8 +219,12 @@ async def _configure_rootless_podman_impl(
 
     try:
         await incus.push_file(
-            name, dropin_file, dropin_content,
-            uid=0, gid=0, mode="0644",
+            name,
+            dropin_file,
+            dropin_content,
+            uid=0,
+            gid=0,
+            mode="0644",
         )
     except IncusError as e:
         # Not fatal – best-effort config for when Podman is installed later

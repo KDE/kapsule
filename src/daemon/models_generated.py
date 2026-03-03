@@ -16,381 +16,381 @@ from pydantic import AwareDatetime, BaseModel, Field, RootModel
 class AccessEntry(BaseModel):
     identifier: str | None = Field(
         None,
-        description='Certificate fingerprint',
-        examples=['636b69519d27ae3b0e398cb7928043846ce1e3842f0ca7a589993dd913ab8cc9'],
+        description="Certificate fingerprint",
+        examples=["636b69519d27ae3b0e398cb7928043846ce1e3842f0ca7a589993dd913ab8cc9"],
     )
     provider: str | None = Field(
         None,
-        description='Which authorization method the certificate uses',
-        examples=['tls, openfga'],
+        description="Which authorization method the certificate uses",
+        examples=["tls, openfga"],
     )
     role: str | None = Field(
         None,
-        description='The role associated with the certificate',
-        examples=['admin, view, operator'],
+        description="The role associated with the certificate",
+        examples=["admin, view, operator"],
     )
 
 
 class BackupTarget(BaseModel):
     access_key: str | None = Field(
-        None, description='AccessKey is the S3 API access key', examples=['GOOG1234']
+        None, description="AccessKey is the S3 API access key", examples=["GOOG1234"]
     )
     bucket_name: str | None = Field(
         None,
-        description='BucketName is the name of the S3 bucket.',
-        examples=['my_bucket'],
+        description="BucketName is the name of the S3 bucket.",
+        examples=["my_bucket"],
     )
     path: str | None = Field(
-        None, description='Path is the target path.', examples=['foo/test.tar']
+        None, description="Path is the target path.", examples=["foo/test.tar"]
     )
     protocol: str | None = Field(
-        None, description='Protocol is the upload protocol.', examples=['S3']
+        None, description="Protocol is the upload protocol.", examples=["S3"]
     )
     secret_key: str | None = Field(
-        None, description='SecretKey is the S3 API access key', examples=['secret123']
+        None, description="SecretKey is the S3 API access key", examples=["secret123"]
     )
     url: str | None = Field(
         None,
-        description='URL is the HTTPS URL for the backup',
-        examples=['https://storage.googleapis.com'],
+        description="URL is the HTTPS URL for the backup",
+        examples=["https://storage.googleapis.com"],
     )
 
 
 class Certificate(BaseModel):
     certificate: str | None = Field(
         None,
-        description='The certificate itself, as PEM encoded X509 (or as base64 encoded X509 on POST)',
-        examples=['X509 PEM certificate'],
+        description="The certificate itself, as PEM encoded X509 (or as base64 encoded X509 on POST)",
+        examples=["X509 PEM certificate"],
     )
     description: str | None = Field(
-        None, description='Certificate description', examples=['X509 certificate']
+        None, description="Certificate description", examples=["X509 certificate"]
     )
     fingerprint: str | None = Field(
         None,
-        description='SHA256 fingerprint of the certificate',
-        examples=['fd200419b271f1dc2a5591b693cc5774b7f234e1ff8c6b78ad703b6888fe2b69'],
+        description="SHA256 fingerprint of the certificate",
+        examples=["fd200419b271f1dc2a5591b693cc5774b7f234e1ff8c6b78ad703b6888fe2b69"],
     )
     name: str | None = Field(
-        None, description='Name associated with the certificate', examples=['castiana']
+        None, description="Name associated with the certificate", examples=["castiana"]
     )
     projects: list[str] | None = Field(
         None,
-        description='List of allowed projects (applies when restricted)',
-        examples=[['default', 'foo', 'bar']],
+        description="List of allowed projects (applies when restricted)",
+        examples=[["default", "foo", "bar"]],
     )
     restricted: bool | None = Field(
         None,
-        description='Whether to limit the certificate to listed projects',
+        description="Whether to limit the certificate to listed projects",
         examples=[True],
     )
     type: str | None = Field(
-        None, description='Usage type for the certificate', examples=['client']
+        None, description="Usage type for the certificate", examples=["client"]
     )
 
 
 class CertificateAddToken(BaseModel):
     addresses: list[str] | None = Field(
         None,
-        description='The addresses of the server',
-        examples=[['10.98.30.229:8443']],
+        description="The addresses of the server",
+        examples=[["10.98.30.229:8443"]],
     )
     client_name: str | None = Field(
-        None, description='The name of the new client', examples=['user@host']
+        None, description="The name of the new client", examples=["user@host"]
     )
     expires_at: AwareDatetime | None = Field(
         None,
         description="The token's expiry date.",
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     fingerprint: str | None = Field(
         None,
-        description='The fingerprint of the network certificate',
-        examples=['57bb0ff4340b5bb28517e062023101adf788c37846dc8b619eb2c3cb4ef29436'],
+        description="The fingerprint of the network certificate",
+        examples=["57bb0ff4340b5bb28517e062023101adf788c37846dc8b619eb2c3cb4ef29436"],
     )
     secret: str | None = Field(
         None,
-        description='The random join secret',
-        examples=['2b2284d44db32675923fe0d2020477e0e9be11801ff70c435e032b97028c35cd'],
+        description="The random join secret",
+        examples=["2b2284d44db32675923fe0d2020477e0e9be11801ff70c435e032b97028c35cd"],
     )
 
 
 class CertificatePut(BaseModel):
     certificate: str | None = Field(
         None,
-        description='The certificate itself, as PEM encoded X509 (or as base64 encoded X509 on POST)',
-        examples=['X509 PEM certificate'],
+        description="The certificate itself, as PEM encoded X509 (or as base64 encoded X509 on POST)",
+        examples=["X509 PEM certificate"],
     )
     description: str | None = Field(
-        None, description='Certificate description', examples=['X509 certificate']
+        None, description="Certificate description", examples=["X509 certificate"]
     )
     name: str | None = Field(
-        None, description='Name associated with the certificate', examples=['castiana']
+        None, description="Name associated with the certificate", examples=["castiana"]
     )
     projects: list[str] | None = Field(
         None,
-        description='List of allowed projects (applies when restricted)',
-        examples=[['default', 'foo', 'bar']],
+        description="List of allowed projects (applies when restricted)",
+        examples=[["default", "foo", "bar"]],
     )
     restricted: bool | None = Field(
         None,
-        description='Whether to limit the certificate to listed projects',
+        description="Whether to limit the certificate to listed projects",
         examples=[True],
     )
     type: str | None = Field(
-        None, description='Usage type for the certificate', examples=['client']
+        None, description="Usage type for the certificate", examples=["client"]
     )
 
 
 class CertificatesPost(BaseModel):
     certificate: str | None = Field(
         None,
-        description='The certificate itself, as PEM encoded X509 (or as base64 encoded X509 on POST)',
-        examples=['X509 PEM certificate'],
+        description="The certificate itself, as PEM encoded X509 (or as base64 encoded X509 on POST)",
+        examples=["X509 PEM certificate"],
     )
     description: str | None = Field(
-        None, description='Certificate description', examples=['X509 certificate']
+        None, description="Certificate description", examples=["X509 certificate"]
     )
     name: str | None = Field(
-        None, description='Name associated with the certificate', examples=['castiana']
+        None, description="Name associated with the certificate", examples=["castiana"]
     )
     projects: list[str] | None = Field(
         None,
-        description='List of allowed projects (applies when restricted)',
-        examples=[['default', 'foo', 'bar']],
+        description="List of allowed projects (applies when restricted)",
+        examples=[["default", "foo", "bar"]],
     )
     restricted: bool | None = Field(
         None,
-        description='Whether to limit the certificate to listed projects',
+        description="Whether to limit the certificate to listed projects",
         examples=[True],
     )
     token: bool | None = Field(
-        None, description='Whether to create a certificate add token', examples=[True]
+        None, description="Whether to create a certificate add token", examples=[True]
     )
     trust_token: str | None = Field(
         None,
-        description='Trust token (used to add an untrusted client)',
-        examples=['blah'],
+        description="Trust token (used to add an untrusted client)",
+        examples=["blah"],
     )
     type: str | None = Field(
-        None, description='Usage type for the certificate', examples=['client']
+        None, description="Usage type for the certificate", examples=["client"]
     )
 
 
 class ClusterCertificatePut(BaseModel):
     cluster_certificate: str | None = Field(
         None,
-        description='The new certificate (X509 PEM encoded) for the cluster',
-        examples=['X509 PEM certificate'],
+        description="The new certificate (X509 PEM encoded) for the cluster",
+        examples=["X509 PEM certificate"],
     )
     cluster_certificate_key: str | None = Field(
         None,
-        description='The new certificate key (X509 PEM encoded) for the cluster',
-        examples=['X509 PEM certificate key'],
+        description="The new certificate key (X509 PEM encoded) for the cluster",
+        examples=["X509 PEM certificate key"],
     )
 
 
 class ClusterGroup(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Cluster group configuration map',
-        examples=[{'user.mykey': 'foo'}],
+        description="Cluster group configuration map",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='The description of the cluster group',
-        examples=['amd64 servers'],
+        description="The description of the cluster group",
+        examples=["amd64 servers"],
     )
     members: list[str] | None = Field(
         None,
-        description='List of members in this group',
-        examples=[['server01', 'server02']],
+        description="List of members in this group",
+        examples=[["server01", "server02"]],
     )
     name: str | None = Field(
-        None, description='The new name of the cluster group', examples=['group1']
+        None, description="The new name of the cluster group", examples=["group1"]
     )
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this cluster group',
-        examples=[['/1.0/cluster/members/server01', '/1.0/project/default']],
+        description="List of URLs of objects using this cluster group",
+        examples=[["/1.0/cluster/members/server01", "/1.0/project/default"]],
     )
 
 
 class ClusterGroupPost(BaseModel):
     name: str | None = Field(
-        None, description='The new name of the cluster group', examples=['group1']
+        None, description="The new name of the cluster group", examples=["group1"]
     )
 
 
 class ClusterGroupPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Cluster group configuration map',
-        examples=[{'user.mykey': 'foo'}],
+        description="Cluster group configuration map",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='The description of the cluster group',
-        examples=['amd64 servers'],
+        description="The description of the cluster group",
+        examples=["amd64 servers"],
     )
     members: list[str] | None = Field(
         None,
-        description='List of members in this group',
-        examples=[['server01', 'server02']],
+        description="List of members in this group",
+        examples=[["server01", "server02"]],
     )
 
 
 class ClusterGroupsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Cluster group configuration map',
-        examples=[{'user.mykey': 'foo'}],
+        description="Cluster group configuration map",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='The description of the cluster group',
-        examples=['amd64 servers'],
+        description="The description of the cluster group",
+        examples=["amd64 servers"],
     )
     members: list[str] | None = Field(
         None,
-        description='List of members in this group',
-        examples=[['server01', 'server02']],
+        description="List of members in this group",
+        examples=[["server01", "server02"]],
     )
     name: str | None = Field(
-        None, description='The new name of the cluster group', examples=['group1']
+        None, description="The new name of the cluster group", examples=["group1"]
     )
 
 
 class ClusterMember(BaseModel):
     architecture: str | None = Field(
         None,
-        description='The primary architecture of the cluster member',
-        examples=['x86_64'],
+        description="The primary architecture of the cluster member",
+        examples=["x86_64"],
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Additional configuration information',
-        examples=[{'scheduler.instance': 'all'}],
+        description="Additional configuration information",
+        examples=[{"scheduler.instance": "all"}],
     )
     database: bool | None = Field(
         None,
-        description='Whether the cluster member is a database server',
+        description="Whether the cluster member is a database server",
         examples=[True],
     )
     description: str | None = Field(
-        None, description='Cluster member description', examples=['AMD Epyc 32c/64t']
+        None, description="Cluster member description", examples=["AMD Epyc 32c/64t"]
     )
     failure_domain: str | None = Field(
         None,
-        description='Name of the failure domain for this cluster member',
-        examples=['rack1'],
+        description="Name of the failure domain for this cluster member",
+        examples=["rack1"],
     )
     groups: list[str] | None = Field(
         None,
-        description='List of cluster groups this member belongs to',
-        examples=[['group1', 'group2']],
+        description="List of cluster groups this member belongs to",
+        examples=[["group1", "group2"]],
     )
     message: str | None = Field(
         None,
-        description='Additional status information',
-        examples=['fully operational'],
+        description="Additional status information",
+        examples=["fully operational"],
     )
     roles: list[str] | None = Field(
         None,
-        description='List of roles held by this cluster member',
-        examples=[['database']],
+        description="List of roles held by this cluster member",
+        examples=[["database"]],
     )
     server_name: str | None = Field(
-        None, description='Name of the cluster member', examples=['server01']
+        None, description="Name of the cluster member", examples=["server01"]
     )
-    status: str | None = Field(None, description='Current status', examples=['Online'])
+    status: str | None = Field(None, description="Current status", examples=["Online"])
     url: str | None = Field(
         None,
-        description='URL at which the cluster member can be reached',
-        examples=['https://10.0.0.1:8443'],
+        description="URL at which the cluster member can be reached",
+        examples=["https://10.0.0.1:8443"],
     )
 
 
 class ClusterMemberConfigKey(BaseModel):
     description: str | None = Field(
         None,
-        description='A human friendly description key',
+        description="A human friendly description key",
         examples=['"source" property for storage pool "local"'],
     )
     entity: str | None = Field(
         None,
-        description='The kind of configuration key (network, storage-pool, ...)',
-        examples=['storage-pool'],
+        description="The kind of configuration key (network, storage-pool, ...)",
+        examples=["storage-pool"],
     )
     key: str | None = Field(
-        None, description='The name of the key', examples=['source']
+        None, description="The name of the key", examples=["source"]
     )
     name: str | None = Field(
         None,
-        description='The name of the object requiring this key',
-        examples=['local'],
+        description="The name of the object requiring this key",
+        examples=["local"],
     )
     value: str | None = Field(
         None,
-        description='The value on the answering cluster member',
-        examples=['/dev/sdb'],
+        description="The value on the answering cluster member",
+        examples=["/dev/sdb"],
     )
 
 
 class ClusterMemberJoinToken(BaseModel):
     addresses: list[str] | None = Field(
         None,
-        description='The addresses of existing online cluster members',
-        examples=[['10.98.30.229:8443']],
+        description="The addresses of existing online cluster members",
+        examples=[["10.98.30.229:8443"]],
     )
     expires_at: AwareDatetime | None = Field(
         None,
         description="The token's expiry date.",
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     fingerprint: str | None = Field(
         None,
-        description='The fingerprint of the network certificate',
-        examples=['57bb0ff4340b5bb28517e062023101adf788c37846dc8b619eb2c3cb4ef29436'],
+        description="The fingerprint of the network certificate",
+        examples=["57bb0ff4340b5bb28517e062023101adf788c37846dc8b619eb2c3cb4ef29436"],
     )
     secret: str | None = Field(
         None,
-        description='The random join secret.',
-        examples=['2b2284d44db32675923fe0d2020477e0e9be11801ff70c435e032b97028c35cd'],
+        description="The random join secret.",
+        examples=["2b2284d44db32675923fe0d2020477e0e9be11801ff70c435e032b97028c35cd"],
     )
     server_name: str | None = Field(
-        None, description='The name of the new cluster member', examples=['server02']
+        None, description="The name of the new cluster member", examples=["server02"]
     )
 
 
 class ClusterMemberPost(BaseModel):
     server_name: str | None = Field(
-        None, description='The new name of the cluster member', examples=['server02']
+        None, description="The new name of the cluster member", examples=["server02"]
     )
 
 
 class ClusterMemberPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Additional configuration information',
-        examples=[{'scheduler.instance': 'all'}],
+        description="Additional configuration information",
+        examples=[{"scheduler.instance": "all"}],
     )
     description: str | None = Field(
-        None, description='Cluster member description', examples=['AMD Epyc 32c/64t']
+        None, description="Cluster member description", examples=["AMD Epyc 32c/64t"]
     )
     failure_domain: str | None = Field(
         None,
-        description='Name of the failure domain for this cluster member',
-        examples=['rack1'],
+        description="Name of the failure domain for this cluster member",
+        examples=["rack1"],
     )
     groups: list[str] | None = Field(
         None,
-        description='List of cluster groups this member belongs to',
-        examples=[['group1', 'group2']],
+        description="List of cluster groups this member belongs to",
+        examples=[["group1", "group2"]],
     )
     roles: list[str] | None = Field(
         None,
-        description='List of roles held by this cluster member',
-        examples=[['database']],
+        description="List of roles held by this cluster member",
+        examples=[["database"]],
     )
 
 
@@ -398,10 +398,10 @@ class ClusterMemberStatePost(BaseModel):
     action: str | None = Field(
         None,
         description='The action to be performed. Valid actions are "evacuate" and "restore".',
-        examples=['evacuate'],
+        examples=["evacuate"],
     )
     mode: str | None = Field(
-        None, description='Override the configured evacuation mode.', examples=['stop']
+        None, description="Override the configured evacuation mode.", examples=["stop"]
     )
 
 
@@ -419,43 +419,43 @@ class ClusterMemberSysInfo(BaseModel):
 
 class ClusterMembersPost(BaseModel):
     server_name: str | None = Field(
-        None, description='The name of the new cluster member', examples=['server02']
+        None, description="The name of the new cluster member", examples=["server02"]
     )
 
 
 class ClusterPut(BaseModel):
     cluster_address: str | None = Field(
         None,
-        description='The address of the cluster you wish to join',
-        examples=['10.0.0.1:8443'],
+        description="The address of the cluster you wish to join",
+        examples=["10.0.0.1:8443"],
     )
     cluster_certificate: str | None = Field(
         None,
-        description='The expected certificate (X509 PEM encoded) for the cluster',
-        examples=['X509 PEM certificate'],
+        description="The expected certificate (X509 PEM encoded) for the cluster",
+        examples=["X509 PEM certificate"],
     )
     cluster_token: str | None = Field(
         None,
         description="The cluster join token for the cluster you're trying to join",
-        examples=['blah'],
+        examples=["blah"],
     )
     enabled: bool | None = Field(
-        None, description='Whether clustering is enabled', examples=[True]
+        None, description="Whether clustering is enabled", examples=[True]
     )
     member_config: list[ClusterMemberConfigKey] | None = Field(
         None,
-        description='List of member configuration keys (used during join)',
+        description="List of member configuration keys (used during join)",
         examples=[[]],
     )
     server_address: str | None = Field(
         None,
-        description='The local address to use for cluster communication',
-        examples=['10.0.0.2:8443'],
+        description="The local address to use for cluster communication",
+        examples=["10.0.0.2:8443"],
     )
     server_name: str | None = Field(
         None,
-        description='Name of the cluster member answering the request',
-        examples=['server01'],
+        description="Name of the cluster member answering the request",
+        examples=["server01"],
     )
 
 
@@ -469,384 +469,384 @@ class DevicesMap(RootModel[dict[str, dict[str, str]]]):
 
 class Event(BaseModel):
     location: str | None = Field(
-        None, description='Originating cluster member', examples=['server01']
+        None, description="Originating cluster member", examples=["server01"]
     )
     metadata: dict[str, Any] | None = Field(
         None,
-        description='JSON encoded metadata (see EventLogging, EventLifecycle or Operation)',
+        description="JSON encoded metadata (see EventLogging, EventLifecycle or Operation)",
         examples=[
-            {'action': 'instance-started', 'context': {}, 'source': '/1.0/instances/c1'}
+            {"action": "instance-started", "context": {}, "source": "/1.0/instances/c1"}
         ],
     )
     project: str | None = Field(
-        None, description='Project the event belongs to.', examples=['default']
+        None, description="Project the event belongs to.", examples=["default"]
     )
     timestamp: AwareDatetime | None = Field(
         None,
-        description='Time at which the event was sent',
-        examples=['2021-02-24T19:00:45.452649098-05:00'],
+        description="Time at which the event was sent",
+        examples=["2021-02-24T19:00:45.452649098-05:00"],
     )
     type: str | None = Field(
         None,
-        description='Event type (one of operation, logging or lifecycle)',
-        examples=['lifecycle'],
+        description="Event type (one of operation, logging or lifecycle)",
+        examples=["lifecycle"],
     )
 
 
 class ImageAlias(BaseModel):
     description: str | None = Field(
         None,
-        description='Description of the alias',
-        examples=['Our preferred Ubuntu image'],
+        description="Description of the alias",
+        examples=["Our preferred Ubuntu image"],
     )
     name: str | None = Field(
-        None, description='Name of the alias', examples=['ubuntu-22.04']
+        None, description="Name of the alias", examples=["ubuntu-22.04"]
     )
 
 
 class ImageAliasesEntry(BaseModel):
     description: str | None = Field(
-        None, description='Alias description', examples=['Our preferred Ubuntu image']
+        None, description="Alias description", examples=["Our preferred Ubuntu image"]
     )
-    name: str | None = Field(None, description='Alias name', examples=['ubuntu-22.04'])
+    name: str | None = Field(None, description="Alias name", examples=["ubuntu-22.04"])
     target: str | None = Field(
         None,
-        description='Target fingerprint for the alias',
-        examples=['06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb'],
+        description="Target fingerprint for the alias",
+        examples=["06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb"],
     )
     type: str | None = Field(
         None,
-        description='Alias type (container or virtual-machine)',
-        examples=['container'],
+        description="Alias type (container or virtual-machine)",
+        examples=["container"],
     )
 
 
 class ImageAliasesEntryPost(BaseModel):
-    name: str | None = Field(None, description='Alias name', examples=['ubuntu-22.04'])
+    name: str | None = Field(None, description="Alias name", examples=["ubuntu-22.04"])
 
 
 class ImageAliasesEntryPut(BaseModel):
     description: str | None = Field(
-        None, description='Alias description', examples=['Our preferred Ubuntu image']
+        None, description="Alias description", examples=["Our preferred Ubuntu image"]
     )
     target: str | None = Field(
         None,
-        description='Target fingerprint for the alias',
-        examples=['06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb'],
+        description="Target fingerprint for the alias",
+        examples=["06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb"],
     )
 
 
 class ImageAliasesPost(BaseModel):
     description: str | None = Field(
-        None, description='Alias description', examples=['Our preferred Ubuntu image']
+        None, description="Alias description", examples=["Our preferred Ubuntu image"]
     )
-    name: str | None = Field(None, description='Alias name', examples=['ubuntu-22.04'])
+    name: str | None = Field(None, description="Alias name", examples=["ubuntu-22.04"])
     target: str | None = Field(
         None,
-        description='Target fingerprint for the alias',
-        examples=['06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb'],
+        description="Target fingerprint for the alias",
+        examples=["06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb"],
     )
     type: str | None = Field(
         None,
-        description='Alias type (container or virtual-machine)',
-        examples=['container'],
+        description="Alias type (container or virtual-machine)",
+        examples=["container"],
     )
 
 
 class ImageExportPost(BaseModel):
     aliases: list[ImageAlias] | None = Field(
-        None, description='List of aliases to set on the image'
+        None, description="List of aliases to set on the image"
     )
     certificate: str | None = Field(
-        None, description='Remote server certificate', examples=['X509 PEM certificate']
+        None, description="Remote server certificate", examples=["X509 PEM certificate"]
     )
     profiles: list[str] | None = Field(
-        None, description='List of profiles to use', examples=[['default']]
+        None, description="List of profiles to use", examples=[["default"]]
     )
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     secret: str | None = Field(
-        None, description='Image receive secret', examples=['RANDOM-STRING']
+        None, description="Image receive secret", examples=["RANDOM-STRING"]
     )
     target: str | None = Field(
-        None, description='Target server URL', examples=['https://1.2.3.4:8443']
+        None, description="Target server URL", examples=["https://1.2.3.4:8443"]
     )
 
 
 class ImageMetadataTemplate(BaseModel):
     create_only: bool | None = Field(
         None,
-        description='Whether to trigger only if the file is missing',
+        description="Whether to trigger only if the file is missing",
         examples=[False],
     )
-    gid: str | None = Field(None, description='The file owner gid.', examples=['1000'])
+    gid: str | None = Field(None, description="The file owner gid.", examples=["1000"])
     mode: str | None = Field(
-        None, description='The file permissions.', examples=['644']
+        None, description="The file permissions.", examples=["644"]
     )
     properties: dict[str, str] | None = Field(
         None,
-        description='Key/value properties to pass to the template',
-        examples=[{'foo': 'bar'}],
+        description="Key/value properties to pass to the template",
+        examples=[{"foo": "bar"}],
     )
     template: str | None = Field(
         None,
-        description='The template itself as a valid pongo2 template',
-        examples=['pongo2-template'],
+        description="The template itself as a valid pongo2 template",
+        examples=["pongo2-template"],
     )
-    uid: str | None = Field(None, description='The file owner uid.', examples=['1000'])
+    uid: str | None = Field(None, description="The file owner uid.", examples=["1000"])
     when: list[str] | None = Field(
         None,
-        description='When to trigger the template (create, copy or start)',
-        examples=['create'],
+        description="When to trigger the template (create, copy or start)",
+        examples=["create"],
     )
 
 
 class ImagePut(BaseModel):
     auto_update: bool | None = Field(
         None,
-        description='Whether the image should auto-update when a new build is available',
+        description="Whether the image should auto-update when a new build is available",
         examples=[True],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the image becomes obsolete',
-        examples=['2025-03-23T20:00:00-04:00'],
+        description="When the image becomes obsolete",
+        examples=["2025-03-23T20:00:00-04:00"],
     )
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles to use when creating from this image (if none provided by user)',
-        examples=[['default']],
+        description="List of profiles to use when creating from this image (if none provided by user)",
+        examples=[["default"]],
     )
     properties: dict[str, str] | None = Field(
         None,
-        description='Descriptive properties',
-        examples=[{'os': 'Ubuntu', 'release': 'jammy', 'variant': 'cloud'}],
+        description="Descriptive properties",
+        examples=[{"os": "Ubuntu", "release": "jammy", "variant": "cloud"}],
     )
     public: bool | None = Field(
         None,
-        description='Whether the image is available to unauthenticated users',
+        description="Whether the image is available to unauthenticated users",
         examples=[False],
     )
 
 
 class ImageSource(BaseModel):
     alias: str | None = Field(
-        None, description='Source alias to download from', examples=['jammy']
+        None, description="Source alias to download from", examples=["jammy"]
     )
     certificate: str | None = Field(
         None,
-        description='Source server certificate (if not trusted by system CA)',
-        examples=['X509 PEM certificate'],
+        description="Source server certificate (if not trusted by system CA)",
+        examples=["X509 PEM certificate"],
     )
     image_type: str | None = Field(
         None,
-        description='Type of image (container or virtual-machine)',
-        examples=['container'],
+        description="Type of image (container or virtual-machine)",
+        examples=["container"],
     )
     protocol: str | None = Field(
-        None, description='Source server protocol', examples=['simplestreams']
+        None, description="Source server protocol", examples=["simplestreams"]
     )
     server: str | None = Field(
         None,
-        description='URL of the source server',
-        examples=['https://images.linuxcontainers.org'],
+        description="URL of the source server",
+        examples=["https://images.linuxcontainers.org"],
     )
 
 
 class ImagesPostSource(BaseModel):
     alias: str | None = Field(
-        None, description='Source alias to download from', examples=['jammy']
+        None, description="Source alias to download from", examples=["jammy"]
     )
     certificate: str | None = Field(
         None,
-        description='Source server certificate (if not trusted by system CA)',
-        examples=['X509 PEM certificate'],
+        description="Source server certificate (if not trusted by system CA)",
+        examples=["X509 PEM certificate"],
     )
     fingerprint: str | None = Field(
         None,
         description='Source image fingerprint (for type "image")',
-        examples=['8ae945c52bb2f2df51c923b04022312f99bbb72c356251f54fa89ea7cf1df1d0'],
+        examples=["8ae945c52bb2f2df51c923b04022312f99bbb72c356251f54fa89ea7cf1df1d0"],
     )
     image_type: str | None = Field(
         None,
-        description='Type of image (container or virtual-machine)',
-        examples=['container'],
+        description="Type of image (container or virtual-machine)",
+        examples=["container"],
     )
     mode: str | None = Field(
-        None, description='Transfer mode (push or pull)', examples=['pull']
+        None, description="Transfer mode (push or pull)", examples=["pull"]
     )
     name: str | None = Field(
         None,
         description='Instance name (for type "instance" or "snapshot")',
-        examples=['c1/snap0'],
+        examples=["c1/snap0"],
     )
     project: str | None = Field(
-        None, description='Source project name', examples=['project1']
+        None, description="Source project name", examples=["project1"]
     )
     protocol: str | None = Field(
-        None, description='Source server protocol', examples=['simplestreams']
+        None, description="Source server protocol", examples=["simplestreams"]
     )
     secret: str | None = Field(
         None,
-        description='Source image server secret token (when downloading private images)',
-        examples=['RANDOM-STRING'],
+        description="Source image server secret token (when downloading private images)",
+        examples=["RANDOM-STRING"],
     )
     server: str | None = Field(
         None,
-        description='URL of the source server',
-        examples=['https://images.linuxcontainers.org'],
+        description="URL of the source server",
+        examples=["https://images.linuxcontainers.org"],
     )
     type: str | None = Field(
         None,
-        description='Type of image source (instance, snapshot, image or url)',
-        examples=['instance'],
+        description="Type of image source (instance, snapshot, image or url)",
+        examples=["instance"],
     )
     url: str | None = Field(
         None,
         description='Source URL (for type "url")',
-        examples=['https://some-server.com/some-directory/'],
+        examples=["https://some-server.com/some-directory/"],
     )
 
 
 class InitClusterPreseed(BaseModel):
     cluster_address: str | None = Field(
         None,
-        description='The address of the cluster you wish to join',
-        examples=['10.0.0.1:8443'],
+        description="The address of the cluster you wish to join",
+        examples=["10.0.0.1:8443"],
     )
     cluster_certificate: str | None = Field(
         None,
-        description='The expected certificate (X509 PEM encoded) for the cluster',
-        examples=['X509 PEM certificate'],
+        description="The expected certificate (X509 PEM encoded) for the cluster",
+        examples=["X509 PEM certificate"],
     )
     cluster_certificate_path: str | None = Field(
         None,
-        description='The path to the cluster certificate',
-        examples=['/tmp/cluster.crt'],
+        description="The path to the cluster certificate",
+        examples=["/tmp/cluster.crt"],
     )
     cluster_token: str | None = Field(
         None,
         description="The cluster join token for the cluster you're trying to join",
-        examples=['blah'],
+        examples=["blah"],
     )
     enabled: bool | None = Field(
-        None, description='Whether clustering is enabled', examples=[True]
+        None, description="Whether clustering is enabled", examples=[True]
     )
     member_config: list[ClusterMemberConfigKey] | None = Field(
         None,
-        description='List of member configuration keys (used during join)',
+        description="List of member configuration keys (used during join)",
         examples=[[]],
     )
     server_address: str | None = Field(
         None,
-        description='The local address to use for cluster communication',
-        examples=['10.0.0.2:8443'],
+        description="The local address to use for cluster communication",
+        examples=["10.0.0.2:8443"],
     )
     server_name: str | None = Field(
         None,
-        description='Name of the cluster member answering the request',
-        examples=['server01'],
+        description="Name of the cluster member answering the request",
+        examples=["server01"],
     )
 
 
 class InitNetworksProjectPost(BaseModel):
     Project: str | None = Field(
         None,
-        description='Project in which the network will reside',
+        description="Project in which the network will reside",
         examples=['"default"'],
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Network configuration map (refer to doc/networks.md)',
+        description="Network configuration map (refer to doc/networks.md)",
         examples=[
-            {'ipv4.address': '10.0.0.1/24', 'ipv4.nat': 'true', 'ipv6.address': 'none'}
+            {"ipv4.address": "10.0.0.1/24", "ipv4.nat": "true", "ipv6.address": "none"}
         ],
     )
     description: str | None = Field(
-        None, description='Description of the profile', examples=['My new bridge']
+        None, description="Description of the profile", examples=["My new bridge"]
     )
     name: str | None = Field(
-        None, description='The name of the new network', examples=['mybr1']
+        None, description="The name of the new network", examples=["mybr1"]
     )
     type: str | None = Field(
         None,
-        description='The network type (refer to doc/networks.md)',
-        examples=['bridge'],
+        description="The network type (refer to doc/networks.md)",
+        examples=["bridge"],
     )
 
 
 class InitProfileProjectPost(BaseModel):
     Project: str | None = Field(
         None,
-        description='Project in which the profile will reside',
+        description="Project in which the profile will reside",
         examples=['"default"'],
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration map (refer to doc/instances.md)',
-        examples=[{'limits.cpu': '4', 'limits.memory': '4GiB'}],
+        description="Instance configuration map (refer to doc/instances.md)",
+        examples=[{"limits.cpu": "4", "limits.memory": "4GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the profile',
-        examples=['Medium size instances'],
+        description="Description of the profile",
+        examples=["Medium size instances"],
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='List of devices',
+        description="List of devices",
         examples=[
             {
-                'eth0': {'name': 'eth0', 'network': 'mybr0', 'type': 'nic'},
-                'root': {'path': '/', 'pool': 'default', 'type': 'disk'},
+                "eth0": {"name": "eth0", "network": "mybr0", "type": "nic"},
+                "root": {"path": "/", "pool": "default", "type": "disk"},
             }
         ],
     )
     name: str | None = Field(
-        None, description='The name of the new profile', examples=['foo']
+        None, description="The name of the new profile", examples=["foo"]
     )
 
 
 class InstanceBackup(BaseModel):
     created_at: AwareDatetime | None = Field(
         None,
-        description='When the backup was created',
-        examples=['2021-03-23T16:38:37.753398689-04:00'],
+        description="When the backup was created",
+        examples=["2021-03-23T16:38:37.753398689-04:00"],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the backup expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the backup expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     instance_only: bool | None = Field(
-        None, description='Whether to ignore snapshots', examples=[False]
+        None, description="Whether to ignore snapshots", examples=[False]
     )
-    name: str | None = Field(None, description='Backup name', examples=['backup0'])
+    name: str | None = Field(None, description="Backup name", examples=["backup0"])
     optimized_storage: bool | None = Field(
         None,
-        description='Whether to use a pool-optimized binary format (instead of plain tarball)',
+        description="Whether to use a pool-optimized binary format (instead of plain tarball)",
         examples=[True],
     )
 
 
 class InstanceBackupPost(BaseModel):
-    name: str | None = Field(None, description='New backup name', examples=['backup1'])
+    name: str | None = Field(None, description="New backup name", examples=["backup1"])
 
 
 class InstanceBackupsPost(BaseModel):
     compression_algorithm: str | None = Field(
-        None, description='What compression algorithm to use', examples=['gzip']
+        None, description="What compression algorithm to use", examples=["gzip"]
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the backup expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the backup expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     instance_only: bool | None = Field(
-        None, description='Whether to ignore snapshots', examples=[False]
+        None, description="Whether to ignore snapshots", examples=[False]
     )
-    name: str | None = Field(None, description='Backup name', examples=['backup0'])
+    name: str | None = Field(None, description="Backup name", examples=["backup0"])
     optimized_storage: bool | None = Field(
         None,
-        description='Whether to use a pool-optimized binary format (instead of plain tarball)',
+        description="Whether to use a pool-optimized binary format (instead of plain tarball)",
         examples=[True],
     )
     target: BackupTarget | None = None
@@ -854,63 +854,63 @@ class InstanceBackupsPost(BaseModel):
 
 class InstanceConsolePost(BaseModel):
     force: bool | None = Field(
-        None, description='Forces a connection to the console', examples=[True]
+        None, description="Forces a connection to the console", examples=[True]
     )
     height: int | None = Field(
-        None, description='Console height in rows (console type only)', examples=[24]
+        None, description="Console height in rows (console type only)", examples=[24]
     )
     type: str | None = Field(
         None,
-        description='Type of console to attach to (console or vga)',
-        examples=['console'],
+        description="Type of console to attach to (console or vga)",
+        examples=["console"],
     )
     width: int | None = Field(
-        None, description='Console width in columns (console type only)', examples=[80]
+        None, description="Console width in columns (console type only)", examples=[80]
     )
 
 
 class InstanceExecPost(BaseModel):
     command: list[str] | None = Field(
-        None, description='Command and its arguments', examples=[['bash']]
+        None, description="Command and its arguments", examples=[["bash"]]
     )
     cwd: str | None = Field(
         None,
-        description='Current working directory for the command',
-        examples=['/home/foo/'],
+        description="Current working directory for the command",
+        examples=["/home/foo/"],
     )
     environment: dict[str, str] | None = Field(
         None,
-        description='Additional environment to pass to the command',
-        examples=[{'FOO': 'BAR'}],
+        description="Additional environment to pass to the command",
+        examples=[{"FOO": "BAR"}],
     )
     group: int | None = Field(
-        None, description='GID of the user to spawn the command as', examples=[1000]
+        None, description="GID of the user to spawn the command as", examples=[1000]
     )
     height: int | None = Field(
-        None, description='Terminal height in rows (for interactive)', examples=[24]
+        None, description="Terminal height in rows (for interactive)", examples=[24]
     )
     interactive: bool | None = Field(
         None,
-        description='Whether the command is to be spawned in interactive mode (singled PTY instead of 3 PIPEs)',
+        description="Whether the command is to be spawned in interactive mode (singled PTY instead of 3 PIPEs)",
         examples=[True],
     )
     record_output: bool | None = Field(
         None,
-        alias='record-output',
-        description='Whether to capture the output for later download (requires non-interactive)',
+        alias="record-output",
+        description="Whether to capture the output for later download (requires non-interactive)",
     )
     user: int | None = Field(
-        None, description='UID of the user to spawn the command as', examples=[1000]
+        None, description="UID of the user to spawn the command as", examples=[1000]
     )
     wait_for_websocket: bool | None = Field(
         None,
-        alias='wait-for-websocket',
-        description='Whether to wait for all websockets to be connected before spawning the command',
+        alias="wait-for-websocket",
+        description="Whether to wait for all websockets to be connected before spawning the command",
         examples=[True],
     )
     width: int | None = Field(
         None,
-        description='Terminal width in characters (for interactive)',
+        description="Terminal width in characters (for interactive)",
         examples=[80],
     )
 
@@ -918,119 +918,119 @@ class InstanceExecPost(BaseModel):
 class InstancePostTarget(BaseModel):
     certificate: str | None = Field(
         None,
-        description='The certificate of the migration target',
-        examples=['X509 PEM certificate'],
+        description="The certificate of the migration target",
+        examples=["X509 PEM certificate"],
     )
     operation: str | None = Field(
         None,
-        description='The operation URL on the remote target',
+        description="The operation URL on the remote target",
         examples=[
-            'https://1.2.3.4:8443/1.0/operations/5e8e1638-5345-4c2d-bac9-2c79c8577292'
+            "https://1.2.3.4:8443/1.0/operations/5e8e1638-5345-4c2d-bac9-2c79c8577292"
         ],
     )
     secrets: dict[str, str] | None = Field(
         None,
-        description='Migration websockets credentials',
-        examples=[{'criu': 'random-string', 'migration': 'random-string'}],
+        description="Migration websockets credentials",
+        examples=[{"criu": "random-string", "migration": "random-string"}],
     )
 
 
 class InstancePut(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture name', examples=['x86_64']
+        None, description="Architecture name", examples=["x86_64"]
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration (see doc/instances.md)',
-        examples=[{'security.nesting': 'true'}],
+        description="Instance configuration (see doc/instances.md)",
+        examples=[{"security.nesting": "true"}],
     )
     description: str | None = Field(
-        None, description='Instance description', examples=['My test instance']
+        None, description="Instance description", examples=["My test instance"]
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='Instance devices (see doc/instances.md)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Instance devices (see doc/instances.md)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     ephemeral: bool | None = Field(
         None,
-        description='Whether the instance is ephemeral (deleted on shutdown)',
+        description="Whether the instance is ephemeral (deleted on shutdown)",
         examples=[False],
     )
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles applied to the instance',
-        examples=[['default']],
+        description="List of profiles applied to the instance",
+        examples=[["default"]],
     )
     restore: str | None = Field(
         None,
-        description='If set, instance will be restored to the provided snapshot name',
-        examples=['snap0'],
+        description="If set, instance will be restored to the provided snapshot name",
+        examples=["snap0"],
     )
     stateful: bool | None = Field(
         None,
-        description='Whether the instance currently has saved state on disk',
+        description="Whether the instance currently has saved state on disk",
         examples=[False],
     )
 
 
 class InstanceSnapshot(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture name', examples=['x86_64']
+        None, description="Architecture name", examples=["x86_64"]
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration (see doc/instances.md)',
-        examples=[{'security.nesting': 'true'}],
+        description="Instance configuration (see doc/instances.md)",
+        examples=[{"security.nesting": "true"}],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='Instance creation timestamp',
-        examples=['2021-03-23T20:00:00-04:00'],
+        description="Instance creation timestamp",
+        examples=["2021-03-23T20:00:00-04:00"],
     )
     description: str | None = Field(
-        None, description='Instance description', examples=['My description']
+        None, description="Instance description", examples=["My description"]
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='Instance devices (see doc/instances.md)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Instance devices (see doc/instances.md)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     ephemeral: bool | None = Field(
         None,
-        description='Whether the instance is ephemeral (deleted on shutdown)',
+        description="Whether the instance is ephemeral (deleted on shutdown)",
         examples=[False],
     )
     expanded_config: dict[str, Any] | None = Field(
         None,
-        description='Expanded configuration (all profiles and local config merged)',
-        examples=[{'security.nesting': 'true'}],
+        description="Expanded configuration (all profiles and local config merged)",
+        examples=[{"security.nesting": "true"}],
     )
     expanded_devices: dict[str, Any] | None = Field(
         None,
-        description='Expanded devices (all profiles and local devices merged)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Expanded devices (all profiles and local devices merged)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the snapshot expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the snapshot expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     last_used_at: AwareDatetime | None = Field(
-        None, description='Last start timestamp', examples=['2021-03-23T20:00:00-04:00']
+        None, description="Last start timestamp", examples=["2021-03-23T20:00:00-04:00"]
     )
-    name: str | None = Field(None, description='Snapshot name', examples=['foo'])
+    name: str | None = Field(None, description="Snapshot name", examples=["foo"])
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles applied to the instance',
-        examples=[['default']],
+        description="List of profiles applied to the instance",
+        examples=[["default"]],
     )
     size: int | None = Field(
-        None, description='Size of the snapshot in bytes', examples=[143360]
+        None, description="Size of the snapshot in bytes", examples=[143360]
     )
     stateful: bool | None = Field(
         None,
-        description='Whether the instance currently has saved state on disk',
+        description="Whether the instance currently has saved state on disk",
         examples=[False],
     )
 
@@ -1038,14 +1038,14 @@ class InstanceSnapshot(BaseModel):
 class InstanceSnapshotPost(BaseModel):
     live: bool | None = Field(
         None,
-        description='Whether to perform a live migration (requires migration)',
+        description="Whether to perform a live migration (requires migration)",
         examples=[False],
     )
     migration: bool | None = Field(
-        None, description='Whether this is a migration request', examples=[False]
+        None, description="Whether this is a migration request", examples=[False]
     )
     name: str | None = Field(
-        None, description='New name for the snapshot', examples=['foo']
+        None, description="New name for the snapshot", examples=["foo"]
     )
     target: InstancePostTarget | None = None
 
@@ -1053,21 +1053,21 @@ class InstanceSnapshotPost(BaseModel):
 class InstanceSnapshotPut(BaseModel):
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the snapshot expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the snapshot expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
 
 
 class InstanceSnapshotsPost(BaseModel):
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the snapshot expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the snapshot expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
-    name: str | None = Field(None, description='Snapshot name', examples=['snap0'])
+    name: str | None = Field(None, description="Snapshot name", examples=["snap0"])
     stateful: bool | None = Field(
         None,
-        description='Whether the snapshot should include runtime state',
+        description="Whether the snapshot should include runtime state",
         examples=[False],
     )
 
@@ -1075,214 +1075,214 @@ class InstanceSnapshotsPost(BaseModel):
 class InstanceSource(BaseModel):
     alias: str | None = Field(
         None,
-        description='Image alias name (for image source)',
-        examples=['ubuntu/22.04'],
+        description="Image alias name (for image source)",
+        examples=["ubuntu/22.04"],
     )
     allow_inconsistent: bool | None = Field(
         None,
-        description='Whether to ignore errors when copying (e.g. for volatile files)',
+        description="Whether to ignore errors when copying (e.g. for volatile files)",
         examples=[False],
     )
     base_image: str | None = Field(
         None,
-        alias='base-image',
-        description='Base image fingerprint (for faster migration)',
-        examples=['ed56997f7c5b48e8d78986d2467a26109be6fb9f2d92e8c7b08eb8b6cec7629a'],
+        alias="base-image",
+        description="Base image fingerprint (for faster migration)",
+        examples=["ed56997f7c5b48e8d78986d2467a26109be6fb9f2d92e8c7b08eb8b6cec7629a"],
     )
     certificate: str | None = Field(
         None,
-        description='Certificate (for remote images or migration)',
-        examples=['X509 PEM certificate'],
+        description="Certificate (for remote images or migration)",
+        examples=["X509 PEM certificate"],
     )
     fingerprint: str | None = Field(
         None,
-        description='Image fingerprint (for image source)',
-        examples=['ed56997f7c5b48e8d78986d2467a26109be6fb9f2d92e8c7b08eb8b6cec7629a'],
+        description="Image fingerprint (for image source)",
+        examples=["ed56997f7c5b48e8d78986d2467a26109be6fb9f2d92e8c7b08eb8b6cec7629a"],
     )
     instance_only: bool | None = Field(
         None,
-        description='Whether the copy should skip the snapshots (for copy)',
+        description="Whether the copy should skip the snapshots (for copy)",
         examples=[False],
     )
     live: bool | None = Field(
         None,
-        description='Whether this is a live migration (for migration)',
+        description="Whether this is a live migration (for migration)",
         examples=[False],
     )
     mode: str | None = Field(
         None,
-        description='Whether to use pull or push mode (for migration)',
-        examples=['pull'],
+        description="Whether to use pull or push mode (for migration)",
+        examples=["pull"],
     )
     operation: str | None = Field(
         None,
-        description='Remote operation URL (for migration)',
+        description="Remote operation URL (for migration)",
         examples=[
-            'https://1.2.3.4:8443/1.0/operations/1721ae08-b6a8-416a-9614-3f89302466e1'
+            "https://1.2.3.4:8443/1.0/operations/1721ae08-b6a8-416a-9614-3f89302466e1"
         ],
     )
     project: str | None = Field(
         None,
-        description='Source project name (for copy and local image)',
-        examples=['blah'],
+        description="Source project name (for copy and local image)",
+        examples=["blah"],
     )
     properties: dict[str, str] | None = Field(
         None,
-        description='Image filters (for image source)',
-        examples=[{'os': 'Ubuntu', 'release': 'jammy', 'variant': 'cloud'}],
+        description="Image filters (for image source)",
+        examples=[{"os": "Ubuntu", "release": "jammy", "variant": "cloud"}],
     )
     protocol: str | None = Field(
-        None, description='Protocol name (for remote image)', examples=['simplestreams']
+        None, description="Protocol name (for remote image)", examples=["simplestreams"]
     )
     refresh: bool | None = Field(
         None,
-        description='Whether this is refreshing an existing instance (for migration and copy)',
+        description="Whether this is refreshing an existing instance (for migration and copy)",
         examples=[False],
     )
     refresh_exclude_older: bool | None = Field(
         None,
-        description='Whether to exclude source snapshots earlier than latest target snapshot',
+        description="Whether to exclude source snapshots earlier than latest target snapshot",
         examples=[False],
     )
     secret: str | None = Field(
         None,
-        description='Remote server secret (for remote private images)',
-        examples=['RANDOM-STRING'],
+        description="Remote server secret (for remote private images)",
+        examples=["RANDOM-STRING"],
     )
     secrets: dict[str, str] | None = Field(
         None,
-        description='Map of migration websockets (for migration)',
-        examples=[{'criu': 'RANDOM-STRING', 'rsync': 'RANDOM-STRING'}],
+        description="Map of migration websockets (for migration)",
+        examples=[{"criu": "RANDOM-STRING", "rsync": "RANDOM-STRING"}],
     )
     server: str | None = Field(
         None,
-        description='Remote server URL (for remote images)',
-        examples=['https://images.linuxcontainers.org'],
+        description="Remote server URL (for remote images)",
+        examples=["https://images.linuxcontainers.org"],
     )
     source: str | None = Field(
         None,
-        description='Existing instance name or snapshot (for copy)',
-        examples=['foo/snap0'],
+        description="Existing instance name or snapshot (for copy)",
+        examples=["foo/snap0"],
     )
-    type: str | None = Field(None, description='Source type', examples=['image'])
+    type: str | None = Field(None, description="Source type", examples=["image"])
 
 
 class InstanceStateCPU(BaseModel):
     allocated_time: int | None = Field(
         None,
-        description='CPU time available per second, in nanoseconds',
+        description="CPU time available per second, in nanoseconds",
         examples=[4000000000],
     )
     usage: int | None = Field(
-        None, description='CPU usage in nanoseconds', examples=[3637691016]
+        None, description="CPU usage in nanoseconds", examples=[3637691016]
     )
 
 
 class InstanceStateDisk(BaseModel):
     total: int | None = Field(
-        None, description='Total size in bytes', examples=[502239232]
+        None, description="Total size in bytes", examples=[502239232]
     )
     usage: int | None = Field(
-        None, description='Disk usage in bytes', examples=[502239232]
+        None, description="Disk usage in bytes", examples=[502239232]
     )
 
 
 class InstanceStateMemory(BaseModel):
     swap_usage: int | None = Field(
-        None, description='SWAP usage in bytes', examples=[12297557]
+        None, description="SWAP usage in bytes", examples=[12297557]
     )
     swap_usage_peak: int | None = Field(
-        None, description='Peak SWAP usage in bytes', examples=[12297557]
+        None, description="Peak SWAP usage in bytes", examples=[12297557]
     )
     total: int | None = Field(
-        None, description='Total memory size in bytes', examples=[12297557]
+        None, description="Total memory size in bytes", examples=[12297557]
     )
     usage: int | None = Field(
-        None, description='Memory usage in bytes', examples=[73248768]
+        None, description="Memory usage in bytes", examples=[73248768]
     )
     usage_peak: int | None = Field(
-        None, description='Peak memory usage in bytes', examples=[73785344]
+        None, description="Peak memory usage in bytes", examples=[73785344]
     )
 
 
 class InstanceStateNetworkAddress(BaseModel):
     address: str | None = Field(
         None,
-        description='IP address',
-        examples=['fd42:4c81:5770:1eaf:1266:6aff:fe0c:eedd'],
+        description="IP address",
+        examples=["fd42:4c81:5770:1eaf:1266:6aff:fe0c:eedd"],
     )
     family: str | None = Field(
-        None, description='Network family (inet or inet6)', examples=['inet6']
+        None, description="Network family (inet or inet6)", examples=["inet6"]
     )
-    netmask: str | None = Field(None, description='Network mask', examples=['64'])
+    netmask: str | None = Field(None, description="Network mask", examples=["64"])
     scope: str | None = Field(
-        None, description='Address scope (local, link or global)', examples=['global']
+        None, description="Address scope (local, link or global)", examples=["global"]
     )
 
 
 class InstanceStateNetworkCounters(BaseModel):
     bytes_received: int | None = Field(
-        None, description='Number of bytes received', examples=[192021]
+        None, description="Number of bytes received", examples=[192021]
     )
     bytes_sent: int | None = Field(
-        None, description='Number of bytes sent', examples=[10888579]
+        None, description="Number of bytes sent", examples=[10888579]
     )
     errors_received: int | None = Field(
-        None, description='Number of errors received', examples=[14]
+        None, description="Number of errors received", examples=[14]
     )
     errors_sent: int | None = Field(
-        None, description='Number of errors sent', examples=[41]
+        None, description="Number of errors sent", examples=[41]
     )
     packets_dropped_inbound: int | None = Field(
-        None, description='Number of inbound packets dropped', examples=[179]
+        None, description="Number of inbound packets dropped", examples=[179]
     )
     packets_dropped_outbound: int | None = Field(
-        None, description='Number of outbound packets dropped', examples=[541]
+        None, description="Number of outbound packets dropped", examples=[541]
     )
     packets_received: int | None = Field(
-        None, description='Number of packets received', examples=[1748]
+        None, description="Number of packets received", examples=[1748]
     )
     packets_sent: int | None = Field(
-        None, description='Number of packets sent', examples=[964]
+        None, description="Number of packets sent", examples=[964]
     )
 
 
 class InstanceStateOSInfo(BaseModel):
     fqdn: str | None = Field(
-        None, description='FQDN of the instance.', examples=['myhost.mydomain.local']
+        None, description="FQDN of the instance.", examples=["myhost.mydomain.local"]
     )
     hostname: str | None = Field(
-        None, description='Hostname of the instance.', examples=['myhost']
+        None, description="Hostname of the instance.", examples=["myhost"]
     )
     kernel_version: str | None = Field(
         None,
-        description='Version of the kernel running in the instance.',
-        examples=['6.1.0-25-amd64'],
+        description="Version of the kernel running in the instance.",
+        examples=["6.1.0-25-amd64"],
     )
     os: str | None = Field(
         None,
-        description='Operating system running in the instance.',
-        examples=['Debian GNU/Linux'],
+        description="Operating system running in the instance.",
+        examples=["Debian GNU/Linux"],
     )
     os_version: str | None = Field(
-        None, description='Version of the operating system.', examples=['12 (bookworm)']
+        None, description="Version of the operating system.", examples=["12 (bookworm)"]
     )
 
 
 class InstanceStatePut(BaseModel):
     action: str | None = Field(
         None,
-        description='State change action (start, stop, restart, freeze, unfreeze)',
-        examples=['start'],
+        description="State change action (start, stop, restart, freeze, unfreeze)",
+        examples=["start"],
     )
     force: bool | None = Field(
         None,
-        description='Whether to force the action (for stop and restart)',
+        description="Whether to force the action (for stop and restart)",
         examples=[False],
     )
     stateful: bool | None = Field(
         None,
-        description='Whether to store the runtime state (for stop)',
+        description="Whether to store the runtime state (for stop)",
         examples=[False],
     )
     timeout: int | None = Field(
@@ -1295,57 +1295,57 @@ class InstanceStatePut(BaseModel):
 class InstanceType(RootModel[str]):
     root: str = Field(
         ...,
-        title='InstanceType represents the type if instance being returned or requested via the API.',
+        title="InstanceType represents the type if instance being returned or requested via the API.",
     )
 
 
 class InstancesPost(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture name', examples=['x86_64']
+        None, description="Architecture name", examples=["x86_64"]
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration (see doc/instances.md)',
-        examples=[{'security.nesting': 'true'}],
+        description="Instance configuration (see doc/instances.md)",
+        examples=[{"security.nesting": "true"}],
     )
     description: str | None = Field(
-        None, description='Instance description', examples=['My test instance']
+        None, description="Instance description", examples=["My test instance"]
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='Instance devices (see doc/instances.md)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Instance devices (see doc/instances.md)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     ephemeral: bool | None = Field(
         None,
-        description='Whether the instance is ephemeral (deleted on shutdown)',
+        description="Whether the instance is ephemeral (deleted on shutdown)",
         examples=[False],
     )
     instance_type: str | None = Field(
         None,
-        description='Cloud instance type (AWS, GCP, Azure, ...) to emulate with limits',
-        examples=['t1.micro'],
+        description="Cloud instance type (AWS, GCP, Azure, ...) to emulate with limits",
+        examples=["t1.micro"],
     )
-    name: str | None = Field(None, description='Instance name', examples=['foo'])
+    name: str | None = Field(None, description="Instance name", examples=["foo"])
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles applied to the instance',
-        examples=[['default']],
+        description="List of profiles applied to the instance",
+        examples=[["default"]],
     )
     restore: str | None = Field(
         None,
-        description='If set, instance will be restored to the provided snapshot name',
-        examples=['snap0'],
+        description="If set, instance will be restored to the provided snapshot name",
+        examples=["snap0"],
     )
     source: InstanceSource | None = None
     start: bool | None = Field(
         None,
-        description='Whether to start the instance after creation',
+        description="Whether to start the instance after creation",
         examples=[True],
     )
     stateful: bool | None = Field(
         None,
-        description='Whether the instance currently has saved state on disk',
+        description="Whether the instance currently has saved state on disk",
         examples=[False],
     )
     type: InstanceType | None = None
@@ -1358,448 +1358,448 @@ class InstancesPut(BaseModel):
 class MetadataConfigEntityName(RootModel[str]):
     root: str = Field(
         ...,
-        description='MetadataConfigEntityName represents a main API object type',
-        examples=['instance'],
+        description="MetadataConfigEntityName represents a main API object type",
+        examples=["instance"],
     )
 
 
 class MetadataConfigGroupName(RootModel[str]):
     root: str = Field(
         ...,
-        description='MetadataConfigGroupName represents the name of a group of config keys',
-        examples=['volatile'],
+        description="MetadataConfigGroupName represents the name of a group of config keys",
+        examples=["volatile"],
     )
 
 
 class MetadataConfigKey(BaseModel):
     condition: str | None = Field(
         None,
-        description='Condition specifies the condition that must be met for the option to be taken into account',
-        examples=['container'],
+        description="Condition specifies the condition that must be met for the option to be taken into account",
+        examples=["container"],
     )
     defaultdesc: str | None = Field(
         None,
-        description='DefaultDesc specify default value for configuration',
+        description="DefaultDesc specify default value for configuration",
         examples=['"`DHCP on eth0`"'],
     )
     liveupdate: str | None = Field(
         None,
-        description='LiveUpdate specifies whether the server must be restarted for the option to be updated',
+        description="LiveUpdate specifies whether the server must be restarted for the option to be updated",
         examples=['"no"'],
     )
     longdesc: str | None = Field(
         None,
-        description='LongDesc provides long description for the option',
+        description="LongDesc provides long description for the option",
         examples=['"Specify the kernel modules as a comma-separated list."'],
     )
     scope: str | None = Field(
         None,
-        description='Scope defines if option apply to cluster or to the local server',
-        examples=['global'],
+        description="Scope defines if option apply to cluster or to the local server",
+        examples=["global"],
     )
     shortdesc: str | None = Field(
         None,
-        description='ShortDesc provides short description for the configuration',
+        description="ShortDesc provides short description for the configuration",
         examples=['"Kernel modules to load before starting the instance"'],
     )
     type: str | None = Field(
-        None, description='Type specifies the type of the option', examples=['string']
+        None, description="Type specifies the type of the option", examples=["string"]
     )
 
 
 class Network(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Network configuration map (refer to doc/networks.md)',
+        description="Network configuration map (refer to doc/networks.md)",
         examples=[
-            {'ipv4.address': '10.0.0.1/24', 'ipv4.nat': 'true', 'ipv6.address': 'none'}
+            {"ipv4.address": "10.0.0.1/24", "ipv4.nat": "true", "ipv6.address": "none"}
         ],
     )
     description: str | None = Field(
-        None, description='Description of the profile', examples=['My new bridge']
+        None, description="Description of the profile", examples=["My new bridge"]
     )
     locations: list[str] | None = Field(
         None,
-        description='Cluster members on which the network has been defined',
-        examples=[['server01', 'server02', 'server03']],
+        description="Cluster members on which the network has been defined",
+        examples=[["server01", "server02", "server03"]],
     )
     managed: bool | None = Field(
-        None, description='Whether this is a managed network', examples=[True]
+        None, description="Whether this is a managed network", examples=[True]
     )
-    name: str | None = Field(None, description='The network name', examples=['mybr0'])
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    name: str | None = Field(None, description="The network name", examples=["mybr0"])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     status: str | None = Field(
         None,
-        description='The state of the network (for managed network in clusters)',
-        examples=['Created'],
+        description="The state of the network (for managed network in clusters)",
+        examples=["Created"],
     )
-    type: str | None = Field(None, description='The network type', examples=['bridge'])
+    type: str | None = Field(None, description="The network type", examples=["bridge"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this profile',
-        examples=[['/1.0/profiles/default', '/1.0/instances/c1']],
+        description="List of URLs of objects using this profile",
+        examples=[["/1.0/profiles/default", "/1.0/instances/c1"]],
     )
 
 
 class NetworkACLPost(BaseModel):
     name: str | None = Field(
-        None, description='The new name for the ACL', examples=['bar']
+        None, description="The new name for the ACL", examples=["bar"]
     )
 
 
 class NetworkACLRule(BaseModel):
     action: str | None = Field(
-        None, description='Action to perform on rule match', examples=['allow']
+        None, description="Action to perform on rule match", examples=["allow"]
     )
     description: str | None = Field(
         None,
-        description='Description of the rule',
-        examples=['Allow DNS queries to Google DNS'],
+        description="Description of the rule",
+        examples=["Allow DNS queries to Google DNS"],
     )
     destination: str | None = Field(
-        None, description='Destination address', examples=['8.8.8.8/32,8.8.4.4/32']
+        None, description="Destination address", examples=["8.8.8.8/32,8.8.4.4/32"]
     )
     destination_port: str | None = Field(
-        None, description='Destination port', examples=['53']
+        None, description="Destination port", examples=["53"]
     )
     icmp_code: str | None = Field(
-        None, description='ICMP message code (for ICMP protocol)', examples=['0']
+        None, description="ICMP message code (for ICMP protocol)", examples=["0"]
     )
     icmp_type: str | None = Field(
-        None, description='Type of ICMP message (for ICMP protocol)', examples=['8']
+        None, description="Type of ICMP message (for ICMP protocol)", examples=["8"]
     )
-    protocol: str | None = Field(None, description='Protocol', examples=['udp'])
+    protocol: str | None = Field(None, description="Protocol", examples=["udp"])
     source: str | None = Field(
-        None, description='Source address', examples=['@internal']
+        None, description="Source address", examples=["@internal"]
     )
-    source_port: str | None = Field(None, description='Source port', examples=['1234'])
+    source_port: str | None = Field(None, description="Source port", examples=["1234"])
     state: str | None = Field(
-        None, description='State of the rule', examples=['enabled']
+        None, description="State of the rule", examples=["enabled"]
     )
 
 
 class NetworkACLsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='ACL configuration map (refer to doc/network-acls.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="ACL configuration map (refer to doc/network-acls.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the ACL', examples=['Web servers']
+        None, description="Description of the ACL", examples=["Web servers"]
     )
     egress: list[NetworkACLRule] | None = Field(
-        None, description='List of egress rules (order independent)'
+        None, description="List of egress rules (order independent)"
     )
     ingress: list[NetworkACLRule] | None = Field(
-        None, description='List of ingress rules (order independent)'
+        None, description="List of ingress rules (order independent)"
     )
     name: str | None = Field(
-        None, description='The new name for the ACL', examples=['bar']
+        None, description="The new name for the ACL", examples=["bar"]
     )
 
 
 class NetworkAddressSet(BaseModel):
     addresses: list[str] | None = Field(
         None,
-        description='List of addresses in the set',
-        examples=[['192.0.0.1', '2001:0db8:1234::1']],
+        description="List of addresses in the set",
+        examples=[["192.0.0.1", "2001:0db8:1234::1"]],
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Address set configuration map (refer to doc/network-address-sets.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Address set configuration map (refer to doc/network-address-sets.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the address set', examples=['Web servers']
+        None, description="Description of the address set", examples=["Web servers"]
     )
     name: str | None = Field(
-        None, description='The new name of the address set', examples=['"bar"']
+        None, description="The new name of the address set", examples=['"bar"']
     )
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this profile',
+        description="List of URLs of objects using this profile",
         examples=[
-            ['/1.0/network-acls/foo', '/1.0/network-acls/bar', '/1.0/network-acls/baz']
+            ["/1.0/network-acls/foo", "/1.0/network-acls/bar", "/1.0/network-acls/baz"]
         ],
     )
 
 
 class NetworkAddressSetPost(BaseModel):
     name: str | None = Field(
-        None, description='The new name of the address set', examples=['"bar"']
+        None, description="The new name of the address set", examples=['"bar"']
     )
 
 
 class NetworkAddressSetPut(BaseModel):
     addresses: list[str] | None = Field(
         None,
-        description='List of addresses in the set',
-        examples=[['192.0.0.1', '2001:0db8:1234::1']],
+        description="List of addresses in the set",
+        examples=[["192.0.0.1", "2001:0db8:1234::1"]],
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Address set configuration map (refer to doc/network-address-sets.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Address set configuration map (refer to doc/network-address-sets.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the address set', examples=['Web servers']
+        None, description="Description of the address set", examples=["Web servers"]
     )
 
 
 class NetworkAddressSetsPost(BaseModel):
     addresses: list[str] | None = Field(
         None,
-        description='List of addresses in the set',
-        examples=[['192.0.0.1', '2001:0db8:1234::1']],
+        description="List of addresses in the set",
+        examples=[["192.0.0.1", "2001:0db8:1234::1"]],
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Address set configuration map (refer to doc/network-address-sets.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Address set configuration map (refer to doc/network-address-sets.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the address set', examples=['Web servers']
+        None, description="Description of the address set", examples=["Web servers"]
     )
     name: str | None = Field(
-        None, description='The new name of the address set', examples=['"bar"']
+        None, description="The new name of the address set", examples=['"bar"']
     )
 
 
 class NetworkAllocations(BaseModel):
     addresses: str | None = Field(
         None,
-        description='The network address of the allocation (in CIDR format)',
-        examples=['192.0.2.1/24'],
+        description="The network address of the allocation (in CIDR format)",
+        examples=["192.0.2.1/24"],
     )
     hwaddr: str | None = Field(
         None,
-        description='Hwaddr is the MAC address of the entity consuming the network address',
+        description="Hwaddr is the MAC address of the entity consuming the network address",
     )
     nat: bool | None = Field(
         None,
-        description='Whether the entity comes from a network that performs egress source NAT',
+        description="Whether the entity comes from a network that performs egress source NAT",
     )
     type: str | None = Field(
-        None, description='Type of the entity consuming the network address'
+        None, description="Type of the entity consuming the network address"
     )
     used_by: str | None = Field(
-        None, description='Name of the entity consuming the network address'
+        None, description="Name of the entity consuming the network address"
     )
 
 
 class NetworkForwardPort(BaseModel):
     description: str | None = Field(
         None,
-        description='Description of the forward port',
-        examples=['My web server forward'],
+        description="Description of the forward port",
+        examples=["My web server forward"],
     )
     listen_port: str | None = Field(
         None,
-        description='ListenPort(s) to forward (comma delimited ranges)',
-        examples=['80,81,8080-8090'],
+        description="ListenPort(s) to forward (comma delimited ranges)",
+        examples=["80,81,8080-8090"],
     )
     protocol: str | None = Field(
         None,
-        description='Protocol for port forward (either tcp or udp)',
-        examples=['tcp'],
+        description="Protocol for port forward (either tcp or udp)",
+        examples=["tcp"],
     )
     snat: bool | None = Field(
         None,
-        description='SNAT controls whether to apply a matching SNAT rule to new outgoing traffic from the target',
+        description="SNAT controls whether to apply a matching SNAT rule to new outgoing traffic from the target",
         examples=[False],
     )
     target_address: str | None = Field(
         None,
-        description='TargetAddress to forward ListenPorts to',
-        examples=['198.51.100.2'],
+        description="TargetAddress to forward ListenPorts to",
+        examples=["198.51.100.2"],
     )
     target_port: str | None = Field(
         None,
-        description='TargetPort(s) to forward ListenPorts to (allows for many-to-one)',
-        examples=['80,81,8080-8090'],
+        description="TargetPort(s) to forward ListenPorts to (allows for many-to-one)",
+        examples=["80,81,8080-8090"],
     )
 
 
 class NetworkForwardPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Forward configuration map (refer to doc/network-forwards.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Forward configuration map (refer to doc/network-forwards.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the forward listen IP',
-        examples=['My public IP forward'],
+        description="Description of the forward listen IP",
+        examples=["My public IP forward"],
     )
     ports: list[NetworkForwardPort] | None = Field(
-        None, description='Port forwards (optional)'
+        None, description="Port forwards (optional)"
     )
 
 
 class NetworkForwardsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Forward configuration map (refer to doc/network-forwards.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Forward configuration map (refer to doc/network-forwards.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the forward listen IP',
-        examples=['My public IP forward'],
+        description="Description of the forward listen IP",
+        examples=["My public IP forward"],
     )
     listen_address: str | None = Field(
-        None, description='The listen address of the forward', examples=['192.0.2.1']
+        None, description="The listen address of the forward", examples=["192.0.2.1"]
     )
     ports: list[NetworkForwardPort] | None = Field(
-        None, description='Port forwards (optional)'
+        None, description="Port forwards (optional)"
     )
 
 
 class NetworkIntegration(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Integration configuration map (refer to doc/network-integrations.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Integration configuration map (refer to doc/network-integrations.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the network integration',
-        examples=['OVN interconnection for region1'],
+        description="Description of the network integration",
+        examples=["OVN interconnection for region1"],
     )
     name: str | None = Field(
-        None, description='The name of the integration', examples=['region1']
+        None, description="The name of the integration", examples=["region1"]
     )
     type: str | None = Field(
-        None, description='The type of integration', examples=['ovn']
+        None, description="The type of integration", examples=["ovn"]
     )
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this network integration',
-        examples=[['/1.0/networks/foo', '/1.0/networks/bar']],
+        description="List of URLs of objects using this network integration",
+        examples=[["/1.0/networks/foo", "/1.0/networks/bar"]],
     )
 
 
 class NetworkIntegrationPost(BaseModel):
     name: str | None = Field(
         None,
-        description='The new name for the network integration',
-        examples=['region2'],
+        description="The new name for the network integration",
+        examples=["region2"],
     )
 
 
 class NetworkIntegrationPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Integration configuration map (refer to doc/network-integrations.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Integration configuration map (refer to doc/network-integrations.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the network integration',
-        examples=['OVN interconnection for region1'],
+        description="Description of the network integration",
+        examples=["OVN interconnection for region1"],
     )
 
 
 class NetworkIntegrationsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Integration configuration map (refer to doc/network-integrations.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Integration configuration map (refer to doc/network-integrations.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the network integration',
-        examples=['OVN interconnection for region1'],
+        description="Description of the network integration",
+        examples=["OVN interconnection for region1"],
     )
     name: str | None = Field(
-        None, description='The name of the integration', examples=['region1']
+        None, description="The name of the integration", examples=["region1"]
     )
     type: str | None = Field(
-        None, description='The type of integration', examples=['ovn']
+        None, description="The type of integration", examples=["ovn"]
     )
 
 
 class NetworkLease(BaseModel):
     address: str | None = Field(
-        None, description='The IP address', examples=['10.0.0.98']
+        None, description="The IP address", examples=["10.0.0.98"]
     )
     hostname: str | None = Field(
-        None, description='The hostname associated with the record', examples=['c1']
+        None, description="The hostname associated with the record", examples=["c1"]
     )
     hwaddr: str | None = Field(
-        None, description='The MAC address', examples=['10:66:6a:2c:89:d9']
+        None, description="The MAC address", examples=["10:66:6a:2c:89:d9"]
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
     type: str | None = Field(
-        None, description='The type of record (static or dynamic)', examples=['dynamic']
+        None, description="The type of record (static or dynamic)", examples=["dynamic"]
     )
 
 
 class NetworkLoadBalancerBackend(BaseModel):
     description: str | None = Field(
         None,
-        description='Description of the load balancer backend',
-        examples=['C1 webserver'],
+        description="Description of the load balancer backend",
+        examples=["C1 webserver"],
     )
     name: str | None = Field(
-        None, description='Name of the load balancer backend', examples=['c1-http']
+        None, description="Name of the load balancer backend", examples=["c1-http"]
     )
     target_address: str | None = Field(
         None,
-        description='TargetAddress to forward ListenPorts to',
-        examples=['198.51.100.2'],
+        description="TargetAddress to forward ListenPorts to",
+        examples=["198.51.100.2"],
     )
     target_port: str | None = Field(
         None,
-        description='TargetPort(s) to forward ListenPorts to (allows for many-to-one)',
-        examples=['80,81,8080-8090'],
+        description="TargetPort(s) to forward ListenPorts to (allows for many-to-one)",
+        examples=["80,81,8080-8090"],
     )
 
 
 class NetworkLoadBalancerPort(BaseModel):
     description: str | None = Field(
         None,
-        description='Description of the load balancer port',
-        examples=['My web server load balancer'],
+        description="Description of the load balancer port",
+        examples=["My web server load balancer"],
     )
     listen_port: str | None = Field(
         None,
-        description='ListenPort(s) of load balancer (comma delimited ranges)',
-        examples=['80,81,8080-8090'],
+        description="ListenPort(s) of load balancer (comma delimited ranges)",
+        examples=["80,81,8080-8090"],
     )
     protocol: str | None = Field(
         None,
-        description='Protocol for load balancer port (either tcp or udp)',
-        examples=['tcp'],
+        description="Protocol for load balancer port (either tcp or udp)",
+        examples=["tcp"],
     )
     target_backend: list[str] | None = Field(
         None,
-        description='TargetBackend backend names to load balance ListenPorts to',
-        examples=[['c1-http', 'c2-http']],
+        description="TargetBackend backend names to load balance ListenPorts to",
+        examples=[["c1-http", "c2-http"]],
     )
 
 
 class NetworkLoadBalancerPut(BaseModel):
     backends: list[NetworkLoadBalancerBackend] | None = Field(
-        None, description='Backends (optional)'
+        None, description="Backends (optional)"
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Load balancer configuration map (refer to doc/network-load-balancers.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Load balancer configuration map (refer to doc/network-load-balancers.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the load balancer listen IP',
-        examples=['My public IP load balancer'],
+        description="Description of the load balancer listen IP",
+        examples=["My public IP load balancer"],
     )
     ports: list[NetworkLoadBalancerPort] | None = Field(
-        None, description='Port forwards (optional)'
+        None, description="Port forwards (optional)"
     )
 
 
@@ -1811,381 +1811,381 @@ class NetworkLoadBalancerStateBackendHealthPort(BaseModel):
 
 class NetworkLoadBalancersPost(BaseModel):
     backends: list[NetworkLoadBalancerBackend] | None = Field(
-        None, description='Backends (optional)'
+        None, description="Backends (optional)"
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Load balancer configuration map (refer to doc/network-load-balancers.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Load balancer configuration map (refer to doc/network-load-balancers.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the load balancer listen IP',
-        examples=['My public IP load balancer'],
+        description="Description of the load balancer listen IP",
+        examples=["My public IP load balancer"],
     )
     listen_address: str | None = Field(
         None,
-        description='The listen address of the load balancer',
-        examples=['192.0.2.1'],
+        description="The listen address of the load balancer",
+        examples=["192.0.2.1"],
     )
     ports: list[NetworkLoadBalancerPort] | None = Field(
-        None, description='Port forwards (optional)'
+        None, description="Port forwards (optional)"
     )
 
 
 class NetworkPeer(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Peer configuration map (refer to doc/network-peers.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Peer configuration map (refer to doc/network-peers.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the peer',
-        examples=['Peering with network1 in project1'],
+        description="Description of the peer",
+        examples=["Peering with network1 in project1"],
     )
     name: str | None = Field(
-        None, description='Name of the peer', examples=['project1-network1']
+        None, description="Name of the peer", examples=["project1-network1"]
     )
     status: str | None = Field(
-        None, description='The state of the peering', examples=['Pending']
+        None, description="The state of the peering", examples=["Pending"]
     )
     target_integration: str | None = Field(
-        None, description='Name of the target integration', examples=['ovn-ic1']
+        None, description="Name of the target integration", examples=["ovn-ic1"]
     )
     target_network: str | None = Field(
-        None, description='Name of the target network', examples=['network1']
+        None, description="Name of the target network", examples=["network1"]
     )
     target_project: str | None = Field(
-        None, description='Name of the target project', examples=['project1']
+        None, description="Name of the target project", examples=["project1"]
     )
-    type: str | None = Field(None, description='Type of peer', examples=['local'])
+    type: str | None = Field(None, description="Type of peer", examples=["local"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this network peering',
-        examples=[['/1.0/network-acls/test', '/1.0/network-acls/foo']],
+        description="List of URLs of objects using this network peering",
+        examples=[["/1.0/network-acls/test", "/1.0/network-acls/foo"]],
     )
 
 
 class NetworkPeerPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Peer configuration map (refer to doc/network-peers.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Peer configuration map (refer to doc/network-peers.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the peer',
-        examples=['Peering with network1 in project1'],
+        description="Description of the peer",
+        examples=["Peering with network1 in project1"],
     )
 
 
 class NetworkPeersPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Peer configuration map (refer to doc/network-peers.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Peer configuration map (refer to doc/network-peers.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the peer',
-        examples=['Peering with network1 in project1'],
+        description="Description of the peer",
+        examples=["Peering with network1 in project1"],
     )
     name: str | None = Field(
-        None, description='Name of the peer', examples=['project1-network1']
+        None, description="Name of the peer", examples=["project1-network1"]
     )
     target_integration: str | None = Field(
-        None, description='Name of the target integration', examples=['ovn-ic1']
+        None, description="Name of the target integration", examples=["ovn-ic1"]
     )
     target_network: str | None = Field(
-        None, description='Name of the target network', examples=['network1']
+        None, description="Name of the target network", examples=["network1"]
     )
     target_project: str | None = Field(
-        None, description='Name of the target project', examples=['project1']
+        None, description="Name of the target project", examples=["project1"]
     )
-    type: str | None = Field(None, description='Type of peer', examples=['local'])
+    type: str | None = Field(None, description="Type of peer", examples=["local"])
 
 
 class NetworkPost(BaseModel):
     name: str | None = Field(
-        None, description='The new name for the network', examples=['mybr1']
+        None, description="The new name for the network", examples=["mybr1"]
     )
 
 
 class NetworkPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Network configuration map (refer to doc/networks.md)',
+        description="Network configuration map (refer to doc/networks.md)",
         examples=[
-            {'ipv4.address': '10.0.0.1/24', 'ipv4.nat': 'true', 'ipv6.address': 'none'}
+            {"ipv4.address": "10.0.0.1/24", "ipv4.nat": "true", "ipv6.address": "none"}
         ],
     )
     description: str | None = Field(
-        None, description='Description of the profile', examples=['My new bridge']
+        None, description="Description of the profile", examples=["My new bridge"]
     )
 
 
 class NetworkStateAddress(BaseModel):
-    address: str | None = Field(None, description='IP address', examples=['10.0.0.1'])
-    family: str | None = Field(None, description='Address family', examples=['inet'])
-    netmask: str | None = Field(None, description='IP netmask (CIDR)', examples=['24'])
-    scope: str | None = Field(None, description='Address scope', examples=['global'])
+    address: str | None = Field(None, description="IP address", examples=["10.0.0.1"])
+    family: str | None = Field(None, description="Address family", examples=["inet"])
+    netmask: str | None = Field(None, description="IP netmask (CIDR)", examples=["24"])
+    scope: str | None = Field(None, description="Address scope", examples=["global"])
 
 
 class NetworkStateBond(BaseModel):
     down_delay: int | None = Field(
-        None, description='Delay on link down (ms)', examples=[0]
+        None, description="Delay on link down (ms)", examples=[0]
     )
     lower_devices: list[str] | None = Field(
         None,
-        description='List of devices that are part of the bond',
-        examples=[['eth0', 'eth1']],
+        description="List of devices that are part of the bond",
+        examples=[["eth0", "eth1"]],
     )
     mii_frequency: int | None = Field(
-        None, description='How often to check for link state (ms)', examples=[100]
+        None, description="How often to check for link state (ms)", examples=[100]
     )
-    mii_state: str | None = Field(None, description='Bond link state', examples=['up'])
-    mode: str | None = Field(None, description='Bonding mode', examples=['802.3ad'])
+    mii_state: str | None = Field(None, description="Bond link state", examples=["up"])
+    mode: str | None = Field(None, description="Bonding mode", examples=["802.3ad"])
     transmit_policy: str | None = Field(
-        None, description='Transmit balancing policy', examples=['layer3+4']
+        None, description="Transmit balancing policy", examples=["layer3+4"]
     )
     up_delay: int | None = Field(
-        None, description='Delay on link up (ms)', examples=[0]
+        None, description="Delay on link up (ms)", examples=[0]
     )
 
 
 class NetworkStateBridge(BaseModel):
     forward_delay: int | None = Field(
-        None, description='Delay on port join (ms)', examples=[1500]
+        None, description="Delay on port join (ms)", examples=[1500]
     )
     id: str | None = Field(
-        None, description='Bridge ID', examples=['8000.0a0f7c6edbd9']
+        None, description="Bridge ID", examples=["8000.0a0f7c6edbd9"]
     )
     stp: bool | None = Field(
-        None, description='Whether STP is enabled', examples=[False]
+        None, description="Whether STP is enabled", examples=[False]
     )
     upper_devices: list[str] | None = Field(
         None,
-        description='List of devices that are in the bridge',
-        examples=[['eth0', 'eth1']],
+        description="List of devices that are in the bridge",
+        examples=[["eth0", "eth1"]],
     )
-    vlan_default: int | None = Field(None, description='Default VLAN ID', examples=[1])
+    vlan_default: int | None = Field(None, description="Default VLAN ID", examples=[1])
     vlan_filtering: bool | None = Field(
-        None, description='Whether VLAN filtering is enabled', examples=[False]
+        None, description="Whether VLAN filtering is enabled", examples=[False]
     )
 
 
 class NetworkStateCounters(BaseModel):
     bytes_received: int | None = Field(
-        None, description='Number of bytes received', examples=[250542118]
+        None, description="Number of bytes received", examples=[250542118]
     )
     bytes_sent: int | None = Field(
-        None, description='Number of bytes sent', examples=[17524040140]
+        None, description="Number of bytes sent", examples=[17524040140]
     )
     packets_received: int | None = Field(
-        None, description='Number of packets received', examples=[1182515]
+        None, description="Number of packets received", examples=[1182515]
     )
     packets_sent: int | None = Field(
-        None, description='Number of packets sent', examples=[1567934]
+        None, description="Number of packets sent", examples=[1567934]
     )
 
 
 class NetworkStateOVN(BaseModel):
     chassis: str | None = Field(
-        None, description='OVN network chassis name', examples=['server01']
+        None, description="OVN network chassis name", examples=["server01"]
     )
     logical_router: str | None = Field(
-        None, description='OVN logical router name', examples=['incus-net1-lr']
+        None, description="OVN logical router name", examples=["incus-net1-lr"]
     )
     logical_switch: str | None = Field(
-        None, description='OVN logical switch name', examples=['incus-net1-ls-int']
+        None, description="OVN logical switch name", examples=["incus-net1-ls-int"]
     )
     uplink_ipv4: str | None = Field(
-        None, description='OVN network uplink ipv4 address', examples=['10.0.0.1']
+        None, description="OVN network uplink ipv4 address", examples=["10.0.0.1"]
     )
     uplink_ipv6: str | None = Field(
         None,
-        description='OVN network uplink ipv6 address',
-        examples=['2001:0000:130F:0000:0000:09C0:876A:130B.'],
+        description="OVN network uplink ipv6 address",
+        examples=["2001:0000:130F:0000:0000:09C0:876A:130B."],
     )
 
 
 class NetworkStateVLAN(BaseModel):
     lower_device: str | None = Field(
-        None, description='Parent device', examples=['eth0']
+        None, description="Parent device", examples=["eth0"]
     )
-    vid: int | None = Field(None, description='VLAN ID', examples=[100])
+    vid: int | None = Field(None, description="VLAN ID", examples=[100])
 
 
 class NetworkZone(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Zone configuration map (refer to doc/network-zones.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Zone configuration map (refer to doc/network-zones.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the network zone',
-        examples=['Internal domain'],
+        description="Description of the network zone",
+        examples=["Internal domain"],
     )
     name: str | None = Field(
         None,
-        description='The name of the zone (DNS domain name)',
-        examples=['example.net'],
+        description="The name of the zone (DNS domain name)",
+        examples=["example.net"],
     )
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this network zone',
-        examples=[['/1.0/networks/foo', '/1.0/networks/bar']],
+        description="List of URLs of objects using this network zone",
+        examples=[["/1.0/networks/foo", "/1.0/networks/bar"]],
     )
 
 
 class NetworkZonePut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Zone configuration map (refer to doc/network-zones.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Zone configuration map (refer to doc/network-zones.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the network zone',
-        examples=['Internal domain'],
+        description="Description of the network zone",
+        examples=["Internal domain"],
     )
 
 
 class NetworkZoneRecordEntry(BaseModel):
-    ttl: int | None = Field(None, description='TTL for the entry', examples=[3600])
-    type: str | None = Field(None, description='Type of DNS entry', examples=['TXT'])
+    ttl: int | None = Field(None, description="TTL for the entry", examples=[3600])
+    type: str | None = Field(None, description="Type of DNS entry", examples=["TXT"])
     value: str | None = Field(
-        None, description='Value for the record', examples=['v=spf1 mx ~all']
+        None, description="Value for the record", examples=["v=spf1 mx ~all"]
     )
 
 
 class NetworkZoneRecordPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Advanced configuration for the record',
-        examples=[{'user.mykey': 'foo'}],
+        description="Advanced configuration for the record",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the record', examples=['SPF record']
+        None, description="Description of the record", examples=["SPF record"]
     )
     entries: list[NetworkZoneRecordEntry] | None = Field(
-        None, description='Entries in the record'
+        None, description="Entries in the record"
     )
 
 
 class NetworkZoneRecordsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Advanced configuration for the record',
-        examples=[{'user.mykey': 'foo'}],
+        description="Advanced configuration for the record",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the record', examples=['SPF record']
+        None, description="Description of the record", examples=["SPF record"]
     )
     entries: list[NetworkZoneRecordEntry] | None = Field(
-        None, description='Entries in the record'
+        None, description="Entries in the record"
     )
     name: str | None = Field(
-        None, description='The record name in the zone', examples=['@']
+        None, description="The record name in the zone", examples=["@"]
     )
 
 
 class NetworkZonesPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Zone configuration map (refer to doc/network-zones.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Zone configuration map (refer to doc/network-zones.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the network zone',
-        examples=['Internal domain'],
+        description="Description of the network zone",
+        examples=["Internal domain"],
     )
     name: str | None = Field(
         None,
-        description='The name of the zone (DNS domain name)',
-        examples=['example.net'],
+        description="The name of the zone (DNS domain name)",
+        examples=["example.net"],
     )
 
 
 class NetworksPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Network configuration map (refer to doc/networks.md)',
+        description="Network configuration map (refer to doc/networks.md)",
         examples=[
-            {'ipv4.address': '10.0.0.1/24', 'ipv4.nat': 'true', 'ipv6.address': 'none'}
+            {"ipv4.address": "10.0.0.1/24", "ipv4.nat": "true", "ipv6.address": "none"}
         ],
     )
     description: str | None = Field(
-        None, description='Description of the profile', examples=['My new bridge']
+        None, description="Description of the profile", examples=["My new bridge"]
     )
     name: str | None = Field(
-        None, description='The name of the new network', examples=['mybr1']
+        None, description="The name of the new network", examples=["mybr1"]
     )
     type: str | None = Field(
         None,
-        description='The network type (refer to doc/networks.md)',
-        examples=['bridge'],
+        description="The network type (refer to doc/networks.md)",
+        examples=["bridge"],
     )
 
 
 class Profile(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration map (refer to doc/instances.md)',
-        examples=[{'limits.cpu': '4', 'limits.memory': '4GiB'}],
+        description="Instance configuration map (refer to doc/instances.md)",
+        examples=[{"limits.cpu": "4", "limits.memory": "4GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the profile',
-        examples=['Medium size instances'],
+        description="Description of the profile",
+        examples=["Medium size instances"],
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='List of devices',
+        description="List of devices",
         examples=[
             {
-                'eth0': {'name': 'eth0', 'network': 'mybr0', 'type': 'nic'},
-                'root': {'path': '/', 'pool': 'default', 'type': 'disk'},
+                "eth0": {"name": "eth0", "network": "mybr0", "type": "nic"},
+                "root": {"path": "/", "pool": "default", "type": "disk"},
             }
         ],
     )
-    name: str | None = Field(None, description='The profile name', examples=['foo'])
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    name: str | None = Field(None, description="The profile name", examples=["foo"])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this profile',
-        examples=[['/1.0/instances/c1', '/1.0/instances/v1']],
+        description="List of URLs of objects using this profile",
+        examples=[["/1.0/instances/c1", "/1.0/instances/v1"]],
     )
 
 
 class ProfilePost(BaseModel):
     name: str | None = Field(
-        None, description='The new name for the profile', examples=['bar']
+        None, description="The new name for the profile", examples=["bar"]
     )
 
 
 class ProfilePut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration map (refer to doc/instances.md)',
-        examples=[{'limits.cpu': '4', 'limits.memory': '4GiB'}],
+        description="Instance configuration map (refer to doc/instances.md)",
+        examples=[{"limits.cpu": "4", "limits.memory": "4GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the profile',
-        examples=['Medium size instances'],
+        description="Description of the profile",
+        examples=["Medium size instances"],
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='List of devices',
+        description="List of devices",
         examples=[
             {
-                'eth0': {'name': 'eth0', 'network': 'mybr0', 'type': 'nic'},
-                'root': {'path': '/', 'pool': 'default', 'type': 'disk'},
+                "eth0": {"name": "eth0", "network": "mybr0", "type": "nic"},
+                "root": {"path": "/", "pool": "default", "type": "disk"},
             }
         ],
     )
@@ -2194,49 +2194,49 @@ class ProfilePut(BaseModel):
 class ProfilesPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration map (refer to doc/instances.md)',
-        examples=[{'limits.cpu': '4', 'limits.memory': '4GiB'}],
+        description="Instance configuration map (refer to doc/instances.md)",
+        examples=[{"limits.cpu": "4", "limits.memory": "4GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the profile',
-        examples=['Medium size instances'],
+        description="Description of the profile",
+        examples=["Medium size instances"],
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='List of devices',
+        description="List of devices",
         examples=[
             {
-                'eth0': {'name': 'eth0', 'network': 'mybr0', 'type': 'nic'},
-                'root': {'path': '/', 'pool': 'default', 'type': 'disk'},
+                "eth0": {"name": "eth0", "network": "mybr0", "type": "nic"},
+                "root": {"path": "/", "pool": "default", "type": "disk"},
             }
         ],
     )
     name: str | None = Field(
-        None, description='The name of the new profile', examples=['foo']
+        None, description="The name of the new profile", examples=["foo"]
     )
 
 
 class Project(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Project configuration map (refer to doc/projects.md)',
-        examples=[{'features.networks': 'false', 'features.profiles': 'true'}],
+        description="Project configuration map (refer to doc/projects.md)",
+        examples=[{"features.networks": "false", "features.profiles": "true"}],
     )
     description: str | None = Field(
-        None, description='Description of the project', examples=['My new project']
+        None, description="Description of the project", examples=["My new project"]
     )
-    name: str | None = Field(None, description='The project name', examples=['foo'])
+    name: str | None = Field(None, description="The project name", examples=["foo"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this project',
+        description="List of URLs of objects using this project",
         examples=[
             [
-                '/1.0/images/0e60015346f06627f10580d56ac7fffd9ea775f6d4f25987217d5eed94910a20',
-                '/1.0/instances/c1',
-                '/1.0/networks/mybr0',
-                '/1.0/profiles/default',
-                '/1.0/storage-pools/default/volumes/custom/blah',
+                "/1.0/images/0e60015346f06627f10580d56ac7fffd9ea775f6d4f25987217d5eed94910a20",
+                "/1.0/instances/c1",
+                "/1.0/networks/mybr0",
+                "/1.0/profiles/default",
+                "/1.0/storage-pools/default/volumes/custom/blah",
             ]
         ],
     )
@@ -2244,41 +2244,41 @@ class Project(BaseModel):
 
 class ProjectPost(BaseModel):
     name: str | None = Field(
-        None, description='The new name for the project', examples=['bar']
+        None, description="The new name for the project", examples=["bar"]
     )
 
 
 class ProjectPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Project configuration map (refer to doc/projects.md)',
-        examples=[{'features.networks': 'false', 'features.profiles': 'true'}],
+        description="Project configuration map (refer to doc/projects.md)",
+        examples=[{"features.networks": "false", "features.profiles": "true"}],
     )
     description: str | None = Field(
-        None, description='Description of the project', examples=['My new project']
+        None, description="Description of the project", examples=["My new project"]
     )
 
 
 class ProjectStateResource(BaseModel):
     Limit: int | None = Field(
-        None, description='Limit for the resource (-1 if none)', examples=[10]
+        None, description="Limit for the resource (-1 if none)", examples=[10]
     )
     Usage: int | None = Field(
-        None, description='Current usage for the resource', examples=[4]
+        None, description="Current usage for the resource", examples=[4]
     )
 
 
 class ProjectsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Project configuration map (refer to doc/projects.md)',
-        examples=[{'features.networks': 'false', 'features.profiles': 'true'}],
+        description="Project configuration map (refer to doc/projects.md)",
+        examples=[{"features.networks": "false", "features.profiles": "true"}],
     )
     description: str | None = Field(
-        None, description='Description of the project', examples=['My new project']
+        None, description="Description of the project", examples=["My new project"]
     )
     name: str | None = Field(
-        None, description='The name of the new project', examples=['foo']
+        None, description="The name of the new project", examples=["foo"]
     )
 
 
@@ -2289,578 +2289,578 @@ class ResourcesCPUAddressSizes(BaseModel):
 
 class ResourcesCPUCache(BaseModel):
     level: int | None = Field(
-        None, description='Cache level (usually a number from 1 to 3)', examples=[1]
+        None, description="Cache level (usually a number from 1 to 3)", examples=[1]
     )
     size: int | None = Field(
-        None, description='Size of the cache (in bytes)', examples=[32768]
+        None, description="Size of the cache (in bytes)", examples=[32768]
     )
     type: str | None = Field(
         None,
-        description='Type of cache (Data, Instruction, Unified, ...)',
-        examples=['Data'],
+        description="Type of cache (Data, Instruction, Unified, ...)",
+        examples=["Data"],
     )
 
 
 class ResourcesCPUThread(BaseModel):
     id: int | None = Field(
-        None, description='Thread ID (used for CPU pinning)', examples=[0]
+        None, description="Thread ID (used for CPU pinning)", examples=[0]
     )
     isolated: bool | None = Field(
         None,
-        description='Whether the thread has been isolated (outside of normal scheduling)',
+        description="Whether the thread has been isolated (outside of normal scheduling)",
         examples=[False],
     )
     numa_node: int | None = Field(
-        None, description='NUMA node the thread is a part of', examples=[0]
+        None, description="NUMA node the thread is a part of", examples=[0]
     )
     online: bool | None = Field(
-        None, description='Whether the thread is online (enabled)', examples=[True]
+        None, description="Whether the thread is online (enabled)", examples=[True]
     )
     thread: int | None = Field(
-        None, description='Thread identifier within the core', examples=[0]
+        None, description="Thread identifier within the core", examples=[0]
     )
 
 
 class ResourcesGPUCardDRM(BaseModel):
     card_device: str | None = Field(
-        None, description='Card device number', examples=['226:0']
+        None, description="Card device number", examples=["226:0"]
     )
     card_name: str | None = Field(
-        None, description='Card device name', examples=['card0']
+        None, description="Card device name", examples=["card0"]
     )
     control_device: str | None = Field(
-        None, description='Control device number', examples=['226:0']
+        None, description="Control device number", examples=["226:0"]
     )
     control_name: str | None = Field(
-        None, description='Control device name', examples=['controlD64']
+        None, description="Control device name", examples=["controlD64"]
     )
-    id: int | None = Field(None, description='DRM card ID', examples=[0])
+    id: int | None = Field(None, description="DRM card ID", examples=[0])
     render_device: str | None = Field(
-        None, description='Render device number', examples=['226:128']
+        None, description="Render device number", examples=["226:128"]
     )
     render_name: str | None = Field(
-        None, description='Render device name', examples=['renderD128']
+        None, description="Render device name", examples=["renderD128"]
     )
 
 
 class ResourcesGPUCardMdev(BaseModel):
     api: str | None = Field(
-        None, description='The mechanism used by this device', examples=['vfio-pci']
+        None, description="The mechanism used by this device", examples=["vfio-pci"]
     )
     available: int | None = Field(
-        None, description='Number of available devices of this profile', examples=[2]
+        None, description="Number of available devices of this profile", examples=[2]
     )
     description: str | None = Field(
         None,
-        description='Profile description',
+        description="Profile description",
         examples=[
-            'low_gm_size: 128MB\\nhigh_gm_size: 512MB\\nfence: 4\\nresolution: 1920x1200\\nweight: 4'
+            "low_gm_size: 128MB\\nhigh_gm_size: 512MB\\nfence: 4\\nresolution: 1920x1200\\nweight: 4"
         ],
     )
     devices: list[str] | None = Field(
         None,
-        description='List of active devices (UUIDs)',
+        description="List of active devices (UUIDs)",
         examples=[
             [
-                '42200aac-0977-495c-8c9e-6c51b9092a01',
-                'b4950c00-1437-41d9-88f6-28d61cf9b9ef',
+                "42200aac-0977-495c-8c9e-6c51b9092a01",
+                "b4950c00-1437-41d9-88f6-28d61cf9b9ef",
             ]
         ],
     )
     name: str | None = Field(
-        None, description='Profile name', examples=['i915-GVTg_V5_8']
+        None, description="Profile name", examples=["i915-GVTg_V5_8"]
     )
 
 
 class ResourcesGPUCardNvidia(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture (generation)', examples=['3.5']
+        None, description="Architecture (generation)", examples=["3.5"]
     )
-    brand: str | None = Field(None, description='Brand name', examples=['GeForce'])
+    brand: str | None = Field(None, description="Brand name", examples=["GeForce"])
     card_device: str | None = Field(
-        None, description='Card device number', examples=['195:0']
+        None, description="Card device number", examples=["195:0"]
     )
     card_name: str | None = Field(
-        None, description='Card device name', examples=['nvidia0']
+        None, description="Card device name", examples=["nvidia0"]
     )
     cuda_version: str | None = Field(
-        None, description='Version of the CUDA API', examples=['11.0']
+        None, description="Version of the CUDA API", examples=["11.0"]
     )
     model: str | None = Field(
-        None, description='Model name', examples=['GeForce GT 730']
+        None, description="Model name", examples=["GeForce GT 730"]
     )
     nvrm_version: str | None = Field(
         None,
-        description='Version of the NVRM (usually driver version)',
-        examples=['450.102.04'],
+        description="Version of the NVRM (usually driver version)",
+        examples=["450.102.04"],
     )
     uuid: str | None = Field(
         None,
-        description='GPU UUID',
-        examples=['GPU-6ddadebd-dafe-2db9-f10f-125719770fd3'],
+        description="GPU UUID",
+        examples=["GPU-6ddadebd-dafe-2db9-f10f-125719770fd3"],
     )
 
 
 class ResourcesLoad(BaseModel):
     Average1Min: float | None = Field(
-        None, description='Load average in the past minute', examples=[0.69]
+        None, description="Load average in the past minute", examples=[0.69]
     )
     Average5Min: float | None = Field(
-        None, description='Load average in the past 5 minutes', examples=[1.1]
+        None, description="Load average in the past 5 minutes", examples=[1.1]
     )
     Average10Min: float | None = Field(
-        None, description='Load average in the past 10 minutes', examples=[1.29]
+        None, description="Load average in the past 10 minutes", examples=[1.29]
     )
     Processes: int | None = Field(
-        None, description='The number of active processes', examples=[1234]
+        None, description="The number of active processes", examples=[1234]
     )
 
 
 class ResourcesMemoryNode(BaseModel):
     hugepages_total: int | None = Field(
-        None, description='Total of memory huge pages (bytes)', examples=[214536552448]
+        None, description="Total of memory huge pages (bytes)", examples=[214536552448]
     )
     hugepages_used: int | None = Field(
-        None, description='Used memory huge pages (bytes)', examples=[214536552448]
+        None, description="Used memory huge pages (bytes)", examples=[214536552448]
     )
     numa_node: int | None = Field(
-        None, description='NUMA node identifier', examples=[0]
+        None, description="NUMA node identifier", examples=[0]
     )
     total: int | None = Field(
-        None, description='Total system memory (bytes)', examples=[343597383680]
+        None, description="Total system memory (bytes)", examples=[343597383680]
     )
     used: int | None = Field(
-        None, description='Used system memory (bytes)', examples=[264880439296]
+        None, description="Used system memory (bytes)", examples=[264880439296]
     )
 
 
 class ResourcesNetworkCardPortInfiniband(BaseModel):
     issm_device: str | None = Field(
-        None, description='ISSM device number', examples=['231:64']
+        None, description="ISSM device number", examples=["231:64"]
     )
     issm_name: str | None = Field(
-        None, description='ISSM device name', examples=['issm0']
+        None, description="ISSM device name", examples=["issm0"]
     )
     mad_device: str | None = Field(
-        None, description='MAD device number', examples=['231:0']
+        None, description="MAD device number", examples=["231:0"]
     )
     mad_name: str | None = Field(
-        None, description='MAD device name', examples=['umad0']
+        None, description="MAD device name", examples=["umad0"]
     )
     verb_device: str | None = Field(
-        None, description='Verb device number', examples=['231:192']
+        None, description="Verb device number", examples=["231:192"]
     )
     verb_name: str | None = Field(
-        None, description='Verb device name', examples=['uverbs0']
+        None, description="Verb device name", examples=["uverbs0"]
     )
 
 
 class ResourcesNetworkCardVDPA(BaseModel):
-    device: str | None = Field(None, description='Device identifier of the VDPA device')
-    name: str | None = Field(None, description='Name of the VDPA device')
+    device: str | None = Field(None, description="Device identifier of the VDPA device")
+    name: str | None = Field(None, description="Name of the VDPA device")
 
 
 class ResourcesPCIVPD(BaseModel):
     entries: dict[str, str] | None = Field(
         None,
-        description='Vendor provided key/value pairs.',
+        description="Vendor provided key/value pairs.",
         examples=['{"EC": ""A-5545", "MN": "103C", "V0": "5W PCIeGen2"}'],
     )
     product_name: str | None = Field(
         None,
-        description='Hardware provided product name.',
-        examples=['HP Ethernet 1Gb 4-port 331i Adapter'],
+        description="Hardware provided product name.",
+        examples=["HP Ethernet 1Gb 4-port 331i Adapter"],
     )
 
 
 class ResourcesSerialDevice(BaseModel):
     device: str | None = Field(
-        None, description='Device number (major:minor)', examples=['188:0']
+        None, description="Device number (major:minor)", examples=["188:0"]
     )
     device_id: str | None = Field(
         None,
-        description='Path to /dev/serial/by-id entry',
-        examples=['/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AB0J1234-if00-port0'],
+        description="Path to /dev/serial/by-id entry",
+        examples=["/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_AB0J1234-if00-port0"],
     )
     device_path: str | None = Field(
         None,
-        description='Path to /dev/serial/by-path entry',
-        examples=['/dev/serial/by-path/pci-0000:00:14.0-usb-0:2:1.0-port0'],
+        description="Path to /dev/serial/by-path entry",
+        examples=["/dev/serial/by-path/pci-0000:00:14.0-usb-0:2:1.0-port0"],
     )
     driver: str | None = Field(
         None,
-        description='kernel driver name (cdc_acm, ftdi_sio, pl2303, cp210x...)',
-        examples=['cdc_acm'],
+        description="kernel driver name (cdc_acm, ftdi_sio, pl2303, cp210x...)",
+        examples=["cdc_acm"],
     )
     id: str | None = Field(
         None,
-        description='Kernel device name (e.g. ttyUSB0, ttyACM0)',
-        examples=['ttyUSB0'],
+        description="Kernel device name (e.g. ttyUSB0, ttyACM0)",
+        examples=["ttyUSB0"],
     )
     product: str | None = Field(
-        None, description='USB product name', examples=['Arduino Uno']
+        None, description="USB product name", examples=["Arduino Uno"]
     )
     product_id: str | None = Field(
-        None, description='USB product ID', examples=['0043']
+        None, description="USB product ID", examples=["0043"]
     )
     vendor: str | None = Field(
-        None, description='USB vendor name', examples=['Arduino LLC']
+        None, description="USB vendor name", examples=["Arduino LLC"]
     )
-    vendor_id: str | None = Field(None, description='USB vendor ID', examples=['2341'])
+    vendor_id: str | None = Field(None, description="USB vendor ID", examples=["2341"])
 
 
 class ResourcesStorageDiskPartition(BaseModel):
-    device: str | None = Field(None, description='Device number', examples=['259:1'])
+    device: str | None = Field(None, description="Device number", examples=["259:1"])
     id: str | None = Field(
-        None, description='ID of the partition (device name)', examples=['nvme0n1p1']
+        None, description="ID of the partition (device name)", examples=["nvme0n1p1"]
     )
-    partition: int | None = Field(None, description='Partition number', examples=[1])
+    partition: int | None = Field(None, description="Partition number", examples=[1])
     read_only: bool | None = Field(
-        None, description='Whether the partition is read-only', examples=[False]
+        None, description="Whether the partition is read-only", examples=[False]
     )
     size: int | None = Field(
-        None, description='Size of the partition (bytes)', examples=[254933278208]
+        None, description="Size of the partition (bytes)", examples=[254933278208]
     )
 
 
 class ResourcesStoragePoolInodes(BaseModel):
-    total: int | None = Field(None, description='Total inodes', examples=[30709993797])
-    used: int | None = Field(None, description='Used inodes', examples=[23937695])
+    total: int | None = Field(None, description="Total inodes", examples=[30709993797])
+    used: int | None = Field(None, description="Used inodes", examples=[23937695])
 
 
 class ResourcesStoragePoolSpace(BaseModel):
     total: int | None = Field(
-        None, description='Total disk space (bytes)', examples=[420100937728]
+        None, description="Total disk space (bytes)", examples=[420100937728]
     )
     used: int | None = Field(
-        None, description='Used disk space (bytes)', examples=[343537419776]
+        None, description="Used disk space (bytes)", examples=[343537419776]
     )
 
 
 class ResourcesSystemChassis(BaseModel):
     serial: str | None = Field(
-        None, description='Chassis serial number', examples=['PY3DD4X9']
+        None, description="Chassis serial number", examples=["PY3DD4X9"]
     )
-    type: str | None = Field(None, description='Chassis type', examples=['Notebook'])
-    vendor: str | None = Field(None, description='Chassis vendor', examples=['Lenovo'])
+    type: str | None = Field(None, description="Chassis type", examples=["Notebook"])
+    vendor: str | None = Field(None, description="Chassis vendor", examples=["Lenovo"])
     version: str | None = Field(
-        None, description='Chassis version/revision', examples=['None']
+        None, description="Chassis version/revision", examples=["None"]
     )
 
 
 class ResourcesSystemFirmware(BaseModel):
     date: str | None = Field(
-        None, description='Firmware build date', examples=['10/14/2020']
+        None, description="Firmware build date", examples=["10/14/2020"]
     )
-    vendor: str | None = Field(None, description='Firmware vendor', examples=['Lenovo'])
+    vendor: str | None = Field(None, description="Firmware vendor", examples=["Lenovo"])
     version: str | None = Field(
-        None, description='Firmware version', examples=['N1MET64W (1.49)']
+        None, description="Firmware version", examples=["N1MET64W (1.49)"]
     )
 
 
 class ResourcesSystemMotherboard(BaseModel):
     product: str | None = Field(
-        None, description='Motherboard model', examples=['20HRCTO1WW']
+        None, description="Motherboard model", examples=["20HRCTO1WW"]
     )
     serial: str | None = Field(
-        None, description='Motherboard serial number', examples=['L3CF4FX003A']
+        None, description="Motherboard serial number", examples=["L3CF4FX003A"]
     )
     vendor: str | None = Field(
-        None, description='Motherboard vendor', examples=['Lenovo']
+        None, description="Motherboard vendor", examples=["Lenovo"]
     )
     version: str | None = Field(
-        None, description='Motherboard version/revision', examples=['None']
+        None, description="Motherboard version/revision", examples=["None"]
     )
 
 
 class ResourcesUSBDeviceInterface(BaseModel):
     class_: str | None = Field(
         None,
-        alias='class',
-        description='Class of USB interface',
-        examples=['Human Interface Device'],
+        alias="class",
+        description="Class of USB interface",
+        examples=["Human Interface Device"],
     )
     class_id: int | None = Field(
-        None, description='ID of the USB interface class', examples=[3]
+        None, description="ID of the USB interface class", examples=[3]
     )
     driver: str | None = Field(
         None,
-        description='Kernel driver currently associated with the device',
-        examples=['usbhid'],
+        description="Kernel driver currently associated with the device",
+        examples=["usbhid"],
     )
     driver_version: str | None = Field(
-        None, description='Version of the kernel driver', examples=['5.8.0-36-generic']
+        None, description="Version of the kernel driver", examples=["5.8.0-36-generic"]
     )
-    number: int | None = Field(None, description='Interface number', examples=[0])
+    number: int | None = Field(None, description="Interface number", examples=[0])
     subclass: str | None = Field(
         None,
-        description='Sub class of the interface',
-        examples=['Boot Interface Subclass'],
+        description="Sub class of the interface",
+        examples=["Boot Interface Subclass"],
     )
     subclass_id: int | None = Field(
-        None, description='ID of the USB interface sub class', examples=[1]
+        None, description="ID of the USB interface sub class", examples=[1]
     )
 
 
 class ServerPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Server configuration map (refer to doc/server.md)',
-        examples=[{'core.https_address': ':8443'}],
+        description="Server configuration map (refer to doc/server.md)",
+        examples=[{"core.https_address": ":8443"}],
     )
 
 
 class ServerStorageDriverInfo(BaseModel):
-    Name: str | None = Field(None, description='Name of the driver', examples=['zfs'])
+    Name: str | None = Field(None, description="Name of the driver", examples=["zfs"])
     Remote: bool | None = Field(
-        None, description='Whether the driver has remote volumes', examples=[False]
+        None, description="Whether the driver has remote volumes", examples=[False]
     )
     Version: str | None = Field(
-        None, description='Version of the driver', examples=['0.8.4-1ubuntu11']
+        None, description="Version of the driver", examples=["0.8.4-1ubuntu11"]
     )
 
 
 class ServerUntrusted(BaseModel):
     api_extensions: list[str] | None = Field(
         None,
-        description='List of supported API extensions',
-        examples=[['etag', 'patch', 'network', 'storage']],
+        description="List of supported API extensions",
+        examples=[["etag", "patch", "network", "storage"]],
     )
     api_status: str | None = Field(
         None,
         description='Support status of the current API (one of "devel", "stable" or "deprecated")',
-        examples=['stable'],
+        examples=["stable"],
     )
     api_version: str | None = Field(
-        None, description='API version number', examples=['1.0']
+        None, description="API version number", examples=["1.0"]
     )
     auth: str | None = Field(
         None,
         description='Whether the client is trusted (one of "trusted" or "untrusted")',
-        examples=['untrusted'],
+        examples=["untrusted"],
     )
     auth_methods: list[str] | None = Field(
-        None, description='List of supported authentication methods', examples=[['tls']]
+        None, description="List of supported authentication methods", examples=[["tls"]]
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Server configuration map (refer to doc/server.md)',
-        examples=[{'core.https_address': ':8443'}],
+        description="Server configuration map (refer to doc/server.md)",
+        examples=[{"core.https_address": ":8443"}],
     )
     public: bool | None = Field(
         None,
-        description='Whether the server is public-only (only public endpoints are implemented)',
+        description="Whether the server is public-only (only public endpoints are implemented)",
         examples=[False],
     )
 
 
 class StatusCode(RootModel[int]):
     root: int = Field(
-        ..., title='StatusCode represents a valid operation and container status.'
+        ..., title="StatusCode represents a valid operation and container status."
     )
 
 
 class StorageBucket(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage bucket configuration map',
-        examples=[{'size': '50GiB'}],
+        description="Storage bucket configuration map",
+        examples=[{"size": "50GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage bucket',
-        examples=['My custom bucket'],
+        description="Description of the storage bucket",
+        examples=["My custom bucket"],
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
-    name: str | None = Field(None, description='Bucket name', examples=['foo'])
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    name: str | None = Field(None, description="Bucket name", examples=["foo"])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     s3_url: str | None = Field(
-        None, description='Bucket S3 URL', examples=['https://127.0.0.1:8080/foo']
+        None, description="Bucket S3 URL", examples=["https://127.0.0.1:8080/foo"]
     )
 
 
 class StorageBucketBackup(BaseModel):
     created_at: AwareDatetime | None = Field(
         None,
-        description='When the backup was created',
-        examples=['2021-03-23T16:38:37.753398689-04:00'],
+        description="When the backup was created",
+        examples=["2021-03-23T16:38:37.753398689-04:00"],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the backup expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the backup expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
-    name: str | None = Field(None, description='Backup name', examples=['backup0'])
+    name: str | None = Field(None, description="Backup name", examples=["backup0"])
 
 
 class StorageBucketBackupPost(BaseModel):
-    name: str | None = Field(None, description='New backup name', examples=['backup1'])
+    name: str | None = Field(None, description="New backup name", examples=["backup1"])
 
 
 class StorageBucketBackupsPost(BaseModel):
     compression_algorithm: str | None = Field(
-        None, description='What compression algorithm to use', examples=['gzip']
+        None, description="What compression algorithm to use", examples=["gzip"]
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the backup expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the backup expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
-    name: str | None = Field(None, description='Backup name', examples=['backup0'])
+    name: str | None = Field(None, description="Backup name", examples=["backup0"])
 
 
 class StorageBucketKey(BaseModel):
     access_key: str | None = Field(
         None,
-        alias='access-key',
-        description='Access key',
-        examples=['33UgkaIBLBIxb7O1'],
+        alias="access-key",
+        description="Access key",
+        examples=["33UgkaIBLBIxb7O1"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage bucket key',
-        examples=['My read-only bucket key'],
+        description="Description of the storage bucket key",
+        examples=["My read-only bucket key"],
     )
     name: str | None = Field(
-        None, description='Key name', examples=['my-read-only-key']
+        None, description="Key name", examples=["my-read-only-key"]
     )
     role: str | None = Field(
         None,
-        description='Whether the key can perform write actions or not.',
-        examples=['read-only'],
+        description="Whether the key can perform write actions or not.",
+        examples=["read-only"],
     )
     secret_key: str | None = Field(
         None,
-        alias='secret-key',
-        description='Secret key',
-        examples=['kDQD6AOgwHgaQI1UIJBJpPaiLgZuJbq0'],
+        alias="secret-key",
+        description="Secret key",
+        examples=["kDQD6AOgwHgaQI1UIJBJpPaiLgZuJbq0"],
     )
 
 
 class StorageBucketKeyPut(BaseModel):
     access_key: str | None = Field(
         None,
-        alias='access-key',
-        description='Access key',
-        examples=['33UgkaIBLBIxb7O1'],
+        alias="access-key",
+        description="Access key",
+        examples=["33UgkaIBLBIxb7O1"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage bucket key',
-        examples=['My read-only bucket key'],
+        description="Description of the storage bucket key",
+        examples=["My read-only bucket key"],
     )
     role: str | None = Field(
         None,
-        description='Whether the key can perform write actions or not.',
-        examples=['read-only'],
+        description="Whether the key can perform write actions or not.",
+        examples=["read-only"],
     )
     secret_key: str | None = Field(
         None,
-        alias='secret-key',
-        description='Secret key',
-        examples=['kDQD6AOgwHgaQI1UIJBJpPaiLgZuJbq0'],
+        alias="secret-key",
+        description="Secret key",
+        examples=["kDQD6AOgwHgaQI1UIJBJpPaiLgZuJbq0"],
     )
 
 
 class StorageBucketKeysPost(BaseModel):
     access_key: str | None = Field(
         None,
-        alias='access-key',
-        description='Access key',
-        examples=['33UgkaIBLBIxb7O1'],
+        alias="access-key",
+        description="Access key",
+        examples=["33UgkaIBLBIxb7O1"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage bucket key',
-        examples=['My read-only bucket key'],
+        description="Description of the storage bucket key",
+        examples=["My read-only bucket key"],
     )
     name: str | None = Field(
-        None, description='Key name', examples=['my-read-only-key']
+        None, description="Key name", examples=["my-read-only-key"]
     )
     role: str | None = Field(
         None,
-        description='Whether the key can perform write actions or not.',
-        examples=['read-only'],
+        description="Whether the key can perform write actions or not.",
+        examples=["read-only"],
     )
     secret_key: str | None = Field(
         None,
-        alias='secret-key',
-        description='Secret key',
-        examples=['kDQD6AOgwHgaQI1UIJBJpPaiLgZuJbq0'],
+        alias="secret-key",
+        description="Secret key",
+        examples=["kDQD6AOgwHgaQI1UIJBJpPaiLgZuJbq0"],
     )
 
 
 class StorageBucketPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage bucket configuration map',
-        examples=[{'size': '50GiB'}],
+        description="Storage bucket configuration map",
+        examples=[{"size": "50GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage bucket',
-        examples=['My custom bucket'],
+        description="Description of the storage bucket",
+        examples=["My custom bucket"],
     )
 
 
 class StorageBucketsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage bucket configuration map',
-        examples=[{'size': '50GiB'}],
+        description="Storage bucket configuration map",
+        examples=[{"size": "50GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage bucket',
-        examples=['My custom bucket'],
+        description="Description of the storage bucket",
+        examples=["My custom bucket"],
     )
-    name: str | None = Field(None, description='Bucket name', examples=['foo'])
+    name: str | None = Field(None, description="Bucket name", examples=["foo"])
 
 
 class StoragePool(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage pool configuration map (refer to doc/storage.md)',
-        examples=[{'volume.block.filesystem': 'ext4', 'volume.size': '50GiB'}],
+        description="Storage pool configuration map (refer to doc/storage.md)",
+        examples=[{"volume.block.filesystem": "ext4", "volume.size": "50GiB"}],
     )
     description: str | None = Field(
-        None, description='Description of the storage pool', examples=['Local SSD pool']
+        None, description="Description of the storage pool", examples=["Local SSD pool"]
     )
     driver: str | None = Field(
         None,
-        description='Storage pool driver (btrfs, ceph, cephfs, cephobject, dir, lvm, lvmcluster or zfs)',
-        examples=['zfs'],
+        description="Storage pool driver (btrfs, ceph, cephfs, cephobject, dir, lvm, lvmcluster or zfs)",
+        examples=["zfs"],
     )
     locations: list[str] | None = Field(
         None,
-        description='Cluster members on which the storage pool has been defined',
-        examples=[['server01', 'server02', 'server03']],
+        description="Cluster members on which the storage pool has been defined",
+        examples=[["server01", "server02", "server03"]],
     )
-    name: str | None = Field(None, description='Storage pool name', examples=['local'])
+    name: str | None = Field(None, description="Storage pool name", examples=["local"])
     status: str | None = Field(
         None,
-        description='Pool status (Pending, Created, Errored or Unknown)',
-        examples=['Created'],
+        description="Pool status (Pending, Created, Errored or Unknown)",
+        examples=["Created"],
     )
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this storage pool',
-        examples=[['/1.0/profiles/default', '/1.0/instances/c1']],
+        description="List of URLs of objects using this storage pool",
+        examples=[["/1.0/profiles/default", "/1.0/instances/c1"]],
     )
 
 
 class StoragePoolPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage pool configuration map (refer to doc/storage.md)',
-        examples=[{'volume.block.filesystem': 'ext4', 'volume.size': '50GiB'}],
+        description="Storage pool configuration map (refer to doc/storage.md)",
+        examples=[{"volume.block.filesystem": "ext4", "volume.size": "50GiB"}],
     )
     description: str | None = Field(
-        None, description='Description of the storage pool', examples=['Local SSD pool']
+        None, description="Description of the storage pool", examples=["Local SSD pool"]
     )
 
 
@@ -2872,376 +2872,376 @@ class StoragePoolState(BaseModel):
 class StoragePoolsPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage pool configuration map (refer to doc/storage.md)',
-        examples=[{'volume.block.filesystem': 'ext4', 'volume.size': '50GiB'}],
+        description="Storage pool configuration map (refer to doc/storage.md)",
+        examples=[{"volume.block.filesystem": "ext4", "volume.size": "50GiB"}],
     )
     description: str | None = Field(
-        None, description='Description of the storage pool', examples=['Local SSD pool']
+        None, description="Description of the storage pool", examples=["Local SSD pool"]
     )
     driver: str | None = Field(
         None,
-        description='Storage pool driver (btrfs, ceph, cephfs, cephobject, dir, lvm, lvmcluster or zfs)',
-        examples=['zfs'],
+        description="Storage pool driver (btrfs, ceph, cephfs, cephobject, dir, lvm, lvmcluster or zfs)",
+        examples=["zfs"],
     )
-    name: str | None = Field(None, description='Storage pool name', examples=['local'])
+    name: str | None = Field(None, description="Storage pool name", examples=["local"])
 
 
 class StorageVolume(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage volume configuration map (refer to doc/storage.md)',
-        examples=[{'size': '50GiB', 'zfs.remove_snapshots': 'true'}],
+        description="Storage volume configuration map (refer to doc/storage.md)",
+        examples=[{"size": "50GiB", "zfs.remove_snapshots": "true"}],
     )
     content_type: str | None = Field(
         None,
-        description='Volume content type (filesystem or block)',
-        examples=['filesystem'],
+        description="Volume content type (filesystem or block)",
+        examples=["filesystem"],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='Volume creation timestamp',
-        examples=['2021-03-23T20:00:00-04:00'],
+        description="Volume creation timestamp",
+        examples=["2021-03-23T20:00:00-04:00"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage volume',
-        examples=['My custom volume'],
+        description="Description of the storage volume",
+        examples=["My custom volume"],
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
-    name: str | None = Field(None, description='Volume name', examples=['foo'])
+    name: str | None = Field(None, description="Volume name", examples=["foo"])
     project: str | None = Field(
-        None, description='Project containing the volume.', examples=['default']
+        None, description="Project containing the volume.", examples=["default"]
     )
     restore: str | None = Field(
-        None, description='Name of a snapshot to restore', examples=['snap0']
+        None, description="Name of a snapshot to restore", examples=["snap0"]
     )
-    type: str | None = Field(None, description='Volume type', examples=['custom'])
+    type: str | None = Field(None, description="Volume type", examples=["custom"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this storage volume',
-        examples=[['/1.0/instances/blah']],
+        description="List of URLs of objects using this storage volume",
+        examples=[["/1.0/instances/blah"]],
     )
 
 
 class StorageVolumeBackup(BaseModel):
     created_at: AwareDatetime | None = Field(
         None,
-        description='When the backup was created',
-        examples=['2021-03-23T16:38:37.753398689-04:00'],
+        description="When the backup was created",
+        examples=["2021-03-23T16:38:37.753398689-04:00"],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the backup expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the backup expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
-    name: str | None = Field(None, description='Backup name', examples=['backup0'])
+    name: str | None = Field(None, description="Backup name", examples=["backup0"])
     optimized_storage: bool | None = Field(
         None,
-        description='Whether to use a pool-optimized binary format (instead of plain tarball)',
+        description="Whether to use a pool-optimized binary format (instead of plain tarball)",
         examples=[True],
     )
     volume_only: bool | None = Field(
-        None, description='Whether to ignore snapshots', examples=[False]
+        None, description="Whether to ignore snapshots", examples=[False]
     )
 
 
 class StorageVolumeBackupPost(BaseModel):
-    name: str | None = Field(None, description='New backup name', examples=['backup1'])
+    name: str | None = Field(None, description="New backup name", examples=["backup1"])
 
 
 class StorageVolumeBackupsPost(BaseModel):
     compression_algorithm: str | None = Field(
-        None, description='What compression algorithm to use', examples=['gzip']
+        None, description="What compression algorithm to use", examples=["gzip"]
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the backup expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the backup expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
-    name: str | None = Field(None, description='Backup name', examples=['backup0'])
+    name: str | None = Field(None, description="Backup name", examples=["backup0"])
     optimized_storage: bool | None = Field(
         None,
-        description='Whether to use a pool-optimized binary format (instead of plain tarball)',
+        description="Whether to use a pool-optimized binary format (instead of plain tarball)",
         examples=[True],
     )
     target: BackupTarget | None = None
     volume_only: bool | None = Field(
-        None, description='Whether to ignore snapshots', examples=[False]
+        None, description="Whether to ignore snapshots", examples=[False]
     )
 
 
 class StorageVolumePostTarget(BaseModel):
     certificate: str | None = Field(
         None,
-        description='The certificate of the migration target',
-        examples=['X509 PEM certificate'],
+        description="The certificate of the migration target",
+        examples=["X509 PEM certificate"],
     )
     operation: str | None = Field(
         None,
-        description='Remote operation URL (for migration)',
+        description="Remote operation URL (for migration)",
         examples=[
-            'https://1.2.3.4:8443/1.0/operations/1721ae08-b6a8-416a-9614-3f89302466e1'
+            "https://1.2.3.4:8443/1.0/operations/1721ae08-b6a8-416a-9614-3f89302466e1"
         ],
     )
     secrets: dict[str, str] | None = Field(
         None,
-        description='Migration websockets credentials',
-        examples=[{'migration': 'random-string'}],
+        description="Migration websockets credentials",
+        examples=[{"migration": "random-string"}],
     )
 
 
 class StorageVolumePut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage volume configuration map (refer to doc/storage.md)',
-        examples=[{'size': '50GiB', 'zfs.remove_snapshots': 'true'}],
+        description="Storage volume configuration map (refer to doc/storage.md)",
+        examples=[{"size": "50GiB", "zfs.remove_snapshots": "true"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage volume',
-        examples=['My custom volume'],
+        description="Description of the storage volume",
+        examples=["My custom volume"],
     )
     restore: str | None = Field(
-        None, description='Name of a snapshot to restore', examples=['snap0']
+        None, description="Name of a snapshot to restore", examples=["snap0"]
     )
 
 
 class StorageVolumeSnapshot(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage volume configuration map (refer to doc/storage.md)',
-        examples=[{'size': '50GiB', 'zfs.remove_snapshots': 'true'}],
+        description="Storage volume configuration map (refer to doc/storage.md)",
+        examples=[{"size": "50GiB", "zfs.remove_snapshots": "true"}],
     )
     content_type: str | None = Field(
         None,
-        description='The content type (filesystem or block)',
-        examples=['filesystem'],
+        description="The content type (filesystem or block)",
+        examples=["filesystem"],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='Volume snapshot creation timestamp',
-        examples=['2021-03-23T20:00:00-04:00'],
+        description="Volume snapshot creation timestamp",
+        examples=["2021-03-23T20:00:00-04:00"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage volume',
-        examples=['My custom volume'],
+        description="Description of the storage volume",
+        examples=["My custom volume"],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the snapshot expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the snapshot expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
-    name: str | None = Field(None, description='Snapshot name', examples=['snap0'])
+    name: str | None = Field(None, description="Snapshot name", examples=["snap0"])
 
 
 class StorageVolumeSnapshotPost(BaseModel):
     migration: bool | None = Field(
-        None, description='Initiate volume snapshot migration', examples=[False]
+        None, description="Initiate volume snapshot migration", examples=[False]
     )
-    name: str | None = Field(None, description='New snapshot name', examples=['snap1'])
+    name: str | None = Field(None, description="New snapshot name", examples=["snap1"])
     target: StorageVolumePostTarget | None = None
 
 
 class StorageVolumeSnapshotPut(BaseModel):
     description: str | None = Field(
         None,
-        description='Description of the storage volume',
-        examples=['My custom volume'],
+        description="Description of the storage volume",
+        examples=["My custom volume"],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the snapshot expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the snapshot expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
 
 
 class StorageVolumeSnapshotsPost(BaseModel):
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the snapshot expires (gets auto-deleted)',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="When the snapshot expires (gets auto-deleted)",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
-    name: str | None = Field(None, description='Snapshot name', examples=['snap0'])
+    name: str | None = Field(None, description="Snapshot name", examples=["snap0"])
 
 
 class StorageVolumeSource(BaseModel):
     certificate: str | None = Field(
         None,
-        description='Certificate (for migration)',
-        examples=['X509 PEM certificate'],
+        description="Certificate (for migration)",
+        examples=["X509 PEM certificate"],
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
     mode: str | None = Field(
         None,
-        description='Whether to use pull or push mode (for migration)',
-        examples=['pull'],
+        description="Whether to use pull or push mode (for migration)",
+        examples=["pull"],
     )
     name: str | None = Field(
-        None, description='Source volume name (for copy)', examples=['foo']
+        None, description="Source volume name (for copy)", examples=["foo"]
     )
     operation: str | None = Field(
         None,
-        description='Remote operation URL (for migration)',
+        description="Remote operation URL (for migration)",
         examples=[
-            'https://1.2.3.4:8443/1.0/operations/1721ae08-b6a8-416a-9614-3f89302466e1'
+            "https://1.2.3.4:8443/1.0/operations/1721ae08-b6a8-416a-9614-3f89302466e1"
         ],
     )
     pool: str | None = Field(
-        None, description='Source storage pool (for copy)', examples=['local']
+        None, description="Source storage pool (for copy)", examples=["local"]
     )
     project: str | None = Field(
-        None, description='Source project name', examples=['foo']
+        None, description="Source project name", examples=["foo"]
     )
     refresh: bool | None = Field(
         None,
-        description='Whether existing destination volume should be refreshed',
+        description="Whether existing destination volume should be refreshed",
         examples=[False],
     )
     refresh_exclude_older: bool | None = Field(
         None,
-        description='Whether to exclude source snapshots earlier than latest target snapshot',
+        description="Whether to exclude source snapshots earlier than latest target snapshot",
         examples=[False],
     )
     secrets: dict[str, str] | None = Field(
         None,
-        description='Map of migration websockets (for migration)',
-        examples=[{'rsync': 'RANDOM-STRING'}],
+        description="Map of migration websockets (for migration)",
+        examples=[{"rsync": "RANDOM-STRING"}],
     )
     type: str | None = Field(
-        None, description='Source type (copy or migration)', examples=['copy']
+        None, description="Source type (copy or migration)", examples=["copy"]
     )
     volume_only: bool | None = Field(
         None,
-        description='Whether snapshots should be discarded (for migration)',
+        description="Whether snapshots should be discarded (for migration)",
         examples=[False],
     )
 
 
 class StorageVolumeStateUsage(BaseModel):
     total: int | None = Field(
-        None, description='Storage volume size in bytes', examples=[5189222192]
+        None, description="Storage volume size in bytes", examples=[5189222192]
     )
     used: int | None = Field(
-        None, description='Used space in bytes', examples=[1693552640]
+        None, description="Used space in bytes", examples=[1693552640]
     )
 
 
 class StorageVolumesPost(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage volume configuration map (refer to doc/storage.md)',
-        examples=[{'size': '50GiB', 'zfs.remove_snapshots': 'true'}],
+        description="Storage volume configuration map (refer to doc/storage.md)",
+        examples=[{"size": "50GiB", "zfs.remove_snapshots": "true"}],
     )
     content_type: str | None = Field(
         None,
-        description='Volume content type (filesystem or block)',
-        examples=['filesystem'],
+        description="Volume content type (filesystem or block)",
+        examples=["filesystem"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage volume',
-        examples=['My custom volume'],
+        description="Description of the storage volume",
+        examples=["My custom volume"],
     )
-    name: str | None = Field(None, description='Volume name', examples=['foo'])
+    name: str | None = Field(None, description="Volume name", examples=["foo"])
     restore: str | None = Field(
-        None, description='Name of a snapshot to restore', examples=['snap0']
+        None, description="Name of a snapshot to restore", examples=["snap0"]
     )
     source: StorageVolumeSource | None = None
     type: str | None = Field(
         None,
-        description='Volume type (container, custom, image or virtual-machine)',
-        examples=['custom'],
+        description="Volume type (container, custom, image or virtual-machine)",
+        examples=["custom"],
     )
 
 
 class Warning(BaseModel):
     count: int | None = Field(
-        None, description='The number of times this warning occurred', examples=[1]
+        None, description="The number of times this warning occurred", examples=[1]
     )
     entity_url: str | None = Field(
         None,
-        description='The entity affected by this warning',
-        examples=['/1.0/instances/c1?project=default'],
+        description="The entity affected by this warning",
+        examples=["/1.0/instances/c1?project=default"],
     )
     first_seen_at: AwareDatetime | None = Field(
         None,
-        description='The first time this warning occurred',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="The first time this warning occurred",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     last_message: str | None = Field(
         None,
-        description='The warning message',
+        description="The warning message",
         examples=[
             "Couldn't find the CGroup blkio.weight, disk priority will be ignored"
         ],
     )
     last_seen_at: AwareDatetime | None = Field(
         None,
-        description='The last time this warning occurred',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="The last time this warning occurred",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     location: str | None = Field(
         None,
-        description='What cluster member this warning occurred on',
-        examples=['server01'],
+        description="What cluster member this warning occurred on",
+        examples=["server01"],
     )
     project: str | None = Field(
-        None, description='The project the warning occurred in', examples=['default']
+        None, description="The project the warning occurred in", examples=["default"]
     )
     severity: str | None = Field(
-        None, description='The severity of this warning', examples=['low']
+        None, description="The severity of this warning", examples=["low"]
     )
     status: str | None = Field(
         None,
-        description='Status of the warning (new, acknowledged, or resolved)',
-        examples=['new'],
+        description="Status of the warning (new, acknowledged, or resolved)",
+        examples=["new"],
     )
     type: str | None = Field(
-        None, description='Type type of warning', examples=["Couldn't find CGroup"]
+        None, description="Type type of warning", examples=["Couldn't find CGroup"]
     )
     uuid: str | None = Field(
         None,
-        description='UUID of the warning',
-        examples=['e9e9da0d-2538-4351-8047-46d4a8ae4dbb'],
+        description="UUID of the warning",
+        examples=["e9e9da0d-2538-4351-8047-46d4a8ae4dbb"],
     )
 
 
 class WarningPut(BaseModel):
     status: str | None = Field(
         None,
-        description='Status of the warning (new, acknowledged, or resolved)',
-        examples=['new'],
+        description="Status of the warning (new, acknowledged, or resolved)",
+        examples=["new"],
     )
 
 
 class Access(RootModel[list[AccessEntry]]):
     root: list[AccessEntry] = Field(
-        ..., title='Access represents everyone that may access a particular resource.'
+        ..., title="Access represents everyone that may access a particular resource."
     )
 
 
 class Cluster(BaseModel):
     enabled: bool | None = Field(
-        None, description='Whether clustering is enabled', examples=[True]
+        None, description="Whether clustering is enabled", examples=[True]
     )
     member_config: list[ClusterMemberConfigKey] | None = Field(
         None,
-        description='List of member configuration keys (used during join)',
+        description="List of member configuration keys (used during join)",
         examples=[[]],
     )
     server_name: str | None = Field(
         None,
-        description='Name of the cluster member answering the request',
-        examples=['server01'],
+        description="Name of the cluster member answering the request",
+        examples=["server01"],
     )
 
 
@@ -3251,139 +3251,139 @@ class ClusterMemberState(BaseModel):
 
 
 class Image(BaseModel):
-    aliases: list[ImageAlias] | None = Field(None, description='List of aliases')
+    aliases: list[ImageAlias] | None = Field(None, description="List of aliases")
     architecture: str | None = Field(
-        None, description='Architecture', examples=['x86_64']
+        None, description="Architecture", examples=["x86_64"]
     )
     auto_update: bool | None = Field(
         None,
-        description='Whether the image should auto-update when a new build is available',
+        description="Whether the image should auto-update when a new build is available",
         examples=[True],
     )
     cached: bool | None = Field(
         None,
-        description='Whether the image is an automatically cached remote image',
+        description="Whether the image is an automatically cached remote image",
         examples=[True],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='When the image was originally created',
-        examples=['2021-03-23T20:00:00-04:00'],
+        description="When the image was originally created",
+        examples=["2021-03-23T20:00:00-04:00"],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the image becomes obsolete',
-        examples=['2025-03-23T20:00:00-04:00'],
+        description="When the image becomes obsolete",
+        examples=["2025-03-23T20:00:00-04:00"],
     )
     filename: str | None = Field(
         None,
-        description='Original filename',
+        description="Original filename",
         examples=[
-            '06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb.rootfs'
+            "06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb.rootfs"
         ],
     )
     fingerprint: str | None = Field(
         None,
-        description='Full SHA-256 fingerprint',
-        examples=['06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb'],
+        description="Full SHA-256 fingerprint",
+        examples=["06b86454720d36b20f94e31c6812e05ec51c1b568cf3a8abd273769d213394bb"],
     )
     last_used_at: AwareDatetime | None = Field(
         None,
-        description='Last time the image was used',
-        examples=['2021-03-22T20:39:00.575185384-04:00'],
+        description="Last time the image was used",
+        examples=["2021-03-22T20:39:00.575185384-04:00"],
     )
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles to use when creating from this image (if none provided by user)',
-        examples=[['default']],
+        description="List of profiles to use when creating from this image (if none provided by user)",
+        examples=[["default"]],
     )
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     properties: dict[str, str] | None = Field(
         None,
-        description='Descriptive properties',
-        examples=[{'os': 'Ubuntu', 'release': 'jammy', 'variant': 'cloud'}],
+        description="Descriptive properties",
+        examples=[{"os": "Ubuntu", "release": "jammy", "variant": "cloud"}],
     )
     public: bool | None = Field(
         None,
-        description='Whether the image is available to unauthenticated users',
+        description="Whether the image is available to unauthenticated users",
         examples=[False],
     )
     size: int | None = Field(
-        None, description='Size of the image in bytes', examples=[272237676]
+        None, description="Size of the image in bytes", examples=[272237676]
     )
     type: str | None = Field(
         None,
-        description='Type of image (container or virtual-machine)',
-        examples=['container'],
+        description="Type of image (container or virtual-machine)",
+        examples=["container"],
     )
     update_source: ImageSource | None = None
     uploaded_at: AwareDatetime | None = Field(
         None,
-        description='When the image was added to this server',
-        examples=['2021-03-24T14:18:15.115036787-04:00'],
+        description="When the image was added to this server",
+        examples=["2021-03-24T14:18:15.115036787-04:00"],
     )
 
 
 class ImageMetadata(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture name', examples=['x86_64']
+        None, description="Architecture name", examples=["x86_64"]
     )
     creation_date: int | None = Field(
-        None, description='Image creation data (as UNIX epoch)', examples=[1620655439]
+        None, description="Image creation data (as UNIX epoch)", examples=[1620655439]
     )
     expiry_date: int | None = Field(
-        None, description='Image expiry data (as UNIX epoch)', examples=[1620685757]
+        None, description="Image expiry data (as UNIX epoch)", examples=[1620685757]
     )
     properties: dict[str, str] | None = Field(
         None,
-        description='Descriptive properties',
-        examples=[{'os': 'Ubuntu', 'release': 'jammy', 'variant': 'cloud'}],
+        description="Descriptive properties",
+        examples=[{"os": "Ubuntu", "release": "jammy", "variant": "cloud"}],
     )
     templates: dict[str, ImageMetadataTemplate] | None = Field(
-        None, description='Template for files in the image'
+        None, description="Template for files in the image"
     )
 
 
 class ImagesPost(BaseModel):
     aliases: list[ImageAlias] | None = Field(
         None,
-        description='Aliases to add to the image',
-        examples=[[{'name': 'foo'}, {'name': 'bar'}]],
+        description="Aliases to add to the image",
+        examples=[[{"name": "foo"}, {"name": "bar"}]],
     )
     auto_update: bool | None = Field(
         None,
-        description='Whether the image should auto-update when a new build is available',
+        description="Whether the image should auto-update when a new build is available",
         examples=[True],
     )
     compression_algorithm: str | None = Field(
         None,
-        description='Compression algorithm to use when turning an instance into an image',
-        examples=['gzip'],
+        description="Compression algorithm to use when turning an instance into an image",
+        examples=["gzip"],
     )
     expires_at: AwareDatetime | None = Field(
         None,
-        description='When the image becomes obsolete',
-        examples=['2025-03-23T20:00:00-04:00'],
+        description="When the image becomes obsolete",
+        examples=["2025-03-23T20:00:00-04:00"],
     )
     filename: str | None = Field(
-        None, description='Original filename of the image', examples=['image.tar.xz']
+        None, description="Original filename of the image", examples=["image.tar.xz"]
     )
     format: str | None = Field(
-        None, description='Type of image format', examples=['split']
+        None, description="Type of image format", examples=["split"]
     )
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles to use when creating from this image (if none provided by user)',
-        examples=[['default']],
+        description="List of profiles to use when creating from this image (if none provided by user)",
+        examples=[["default"]],
     )
     properties: dict[str, str] | None = Field(
         None,
-        description='Descriptive properties',
-        examples=[{'os': 'Ubuntu', 'release': 'jammy', 'variant': 'cloud'}],
+        description="Descriptive properties",
+        examples=[{"os": "Ubuntu", "release": "jammy", "variant": "cloud"}],
     )
     public: bool | None = Field(
         None,
-        description='Whether the image is available to unauthenticated users',
+        description="Whether the image is available to unauthenticated users",
         examples=[False],
     )
     source: ImagesPostSource | None = None
@@ -3392,162 +3392,162 @@ class ImagesPost(BaseModel):
 class InitStorageVolumesProjectPost(BaseModel):
     Pool: str | None = Field(
         None,
-        description='Storage pool in which the volume will reside',
+        description="Storage pool in which the volume will reside",
         examples=['"default"'],
     )
     Project: str | None = Field(
         None,
-        description='Project in which the volume will reside',
+        description="Project in which the volume will reside",
         examples=['"default"'],
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage volume configuration map (refer to doc/storage.md)',
-        examples=[{'size': '50GiB', 'zfs.remove_snapshots': 'true'}],
+        description="Storage volume configuration map (refer to doc/storage.md)",
+        examples=[{"size": "50GiB", "zfs.remove_snapshots": "true"}],
     )
     content_type: str | None = Field(
         None,
-        description='Volume content type (filesystem or block)',
-        examples=['filesystem'],
+        description="Volume content type (filesystem or block)",
+        examples=["filesystem"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage volume',
-        examples=['My custom volume'],
+        description="Description of the storage volume",
+        examples=["My custom volume"],
     )
-    name: str | None = Field(None, description='Volume name', examples=['foo'])
+    name: str | None = Field(None, description="Volume name", examples=["foo"])
     restore: str | None = Field(
-        None, description='Name of a snapshot to restore', examples=['snap0']
+        None, description="Name of a snapshot to restore", examples=["snap0"]
     )
     source: StorageVolumeSource | None = None
     type: str | None = Field(
         None,
-        description='Volume type (container, custom, image or virtual-machine)',
-        examples=['custom'],
+        description="Volume type (container, custom, image or virtual-machine)",
+        examples=["custom"],
     )
 
 
 class Instance(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture name', examples=['x86_64']
+        None, description="Architecture name", examples=["x86_64"]
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration (see doc/instances.md)',
-        examples=[{'security.nesting': 'true'}],
+        description="Instance configuration (see doc/instances.md)",
+        examples=[{"security.nesting": "true"}],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='Instance creation timestamp',
-        examples=['2021-03-23T20:00:00-04:00'],
+        description="Instance creation timestamp",
+        examples=["2021-03-23T20:00:00-04:00"],
     )
     description: str | None = Field(
-        None, description='Instance description', examples=['My test instance']
+        None, description="Instance description", examples=["My test instance"]
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='Instance devices (see doc/instances.md)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Instance devices (see doc/instances.md)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     ephemeral: bool | None = Field(
         None,
-        description='Whether the instance is ephemeral (deleted on shutdown)',
+        description="Whether the instance is ephemeral (deleted on shutdown)",
         examples=[False],
     )
     expanded_config: dict[str, Any] | None = Field(
         None,
-        description='Expanded configuration (all profiles and local config merged)',
-        examples=[{'security.nesting': 'true'}],
+        description="Expanded configuration (all profiles and local config merged)",
+        examples=[{"security.nesting": "true"}],
     )
     expanded_devices: dict[str, Any] | None = Field(
         None,
-        description='Expanded devices (all profiles and local devices merged)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Expanded devices (all profiles and local devices merged)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     last_used_at: AwareDatetime | None = Field(
-        None, description='Last start timestamp', examples=['2021-03-23T20:00:00-04:00']
+        None, description="Last start timestamp", examples=["2021-03-23T20:00:00-04:00"]
     )
     location: str | None = Field(
         None,
-        description='What cluster member this instance is located on',
-        examples=['server01'],
+        description="What cluster member this instance is located on",
+        examples=["server01"],
     )
-    name: str | None = Field(None, description='Instance name', examples=['foo'])
+    name: str | None = Field(None, description="Instance name", examples=["foo"])
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles applied to the instance',
-        examples=[['default']],
+        description="List of profiles applied to the instance",
+        examples=[["default"]],
     )
     project: str | None = Field(
-        None, description='Instance project name', examples=['foo']
+        None, description="Instance project name", examples=["foo"]
     )
     restore: str | None = Field(
         None,
-        description='If set, instance will be restored to the provided snapshot name',
-        examples=['snap0'],
+        description="If set, instance will be restored to the provided snapshot name",
+        examples=["snap0"],
     )
     stateful: bool | None = Field(
         None,
-        description='Whether the instance currently has saved state on disk',
+        description="Whether the instance currently has saved state on disk",
         examples=[False],
     )
     status: str | None = Field(
-        None, description='Instance status (see instance_state)', examples=['Running']
+        None, description="Instance status (see instance_state)", examples=["Running"]
     )
     status_code: StatusCode | None = None
     type: str | None = Field(
         None,
-        description='The type of instance (container or virtual-machine)',
-        examples=['container'],
+        description="The type of instance (container or virtual-machine)",
+        examples=["container"],
     )
 
 
 class InstancePost(BaseModel):
     Config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration file.',
-        examples=[{'security.nesting': 'true'}],
+        description="Instance configuration file.",
+        examples=[{"security.nesting": "true"}],
     )
     Devices: dict[str, Any] | None = Field(
         None,
-        description='Instance devices.',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Instance devices.",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     Profiles: list[str] | None = Field(
         None,
-        description='List of profiles applied to the instance.',
-        examples=[['default']],
+        description="List of profiles applied to the instance.",
+        examples=[["default"]],
     )
     allow_inconsistent: bool | None = Field(
         None,
-        description='AllowInconsistent allow inconsistent copies when migrating.',
+        description="AllowInconsistent allow inconsistent copies when migrating.",
         examples=[False],
     )
     instance_only: bool | None = Field(
         None,
-        description='Whether snapshots should be discarded (migration only)',
+        description="Whether snapshots should be discarded (migration only)",
         examples=[False],
     )
     live: bool | None = Field(
         None,
-        description='Whether to perform a live migration (migration only)',
+        description="Whether to perform a live migration (migration only)",
         examples=[False],
     )
     migration: bool | None = Field(
         None,
-        description='Whether the instance is being migrated to another server',
+        description="Whether the instance is being migrated to another server",
         examples=[False],
     )
     name: str | None = Field(
-        None, description='New name for the instance', examples=['bar']
+        None, description="New name for the instance", examples=["bar"]
     )
     pool: str | None = Field(
-        None, description='Target pool for local cross-pool move', examples=['baz']
+        None, description="Target pool for local cross-pool move", examples=["baz"]
     )
     project: str | None = Field(
         None,
-        description='Target project for local cross-project move',
-        examples=['foo'],
+        description="Target project for local cross-project move",
+        examples=["foo"],
     )
     target: InstancePostTarget | None = None
 
@@ -3558,29 +3558,29 @@ class InstanceRebuildPost(BaseModel):
 
 class InstanceStateNetwork(BaseModel):
     addresses: list[InstanceStateNetworkAddress] | None = Field(
-        None, description='List of IP addresses'
+        None, description="List of IP addresses"
     )
     counters: InstanceStateNetworkCounters | None = None
     host_name: str | None = Field(
-        None, description='Name of the interface on the host', examples=['vethbbcd39c7']
+        None, description="Name of the interface on the host", examples=["vethbbcd39c7"]
     )
     hwaddr: str | None = Field(
-        None, description='MAC address', examples=['10:66:6a:0c:ee:dd']
+        None, description="MAC address", examples=["10:66:6a:0c:ee:dd"]
     )
     mtu: int | None = Field(
         None,
-        description='MTU (maximum transmit unit) for the interface',
+        description="MTU (maximum transmit unit) for the interface",
         examples=[1500],
     )
     state: str | None = Field(
         None,
-        description='Administrative state of the interface (up/down)',
-        examples=['up'],
+        description="Administrative state of the interface (up/down)",
+        examples=["up"],
     )
     type: str | None = Field(
         None,
-        description='Type of interface (broadcast, loopback, point-to-point, ...)',
-        examples=['broadcast'],
+        description="Type of interface (broadcast, loopback, point-to-point, ...)",
+        examples=["broadcast"],
     )
 
 
@@ -3591,96 +3591,96 @@ class MetadataConfigGroup(BaseModel):
 class NetworkACL(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='ACL configuration map (refer to doc/network-acls.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="ACL configuration map (refer to doc/network-acls.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the ACL', examples=['Web servers']
+        None, description="Description of the ACL", examples=["Web servers"]
     )
     egress: list[NetworkACLRule] | None = Field(
-        None, description='List of egress rules (order independent)'
+        None, description="List of egress rules (order independent)"
     )
     ingress: list[NetworkACLRule] | None = Field(
-        None, description='List of ingress rules (order independent)'
+        None, description="List of ingress rules (order independent)"
     )
     name: str | None = Field(
-        None, description='The new name for the ACL', examples=['bar']
+        None, description="The new name for the ACL", examples=["bar"]
     )
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this profile',
-        examples=[['/1.0/instances/c1', '/1.0/instances/v1', '/1.0/networks/mybr0']],
+        description="List of URLs of objects using this profile",
+        examples=[["/1.0/instances/c1", "/1.0/instances/v1", "/1.0/networks/mybr0"]],
     )
 
 
 class NetworkACLPut(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='ACL configuration map (refer to doc/network-acls.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="ACL configuration map (refer to doc/network-acls.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the ACL', examples=['Web servers']
+        None, description="Description of the ACL", examples=["Web servers"]
     )
     egress: list[NetworkACLRule] | None = Field(
-        None, description='List of egress rules (order independent)'
+        None, description="List of egress rules (order independent)"
     )
     ingress: list[NetworkACLRule] | None = Field(
-        None, description='List of ingress rules (order independent)'
+        None, description="List of ingress rules (order independent)"
     )
 
 
 class NetworkForward(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Forward configuration map (refer to doc/network-forwards.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Forward configuration map (refer to doc/network-forwards.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the forward listen IP',
-        examples=['My public IP forward'],
+        description="Description of the forward listen IP",
+        examples=["My public IP forward"],
     )
     listen_address: str | None = Field(
-        None, description='The listen address of the forward', examples=['192.0.2.1']
+        None, description="The listen address of the forward", examples=["192.0.2.1"]
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
     ports: list[NetworkForwardPort] | None = Field(
-        None, description='Port forwards (optional)'
+        None, description="Port forwards (optional)"
     )
 
 
 class NetworkLoadBalancer(BaseModel):
     backends: list[NetworkLoadBalancerBackend] | None = Field(
-        None, description='Backends (optional)'
+        None, description="Backends (optional)"
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Load balancer configuration map (refer to doc/network-load-balancers.md)',
-        examples=[{'user.mykey': 'foo'}],
+        description="Load balancer configuration map (refer to doc/network-load-balancers.md)",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the load balancer listen IP',
-        examples=['My public IP load balancer'],
+        description="Description of the load balancer listen IP",
+        examples=["My public IP load balancer"],
     )
     listen_address: str | None = Field(
         None,
-        description='The listen address of the load balancer',
-        examples=['192.0.2.1'],
+        description="The listen address of the load balancer",
+        examples=["192.0.2.1"],
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
     ports: list[NetworkLoadBalancerPort] | None = Field(
-        None, description='Port forwards (optional)'
+        None, description="Port forwards (optional)"
     )
 
 
@@ -3691,319 +3691,319 @@ class NetworkLoadBalancerStateBackendHealth(BaseModel):
 
 class NetworkState(BaseModel):
     addresses: list[NetworkStateAddress] | None = Field(
-        None, description='List of addresses'
+        None, description="List of addresses"
     )
     bond: NetworkStateBond | None = None
     bridge: NetworkStateBridge | None = None
     counters: NetworkStateCounters | None = None
     hwaddr: str | None = Field(
-        None, description='MAC address', examples=['10:66:6a:5a:83:57']
+        None, description="MAC address", examples=["10:66:6a:5a:83:57"]
     )
-    mtu: int | None = Field(None, description='MTU', examples=[1500])
+    mtu: int | None = Field(None, description="MTU", examples=[1500])
     ovn: NetworkStateOVN | None = None
-    state: str | None = Field(None, description='Link state', examples=['up'])
-    type: str | None = Field(None, description='Interface type', examples=['broadcast'])
+    state: str | None = Field(None, description="Link state", examples=["up"])
+    type: str | None = Field(None, description="Interface type", examples=["broadcast"])
     vlan: NetworkStateVLAN | None = None
 
 
 class NetworkZoneRecord(BaseModel):
     config: dict[str, Any] | None = Field(
         None,
-        description='Advanced configuration for the record',
-        examples=[{'user.mykey': 'foo'}],
+        description="Advanced configuration for the record",
+        examples=[{"user.mykey": "foo"}],
     )
     description: str | None = Field(
-        None, description='Description of the record', examples=['SPF record']
+        None, description="Description of the record", examples=["SPF record"]
     )
     entries: list[NetworkZoneRecordEntry] | None = Field(
-        None, description='Entries in the record'
+        None, description="Entries in the record"
     )
-    name: str | None = Field(None, description='The name of the record', examples=['@'])
+    name: str | None = Field(None, description="The name of the record", examples=["@"])
 
 
 class Operation(BaseModel):
     class_: str | None = Field(
         None,
-        alias='class',
-        description='Type of operation (task, token or websocket)',
-        examples=['websocket'],
+        alias="class",
+        description="Type of operation (task, token or websocket)",
+        examples=["websocket"],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='Operation creation time',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="Operation creation time",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
     description: str | None = Field(
-        None, description='Description of the operation', examples=['Executing command']
+        None, description="Description of the operation", examples=["Executing command"]
     )
     err: str | None = Field(
-        None, description='Operation error message', examples=['Some error message']
+        None, description="Operation error message", examples=["Some error message"]
     )
     id: str | None = Field(
         None,
-        description='UUID of the operation',
-        examples=['6916c8a6-9b7d-4abd-90b3-aedfec7ec7da'],
+        description="UUID of the operation",
+        examples=["6916c8a6-9b7d-4abd-90b3-aedfec7ec7da"],
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
     may_cancel: bool | None = Field(
-        None, description='Whether the operation can be canceled', examples=[False]
+        None, description="Whether the operation can be canceled", examples=[False]
     )
     metadata: dict[str, Any] | None = Field(
         None,
-        description='Operation specific metadata',
+        description="Operation specific metadata",
         examples=[
             {
-                'command': ['bash'],
-                'environment': {
-                    'HOME': '/root',
-                    'LANG': 'C.UTF-8',
-                    'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-                    'TERM': 'xterm',
-                    'USER': 'root',
+                "command": ["bash"],
+                "environment": {
+                    "HOME": "/root",
+                    "LANG": "C.UTF-8",
+                    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                    "TERM": "xterm",
+                    "USER": "root",
                 },
-                'fds': {
-                    '0': 'da3046cf02c0116febf4ef3fe4eaecdf308e720c05e5a9c730ce1a6f15417f66',
-                    '1': '05896879d8692607bd6e4a09475667da3b5f6714418ab0ee0e5720b4c57f754b',
+                "fds": {
+                    "0": "da3046cf02c0116febf4ef3fe4eaecdf308e720c05e5a9c730ce1a6f15417f66",
+                    "1": "05896879d8692607bd6e4a09475667da3b5f6714418ab0ee0e5720b4c57f754b",
                 },
-                'interactive': True,
+                "interactive": True,
             }
         ],
     )
     resources: dict[str, list[str]] | None = Field(
         None,
-        description='Affected resources',
-        examples=[{'instances': ['/1.0/instances/foo']}],
+        description="Affected resources",
+        examples=[{"instances": ["/1.0/instances/foo"]}],
     )
-    status: str | None = Field(None, description='Status name', examples=['Running'])
+    status: str | None = Field(None, description="Status name", examples=["Running"])
     status_code: StatusCode | None = None
     updated_at: AwareDatetime | None = Field(
         None,
-        description='Operation last change',
-        examples=['2021-03-23T17:38:37.753398689-04:00'],
+        description="Operation last change",
+        examples=["2021-03-23T17:38:37.753398689-04:00"],
     )
 
 
 class ProjectState(BaseModel):
     resources: dict[str, ProjectStateResource] | None = Field(
         None,
-        description='Allocated and used resources',
+        description="Allocated and used resources",
         examples=[
-            {'containers': {'limit': 10, 'usage': 4}, 'cpu': {'limit': 20, 'usage': 16}}
+            {"containers": {"limit": 10, "usage": 4}, "cpu": {"limit": 20, "usage": 16}}
         ],
     )
 
 
 class ResourcesCPUCore(BaseModel):
     core: int | None = Field(
-        None, description='Core identifier within the socket', examples=[0]
+        None, description="Core identifier within the socket", examples=[0]
     )
     die: int | None = Field(
         None,
-        description='What die the CPU is a part of (for chiplet designs)',
+        description="What die the CPU is a part of (for chiplet designs)",
         examples=[0],
     )
     flags: list[str] | None = Field(
-        None, description='List of CPU flags', examples=[[]]
+        None, description="List of CPU flags", examples=[[]]
     )
     frequency: int | None = Field(
-        None, description='Current frequency', examples=[3500]
+        None, description="Current frequency", examples=[3500]
     )
     threads: list[ResourcesCPUThread] | None = Field(
-        None, description='List of threads'
+        None, description="List of threads"
     )
 
 
 class ResourcesCPUSocket(BaseModel):
     address_sizes: ResourcesCPUAddressSizes | None = None
     cache: list[ResourcesCPUCache] | None = Field(
-        None, description='List of CPU caches'
+        None, description="List of CPU caches"
     )
-    cores: list[ResourcesCPUCore] | None = Field(None, description='List of CPU cores')
+    cores: list[ResourcesCPUCore] | None = Field(None, description="List of CPU cores")
     frequency: int | None = Field(
-        None, description='Current CPU frequency (Mhz)', examples=[3499]
+        None, description="Current CPU frequency (Mhz)", examples=[3499]
     )
     frequency_minimum: int | None = Field(
-        None, description='Minimum CPU frequency (Mhz)', examples=[400]
+        None, description="Minimum CPU frequency (Mhz)", examples=[400]
     )
     frequency_turbo: int | None = Field(
-        None, description='Maximum CPU frequency (Mhz)', examples=[3500]
+        None, description="Maximum CPU frequency (Mhz)", examples=[3500]
     )
     name: str | None = Field(
         None,
-        description='Product name',
-        examples=['Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz'],
+        description="Product name",
+        examples=["Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz"],
     )
-    socket: int | None = Field(None, description='Socket number', examples=[0])
+    socket: int | None = Field(None, description="Socket number", examples=[0])
     vendor: str | None = Field(
-        None, description='Vendor name', examples=['GenuineIntel']
+        None, description="Vendor name", examples=["GenuineIntel"]
     )
 
 
 class ResourcesMemory(BaseModel):
     hugepages_size: int | None = Field(
-        None, description='Size of memory huge pages (bytes)', examples=[2097152]
+        None, description="Size of memory huge pages (bytes)", examples=[2097152]
     )
     hugepages_total: int | None = Field(
-        None, description='Total of memory huge pages (bytes)', examples=[429284917248]
+        None, description="Total of memory huge pages (bytes)", examples=[429284917248]
     )
     hugepages_used: int | None = Field(
-        None, description='Used memory huge pages (bytes)', examples=[429284917248]
+        None, description="Used memory huge pages (bytes)", examples=[429284917248]
     )
     nodes: list[ResourcesMemoryNode] | None = Field(
-        None, description='List of NUMA memory nodes', examples=[None]
+        None, description="List of NUMA memory nodes", examples=[None]
     )
     total: int | None = Field(
-        None, description='Total system memory (bytes)', examples=[687194767360]
+        None, description="Total system memory (bytes)", examples=[687194767360]
     )
     used: int | None = Field(
-        None, description='Used system memory (bytes)', examples=[557450502144]
+        None, description="Used system memory (bytes)", examples=[557450502144]
     )
 
 
 class ResourcesNetworkCardPort(BaseModel):
     address: str | None = Field(
-        None, description='MAC address', examples=['00:23:a4:01:01:6f']
+        None, description="MAC address", examples=["00:23:a4:01:01:6f"]
     )
     auto_negotiation: bool | None = Field(
-        None, description='Whether auto negotiation is used', examples=[True]
+        None, description="Whether auto negotiation is used", examples=[True]
     )
     id: str | None = Field(
-        None, description='Port identifier (interface name)', examples=['eth0']
+        None, description="Port identifier (interface name)", examples=["eth0"]
     )
     infiniband: ResourcesNetworkCardPortInfiniband | None = None
     link_detected: bool | None = Field(
-        None, description='Whether a link was detected', examples=[True]
+        None, description="Whether a link was detected", examples=[True]
     )
-    link_duplex: str | None = Field(None, description='Duplex type', examples=['full'])
+    link_duplex: str | None = Field(None, description="Duplex type", examples=["full"])
     link_speed: int | None = Field(
-        None, description='Current speed (Mbit/s)', examples=[10000]
+        None, description="Current speed (Mbit/s)", examples=[10000]
     )
-    port: int | None = Field(None, description='Port number', examples=[0])
+    port: int | None = Field(None, description="Port number", examples=[0])
     port_type: str | None = Field(
-        None, description='Current port type', examples=['twisted pair']
+        None, description="Current port type", examples=["twisted pair"]
     )
     protocol: str | None = Field(
-        None, description='Transport protocol', examples=['ethernet']
+        None, description="Transport protocol", examples=["ethernet"]
     )
     supported_modes: list[str] | None = Field(
         None,
-        description='List of supported modes',
+        description="List of supported modes",
         examples=[
             [
-                '100baseT/Full',
-                '1000baseT/Full',
-                '2500baseT/Full',
-                '5000baseT/Full',
-                '10000baseT/Full',
+                "100baseT/Full",
+                "1000baseT/Full",
+                "2500baseT/Full",
+                "5000baseT/Full",
+                "10000baseT/Full",
             ]
         ],
     )
     supported_ports: list[str] | None = Field(
-        None, description='List of supported port types', examples=[['twisted pair']]
+        None, description="List of supported port types", examples=[["twisted pair"]]
     )
     transceiver_type: str | None = Field(
-        None, description='Type of transceiver used', examples=['internal']
+        None, description="Type of transceiver used", examples=["internal"]
     )
 
 
 class ResourcesPCIDevice(BaseModel):
     driver: str | None = Field(
         None,
-        description='Kernel driver currently associated with the GPU',
-        examples=['mgag200'],
+        description="Kernel driver currently associated with the GPU",
+        examples=["mgag200"],
     )
     driver_version: str | None = Field(
-        None, description='Version of the kernel driver', examples=['5.8.0-36-generic']
+        None, description="Version of the kernel driver", examples=["5.8.0-36-generic"]
     )
     iommu_group: int | None = Field(
-        None, description='IOMMU group number', examples=[20]
+        None, description="IOMMU group number", examples=[20]
     )
     numa_node: int | None = Field(
-        None, description='NUMA node the card is a part of', examples=[0]
+        None, description="NUMA node the card is a part of", examples=[0]
     )
     pci_address: str | None = Field(
-        None, description='PCI address', examples=['0000:07:03.0']
+        None, description="PCI address", examples=["0000:07:03.0"]
     )
     product: str | None = Field(
-        None, description='Name of the product', examples=['MGA G200eW WPCM450']
+        None, description="Name of the product", examples=["MGA G200eW WPCM450"]
     )
     product_id: str | None = Field(
-        None, description='PCI ID of the product', examples=['0532']
+        None, description="PCI ID of the product", examples=["0532"]
     )
     vendor: str | None = Field(
         None,
-        description='Name of the vendor',
-        examples=['Matrox Electronics Systems Ltd.'],
+        description="Name of the vendor",
+        examples=["Matrox Electronics Systems Ltd."],
     )
     vendor_id: str | None = Field(
-        None, description='PCI ID of the vendor', examples=['102b']
+        None, description="PCI ID of the vendor", examples=["102b"]
     )
     vpd: ResourcesPCIVPD | None = None
 
 
 class ResourcesSerial(BaseModel):
     devices: list[ResourcesSerialDevice] | None = Field(
-        None, description='List of serial devices'
+        None, description="List of serial devices"
     )
     total: int | None = Field(
-        None, description='Total number of serial devices', examples=[1]
+        None, description="Total number of serial devices", examples=[1]
     )
 
 
 class ResourcesStorageDisk(BaseModel):
-    block_size: int | None = Field(None, description='Block size', examples=[512])
-    device: str | None = Field(None, description='Device number', examples=['259:0'])
+    block_size: int | None = Field(None, description="Block size", examples=[512])
+    device: str | None = Field(None, description="Device number", examples=["259:0"])
     device_id: str | None = Field(
         None,
-        description='Device by-id identifier',
-        examples=['nvme-eui.0000000001000000e4d25cafae2e4c00'],
+        description="Device by-id identifier",
+        examples=["nvme-eui.0000000001000000e4d25cafae2e4c00"],
     )
     device_path: str | None = Field(
         None,
-        description='Device by-path identifier',
-        examples=['pci-0000:05:00.0-nvme-1'],
+        description="Device by-path identifier",
+        examples=["pci-0000:05:00.0-nvme-1"],
     )
     firmware_version: str | None = Field(
-        None, description='Current firmware version', examples=['PSF121C']
+        None, description="Current firmware version", examples=["PSF121C"]
     )
     id: str | None = Field(
-        None, description='ID of the disk (device name)', examples=['nvme0n1']
+        None, description="ID of the disk (device name)", examples=["nvme0n1"]
     )
     model: str | None = Field(
-        None, description='Disk model name', examples=['INTEL SSDPEKKW256G7']
+        None, description="Disk model name", examples=["INTEL SSDPEKKW256G7"]
     )
     numa_node: int | None = Field(
-        None, description='NUMA node the disk is a part of', examples=[0]
+        None, description="NUMA node the disk is a part of", examples=[0]
     )
     partitions: list[ResourcesStorageDiskPartition] | None = Field(
-        None, description='List of partitions'
+        None, description="List of partitions"
     )
     pci_address: str | None = Field(
-        None, description='PCI address', examples=['0000:05:00.0']
+        None, description="PCI address", examples=["0000:05:00.0"]
     )
     read_only: bool | None = Field(
-        None, description='Whether the disk is read-only', examples=[False]
+        None, description="Whether the disk is read-only", examples=[False]
     )
     removable: bool | None = Field(
-        None, description='Whether the disk is removable (hot-plug)', examples=[False]
+        None, description="Whether the disk is removable (hot-plug)", examples=[False]
     )
-    rpm: int | None = Field(None, description='Rotation speed (RPM)', examples=[0])
+    rpm: int | None = Field(None, description="Rotation speed (RPM)", examples=[0])
     serial: str | None = Field(
-        None, description='Serial number', examples=['BTPY63440ARH256D']
+        None, description="Serial number", examples=["BTPY63440ARH256D"]
     )
     size: int | None = Field(
-        None, description='Total size of the disk (bytes)', examples=[256060514304]
+        None, description="Total size of the disk (bytes)", examples=[256060514304]
     )
-    type: str | None = Field(None, description='Storage type', examples=['nvme'])
-    usb_address: str | None = Field(None, description='USB address', examples=['3:5'])
+    type: str | None = Field(None, description="Storage type", examples=["nvme"])
+    usb_address: str | None = Field(None, description="USB address", examples=["3:5"])
     wwn: str | None = Field(
         None,
-        description='WWN identifier',
-        examples=['eui.0000000001000000e4d25cafae2e4c00'],
+        description="WWN identifier",
+        examples=["eui.0000000001000000e4d25cafae2e4c00"],
     )
 
 
@@ -4015,202 +4015,202 @@ class ResourcesStoragePool(BaseModel):
 class ResourcesSystem(BaseModel):
     chassis: ResourcesSystemChassis | None = None
     family: str | None = Field(
-        None, description='System family', examples=['ThinkPad X1 Carbon 5th']
+        None, description="System family", examples=["ThinkPad X1 Carbon 5th"]
     )
     firmware: ResourcesSystemFirmware | None = None
     motherboard: ResourcesSystemMotherboard | None = None
     product: str | None = Field(
-        None, description='System model', examples=['20HRCTO1WW']
+        None, description="System model", examples=["20HRCTO1WW"]
     )
     serial: str | None = Field(
-        None, description='System serial number', examples=['PY3DD4X9']
+        None, description="System serial number", examples=["PY3DD4X9"]
     )
     sku: str | None = Field(
         None,
-        description='System nanufacturer SKU\nLENOVO_MT_20HR_BU_Think_FM_ThinkPad X1 Carbon 5th',
+        description="System nanufacturer SKU\nLENOVO_MT_20HR_BU_Think_FM_ThinkPad X1 Carbon 5th",
     )
     type: str | None = Field(
         None,
-        description='System type (unknown, physical, virtual-machine, container, ...)',
-        examples=['physical'],
+        description="System type (unknown, physical, virtual-machine, container, ...)",
+        examples=["physical"],
     )
     uuid: str | None = Field(
         None,
-        description='System UUID',
-        examples=['7fa1c0cc-2271-11b2-a85c-aab32a05d71a'],
+        description="System UUID",
+        examples=["7fa1c0cc-2271-11b2-a85c-aab32a05d71a"],
     )
-    vendor: str | None = Field(None, description='System vendor', examples=['LENOVO'])
+    vendor: str | None = Field(None, description="System vendor", examples=["LENOVO"])
     version: str | None = Field(
-        None, description='System version', examples=['ThinkPad X1 Carbon 5th']
+        None, description="System version", examples=["ThinkPad X1 Carbon 5th"]
     )
 
 
 class ResourcesUSBDevice(BaseModel):
-    bus_address: int | None = Field(None, description='USB address (bus)', examples=[1])
+    bus_address: int | None = Field(None, description="USB address (bus)", examples=[1])
     device_address: int | None = Field(
-        None, description='USB address (device)', examples=[3]
+        None, description="USB address (device)", examples=[3]
     )
     interfaces: list[ResourcesUSBDeviceInterface] | None = Field(
-        None, description='List of USB interfaces'
+        None, description="List of USB interfaces"
     )
     product: str | None = Field(
-        None, description='Name of the product', examples=['Hermon USB hidmouse Device']
+        None, description="Name of the product", examples=["Hermon USB hidmouse Device"]
     )
     product_id: str | None = Field(
-        None, description='USB ID of the product', examples=['2221']
+        None, description="USB ID of the product", examples=["2221"]
     )
     serial: str | None = Field(
-        None, description='USB serial number', examples=['DAE005fp']
+        None, description="USB serial number", examples=["DAE005fp"]
     )
     speed: float | None = Field(
-        None, description='Transfer speed (Mbit/s)', examples=[12.0]
+        None, description="Transfer speed (Mbit/s)", examples=[12.0]
     )
     vendor: str | None = Field(
-        None, description='Name of the vendor', examples=['ATEN International Co., Ltd']
+        None, description="Name of the vendor", examples=["ATEN International Co., Ltd"]
     )
     vendor_id: str | None = Field(
-        None, description='USB ID of the vendor', examples=['0557']
+        None, description="USB ID of the vendor", examples=["0557"]
     )
 
 
 class ServerEnvironment(BaseModel):
     addresses: list[str] | None = Field(
         None,
-        description='List of addresses the server is listening on',
-        examples=[[':8443']],
+        description="List of addresses the server is listening on",
+        examples=[[":8443"]],
     )
     architectures: list[str] | None = Field(
         None,
-        description='List of architectures supported by the server',
-        examples=[['x86_64', 'i686']],
+        description="List of architectures supported by the server",
+        examples=[["x86_64", "i686"]],
     )
     certificate: str | None = Field(
         None,
-        description='Server certificate as PEM encoded X509',
-        examples=['X509 PEM certificate'],
+        description="Server certificate as PEM encoded X509",
+        examples=["X509 PEM certificate"],
     )
     certificate_fingerprint: str | None = Field(
         None,
-        description='Server certificate fingerprint as SHA256',
-        examples=['fd200419b271f1dc2a5591b693cc5774b7f234e1ff8c6b78ad703b6888fe2b69'],
+        description="Server certificate fingerprint as SHA256",
+        examples=["fd200419b271f1dc2a5591b693cc5774b7f234e1ff8c6b78ad703b6888fe2b69"],
     )
     driver: str | None = Field(
         None,
         description='List of supported instance drivers (separate by " | ")',
-        examples=['lxc | qemu'],
+        examples=["lxc | qemu"],
     )
     driver_version: str | None = Field(
         None,
         description='List of supported instance driver versions (separate by " | ")',
-        examples=['4.0.7 | 5.2.0'],
+        examples=["4.0.7 | 5.2.0"],
     )
     firewall: str | None = Field(
-        None, description='Current firewall driver', examples=['nftables']
+        None, description="Current firewall driver", examples=["nftables"]
     )
-    kernel: str | None = Field(None, description='OS kernel name', examples=['Linux'])
+    kernel: str | None = Field(None, description="OS kernel name", examples=["Linux"])
     kernel_architecture: str | None = Field(
-        None, description='OS kernel architecture', examples=['x86_64']
+        None, description="OS kernel architecture", examples=["x86_64"]
     )
     kernel_features: dict[str, str] | None = Field(
         None,
-        description='Map of kernel features that were tested on startup',
-        examples=[{'netnsid_getifaddrs': 'true', 'seccomp_listener': 'true'}],
+        description="Map of kernel features that were tested on startup",
+        examples=[{"netnsid_getifaddrs": "true", "seccomp_listener": "true"}],
     )
     kernel_version: str | None = Field(
-        None, description='Kernel version', examples=['5.4.0-36-generic']
+        None, description="Kernel version", examples=["5.4.0-36-generic"]
     )
     lxc_features: dict[str, str] | None = Field(
         None,
-        description='Map of LXC features that were tested on startup',
-        examples=[{'cgroup2': 'true', 'devpts_fd': 'true', 'pidfd': 'true'}],
+        description="Map of LXC features that were tested on startup",
+        examples=[{"cgroup2": "true", "devpts_fd": "true", "pidfd": "true"}],
     )
     os_name: str | None = Field(
         None,
-        description='Name of the operating system (Linux distribution)',
-        examples=['Ubuntu'],
+        description="Name of the operating system (Linux distribution)",
+        examples=["Ubuntu"],
     )
     os_version: str | None = Field(
         None,
-        description='Version of the operating system (Linux distribution)',
-        examples=['22.04'],
+        description="Version of the operating system (Linux distribution)",
+        examples=["22.04"],
     )
     project: str | None = Field(
-        None, description='Current project name', examples=['default']
+        None, description="Current project name", examples=["default"]
     )
     server: str | None = Field(
-        None, description='Server implementation name', examples=['incus']
+        None, description="Server implementation name", examples=["incus"]
     )
     server_clustered: bool | None = Field(
-        None, description='Whether the server is part of a cluster', examples=[False]
+        None, description="Whether the server is part of a cluster", examples=[False]
     )
     server_event_mode: str | None = Field(
         None,
         description='Mode that the event distribution subsystem is operating in on this server.\nEither "full-mesh", "hub-server" or "hub-client".',
-        examples=['full-mesh'],
+        examples=["full-mesh"],
     )
     server_name: str | None = Field(
-        None, description='Server hostname', examples=['castiana']
+        None, description="Server hostname", examples=["castiana"]
     )
     server_pid: int | None = Field(
-        None, description='PID of the daemon', examples=[1453969]
+        None, description="PID of the daemon", examples=[1453969]
     )
     server_version: str | None = Field(
-        None, description='Server version', examples=['4.11']
+        None, description="Server version", examples=["4.11"]
     )
     storage: str | None = Field(
         None,
         description='List of active storage drivers (separate by " | ")',
-        examples=['dir | zfs'],
+        examples=["dir | zfs"],
     )
     storage_supported_drivers: list[ServerStorageDriverInfo] | None = Field(
-        None, description='List of supported storage drivers'
+        None, description="List of supported storage drivers"
     )
     storage_version: str | None = Field(
         None,
         description='List of active storage driver versions (separate by " | ")',
-        examples=['1 | 0.8.4-1ubuntu11'],
+        examples=["1 | 0.8.4-1ubuntu11"],
     )
 
 
 class StorageBucketFull(BaseModel):
     backups: list[StorageBucketBackup] | None = Field(
-        None, description='List of backups.'
+        None, description="List of backups."
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage bucket configuration map',
-        examples=[{'size': '50GiB'}],
+        description="Storage bucket configuration map",
+        examples=[{"size": "50GiB"}],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage bucket',
-        examples=['My custom bucket'],
+        description="Description of the storage bucket",
+        examples=["My custom bucket"],
     )
-    keys: list[StorageBucketKey] | None = Field(None, description='List of keys.')
+    keys: list[StorageBucketKey] | None = Field(None, description="List of keys.")
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
-    name: str | None = Field(None, description='Bucket name', examples=['foo'])
-    project: str | None = Field(None, description='Project name', examples=['project1'])
+    name: str | None = Field(None, description="Bucket name", examples=["foo"])
+    project: str | None = Field(None, description="Project name", examples=["project1"])
     s3_url: str | None = Field(
-        None, description='Bucket S3 URL', examples=['https://127.0.0.1:8080/foo']
+        None, description="Bucket S3 URL", examples=["https://127.0.0.1:8080/foo"]
     )
 
 
 class StorageVolumePost(BaseModel):
     migration: bool | None = Field(
-        None, description='Initiate volume migration', examples=[False]
+        None, description="Initiate volume migration", examples=[False]
     )
-    name: str | None = Field(None, description='New volume name', examples=['foo'])
-    pool: str | None = Field(None, description='New storage pool', examples=['remote'])
-    project: str | None = Field(None, description='New project name', examples=['foo'])
+    name: str | None = Field(None, description="New volume name", examples=["foo"])
+    pool: str | None = Field(None, description="New storage pool", examples=["remote"])
+    project: str | None = Field(None, description="New project name", examples=["foo"])
     source: StorageVolumeSource | None = None
     target: StorageVolumePostTarget | None = None
     volume_only: bool | None = Field(
         None,
-        description='Whether snapshots should be discarded (migration only)',
+        description="Whether snapshots should be discarded (migration only)",
         examples=[False],
     )
 
@@ -4221,37 +4221,37 @@ class StorageVolumeState(BaseModel):
 
 class InitLocalPreseed(BaseModel):
     certificates: list[CertificatesPost] | None = Field(
-        None, description='Certificates to add', examples=['PEM encoded certificate']
+        None, description="Certificates to add", examples=["PEM encoded certificate"]
     )
     cluster_groups: list[ClusterGroupsPost] | None = Field(
         None,
-        description='Cluster groups to add\n\nAPI extension: init_preseed_cluster_groups.',
+        description="Cluster groups to add\n\nAPI extension: init_preseed_cluster_groups.",
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Server configuration map (refer to doc/server.md)',
-        examples=[{'core.https_address': ':8443'}],
+        description="Server configuration map (refer to doc/server.md)",
+        examples=[{"core.https_address": ":8443"}],
     )
     networks: list[InitNetworksProjectPost] | None = Field(
         None,
-        description='Networks by project to add',
+        description="Networks by project to add",
         examples=['Network on the "default" project'],
     )
     profiles: list[InitProfileProjectPost] | None = Field(
         None,
-        description='Profiles to add',
+        description="Profiles to add",
         examples=['"default" profile with a root disk device'],
     )
     projects: list[ProjectsPost] | None = Field(
-        None, description='Projects to add', examples=['"default" project']
+        None, description="Projects to add", examples=['"default" project']
     )
     storage_pools: list[StoragePoolsPost] | None = Field(
-        None, description='Storage Pools to add', examples=['local dir storage pool']
+        None, description="Storage Pools to add", examples=["local dir storage pool"]
     )
     storage_volumes: list[InitStorageVolumesProjectPost] | None = Field(
         None,
-        description='Storage Volumes to add',
-        examples=['local dir storage volume'],
+        description="Storage Volumes to add",
+        examples=["local dir storage volume"],
     )
 
 
@@ -4263,25 +4263,25 @@ class InitPreseed(BaseModel):
 class InstanceState(BaseModel):
     cpu: InstanceStateCPU | None = None
     disk: dict[str, InstanceStateDisk] | None = Field(
-        None, description='Disk usage key/value pairs'
+        None, description="Disk usage key/value pairs"
     )
     memory: InstanceStateMemory | None = None
     network: dict[str, InstanceStateNetwork] | None = Field(
-        None, description='Network usage key/value pairs'
+        None, description="Network usage key/value pairs"
     )
     os_info: InstanceStateOSInfo | None = None
-    pid: int | None = Field(None, description='PID of the runtime', examples=[7281])
+    pid: int | None = Field(None, description="PID of the runtime", examples=[7281])
     processes: int | None = Field(
-        None, description='Number of processes in the instance', examples=[50]
+        None, description="Number of processes in the instance", examples=[50]
     )
     started_at: AwareDatetime | None = Field(
         None,
-        description='The time that the instance started at\n\nAPI extension: instance_state_started_at.',
+        description="The time that the instance started at\n\nAPI extension: instance_state_started_at.",
     )
     status: str | None = Field(
         None,
-        description='Current status (Running, Stopped, Frozen or Error)',
-        examples=['Running'],
+        description="Current status (Running, Stopped, Frozen or Error)",
+        examples=["Running"],
     )
     status_code: StatusCode | None = None
 
@@ -4300,209 +4300,209 @@ class NetworkLoadBalancerState(BaseModel):
 
 class ResourcesCPU(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture name', examples=['x86_64']
+        None, description="Architecture name", examples=["x86_64"]
     )
     sockets: list[ResourcesCPUSocket] | None = Field(
-        None, description='List of CPU sockets'
+        None, description="List of CPU sockets"
     )
     total: int | None = Field(
         None,
-        description='Total number of CPU threads (from all sockets and cores)',
+        description="Total number of CPU threads (from all sockets and cores)",
         examples=[1],
     )
 
 
 class ResourcesPCI(BaseModel):
     devices: list[ResourcesPCIDevice] | None = Field(
-        None, description='List of PCI devices'
+        None, description="List of PCI devices"
     )
     total: int | None = Field(
-        None, description='Total number of PCI devices', examples=[1]
+        None, description="Total number of PCI devices", examples=[1]
     )
 
 
 class ResourcesStorage(BaseModel):
-    disks: list[ResourcesStorageDisk] | None = Field(None, description='List of disks')
+    disks: list[ResourcesStorageDisk] | None = Field(None, description="List of disks")
     total: int | None = Field(
-        None, description='Total number of partitions', examples=[1]
+        None, description="Total number of partitions", examples=[1]
     )
 
 
 class ResourcesUSB(BaseModel):
     devices: list[ResourcesUSBDevice] | None = Field(
-        None, description='List of USB devices'
+        None, description="List of USB devices"
     )
     total: int | None = Field(
-        None, description='Total number of USB devices', examples=[1]
+        None, description="Total number of USB devices", examples=[1]
     )
 
 
 class Server(BaseModel):
     api_extensions: list[str] | None = Field(
         None,
-        description='List of supported API extensions',
-        examples=[['etag', 'patch', 'network', 'storage']],
+        description="List of supported API extensions",
+        examples=[["etag", "patch", "network", "storage"]],
     )
     api_status: str | None = Field(
         None,
         description='Support status of the current API (one of "devel", "stable" or "deprecated")',
-        examples=['stable'],
+        examples=["stable"],
     )
     api_version: str | None = Field(
-        None, description='API version number', examples=['1.0']
+        None, description="API version number", examples=["1.0"]
     )
     auth: str | None = Field(
         None,
         description='Whether the client is trusted (one of "trusted" or "untrusted")',
-        examples=['untrusted'],
+        examples=["untrusted"],
     )
     auth_methods: list[str] | None = Field(
-        None, description='List of supported authentication methods', examples=[['tls']]
+        None, description="List of supported authentication methods", examples=[["tls"]]
     )
     auth_user_method: str | None = Field(
-        None, description='The current API user login method', examples=['unix']
+        None, description="The current API user login method", examples=["unix"]
     )
     auth_user_name: str | None = Field(
-        None, description='The current API user identifier', examples=['uid=201105']
+        None, description="The current API user identifier", examples=["uid=201105"]
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Server configuration map (refer to doc/server.md)',
-        examples=[{'core.https_address': ':8443'}],
+        description="Server configuration map (refer to doc/server.md)",
+        examples=[{"core.https_address": ":8443"}],
     )
     environment: ServerEnvironment | None = None
     public: bool | None = Field(
         None,
-        description='Whether the server is public-only (only public endpoints are implemented)',
+        description="Whether the server is public-only (only public endpoints are implemented)",
         examples=[False],
     )
 
 
 class StorageVolumeFull(BaseModel):
     backups: list[StorageVolumeBackup] | None = Field(
-        None, description='List of backups.'
+        None, description="List of backups."
     )
     config: dict[str, Any] | None = Field(
         None,
-        description='Storage volume configuration map (refer to doc/storage.md)',
-        examples=[{'size': '50GiB', 'zfs.remove_snapshots': 'true'}],
+        description="Storage volume configuration map (refer to doc/storage.md)",
+        examples=[{"size": "50GiB", "zfs.remove_snapshots": "true"}],
     )
     content_type: str | None = Field(
         None,
-        description='Volume content type (filesystem or block)',
-        examples=['filesystem'],
+        description="Volume content type (filesystem or block)",
+        examples=["filesystem"],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='Volume creation timestamp',
-        examples=['2021-03-23T20:00:00-04:00'],
+        description="Volume creation timestamp",
+        examples=["2021-03-23T20:00:00-04:00"],
     )
     description: str | None = Field(
         None,
-        description='Description of the storage volume',
-        examples=['My custom volume'],
+        description="Description of the storage volume",
+        examples=["My custom volume"],
     )
     location: str | None = Field(
         None,
-        description='What cluster member this record was found on',
-        examples=['server01'],
+        description="What cluster member this record was found on",
+        examples=["server01"],
     )
-    name: str | None = Field(None, description='Volume name', examples=['foo'])
+    name: str | None = Field(None, description="Volume name", examples=["foo"])
     project: str | None = Field(
-        None, description='Project containing the volume.', examples=['default']
+        None, description="Project containing the volume.", examples=["default"]
     )
     restore: str | None = Field(
-        None, description='Name of a snapshot to restore', examples=['snap0']
+        None, description="Name of a snapshot to restore", examples=["snap0"]
     )
     snapshots: list[StorageVolumeSnapshot] | None = Field(
-        None, description='List of snapshots.'
+        None, description="List of snapshots."
     )
     state: StorageVolumeState | None = None
-    type: str | None = Field(None, description='Volume type', examples=['custom'])
+    type: str | None = Field(None, description="Volume type", examples=["custom"])
     used_by: list[str] | None = Field(
         None,
-        description='List of URLs of objects using this storage volume',
-        examples=[['/1.0/instances/blah']],
+        description="List of URLs of objects using this storage volume",
+        examples=[["/1.0/instances/blah"]],
     )
 
 
 class InstanceFull(BaseModel):
     architecture: str | None = Field(
-        None, description='Architecture name', examples=['x86_64']
+        None, description="Architecture name", examples=["x86_64"]
     )
-    backups: list[InstanceBackup] | None = Field(None, description='List of backups.')
+    backups: list[InstanceBackup] | None = Field(None, description="List of backups.")
     config: dict[str, Any] | None = Field(
         None,
-        description='Instance configuration (see doc/instances.md)',
-        examples=[{'security.nesting': 'true'}],
+        description="Instance configuration (see doc/instances.md)",
+        examples=[{"security.nesting": "true"}],
     )
     created_at: AwareDatetime | None = Field(
         None,
-        description='Instance creation timestamp',
-        examples=['2021-03-23T20:00:00-04:00'],
+        description="Instance creation timestamp",
+        examples=["2021-03-23T20:00:00-04:00"],
     )
     description: str | None = Field(
-        None, description='Instance description', examples=['My test instance']
+        None, description="Instance description", examples=["My test instance"]
     )
     devices: dict[str, Any] | None = Field(
         None,
-        description='Instance devices (see doc/instances.md)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Instance devices (see doc/instances.md)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     ephemeral: bool | None = Field(
         None,
-        description='Whether the instance is ephemeral (deleted on shutdown)',
+        description="Whether the instance is ephemeral (deleted on shutdown)",
         examples=[False],
     )
     expanded_config: dict[str, Any] | None = Field(
         None,
-        description='Expanded configuration (all profiles and local config merged)',
-        examples=[{'security.nesting': 'true'}],
+        description="Expanded configuration (all profiles and local config merged)",
+        examples=[{"security.nesting": "true"}],
     )
     expanded_devices: dict[str, Any] | None = Field(
         None,
-        description='Expanded devices (all profiles and local devices merged)',
-        examples=[{'root': {'path': '/', 'pool': 'default', 'type': 'disk'}}],
+        description="Expanded devices (all profiles and local devices merged)",
+        examples=[{"root": {"path": "/", "pool": "default", "type": "disk"}}],
     )
     last_used_at: AwareDatetime | None = Field(
-        None, description='Last start timestamp', examples=['2021-03-23T20:00:00-04:00']
+        None, description="Last start timestamp", examples=["2021-03-23T20:00:00-04:00"]
     )
     location: str | None = Field(
         None,
-        description='What cluster member this instance is located on',
-        examples=['server01'],
+        description="What cluster member this instance is located on",
+        examples=["server01"],
     )
-    name: str | None = Field(None, description='Instance name', examples=['foo'])
+    name: str | None = Field(None, description="Instance name", examples=["foo"])
     profiles: list[str] | None = Field(
         None,
-        description='List of profiles applied to the instance',
-        examples=[['default']],
+        description="List of profiles applied to the instance",
+        examples=[["default"]],
     )
     project: str | None = Field(
-        None, description='Instance project name', examples=['foo']
+        None, description="Instance project name", examples=["foo"]
     )
     restore: str | None = Field(
         None,
-        description='If set, instance will be restored to the provided snapshot name',
-        examples=['snap0'],
+        description="If set, instance will be restored to the provided snapshot name",
+        examples=["snap0"],
     )
     snapshots: list[InstanceSnapshot] | None = Field(
-        None, description='List of snapshots.'
+        None, description="List of snapshots."
     )
     state: InstanceState | None = None
     stateful: bool | None = Field(
         None,
-        description='Whether the instance currently has saved state on disk',
+        description="Whether the instance currently has saved state on disk",
         examples=[False],
     )
     status: str | None = Field(
-        None, description='Instance status (see instance_state)', examples=['Running']
+        None, description="Instance status (see instance_state)", examples=["Running"]
     )
     status_code: StatusCode | None = None
     type: str | None = Field(
         None,
-        description='The type of instance (container or virtual-machine)',
-        examples=['container'],
+        description="The type of instance (container or virtual-machine)",
+        examples=["container"],
     )
 
 
@@ -4520,118 +4520,118 @@ class Resources(BaseModel):
 
 
 class ResourcesGPU(BaseModel):
-    cards: list[ResourcesGPUCard] | None = Field(None, description='List of GPUs')
-    total: int | None = Field(None, description='Total number of GPUs', examples=[1])
+    cards: list[ResourcesGPUCard] | None = Field(None, description="List of GPUs")
+    total: int | None = Field(None, description="Total number of GPUs", examples=[1])
 
 
 class ResourcesGPUCard(BaseModel):
     driver: str | None = Field(
         None,
-        description='Kernel driver currently associated with the GPU',
-        examples=['i915'],
+        description="Kernel driver currently associated with the GPU",
+        examples=["i915"],
     )
     driver_version: str | None = Field(
-        None, description='Version of the kernel driver', examples=['5.8.0-36-generic']
+        None, description="Version of the kernel driver", examples=["5.8.0-36-generic"]
     )
     drm: ResourcesGPUCardDRM | None = None
     mdev: dict[str, ResourcesGPUCardMdev] | None = Field(
-        None, description='Map of available mediated device profiles', examples=[None]
+        None, description="Map of available mediated device profiles", examples=[None]
     )
     numa_node: int | None = Field(
-        None, description='NUMA node the GPU is a part of', examples=[0]
+        None, description="NUMA node the GPU is a part of", examples=[0]
     )
     nvidia: ResourcesGPUCardNvidia | None = None
     pci_address: str | None = Field(
-        None, description='PCI address', examples=['0000:00:02.0']
+        None, description="PCI address", examples=["0000:00:02.0"]
     )
     product: str | None = Field(
-        None, description='Name of the product', examples=['HD Graphics 620']
+        None, description="Name of the product", examples=["HD Graphics 620"]
     )
     product_id: str | None = Field(
-        None, description='PCI ID of the product', examples=['5916']
+        None, description="PCI ID of the product", examples=["5916"]
     )
     sriov: ResourcesGPUCardSRIOV | None = None
     usb_address: str | None = Field(
-        None, description='USB address (for USB cards)', examples=['2:7']
+        None, description="USB address (for USB cards)", examples=["2:7"]
     )
     vendor: str | None = Field(
-        None, description='Name of the vendor', examples=['Intel Corporation']
+        None, description="Name of the vendor", examples=["Intel Corporation"]
     )
     vendor_id: str | None = Field(
-        None, description='PCI ID of the vendor', examples=['8086']
+        None, description="PCI ID of the vendor", examples=["8086"]
     )
 
 
 class ResourcesGPUCardSRIOV(BaseModel):
     current_vfs: int | None = Field(
-        None, description='Number of VFs currently configured', examples=[0]
+        None, description="Number of VFs currently configured", examples=[0]
     )
     maximum_vfs: int | None = Field(
-        None, description='Maximum number of supported VFs', examples=[0]
+        None, description="Maximum number of supported VFs", examples=[0]
     )
     vfs: list[ResourcesGPUCard] | None = Field(
-        None, description='List of VFs (as additional GPU devices)', examples=[None]
+        None, description="List of VFs (as additional GPU devices)", examples=[None]
     )
 
 
 class ResourcesNetwork(BaseModel):
     cards: list[ResourcesNetworkCard] | None = Field(
-        None, description='List of network cards'
+        None, description="List of network cards"
     )
     total: int | None = Field(
-        None, description='Total number of network cards', examples=[1]
+        None, description="Total number of network cards", examples=[1]
     )
 
 
 class ResourcesNetworkCard(BaseModel):
     driver: str | None = Field(
         None,
-        description='Kernel driver currently associated with the card',
-        examples=['atlantic'],
+        description="Kernel driver currently associated with the card",
+        examples=["atlantic"],
     )
     driver_version: str | None = Field(
-        None, description='Version of the kernel driver', examples=['5.8.0-36-generic']
+        None, description="Version of the kernel driver", examples=["5.8.0-36-generic"]
     )
     firmware_version: str | None = Field(
-        None, description='Current firmware version', examples=['3.1.100']
+        None, description="Current firmware version", examples=["3.1.100"]
     )
     numa_node: int | None = Field(
-        None, description='NUMA node the card is a part of', examples=[0]
+        None, description="NUMA node the card is a part of", examples=[0]
     )
     pci_address: str | None = Field(
-        None, description='PCI address (for PCI cards)', examples=['0000:0d:00.0']
+        None, description="PCI address (for PCI cards)", examples=["0000:0d:00.0"]
     )
     ports: list[ResourcesNetworkCardPort] | None = Field(
-        None, description='List of ports on the card'
+        None, description="List of ports on the card"
     )
     product: str | None = Field(
-        None, description='Name of the product', examples=['AQC107 NBase-T/IEEE']
+        None, description="Name of the product", examples=["AQC107 NBase-T/IEEE"]
     )
     product_id: str | None = Field(
-        None, description='PCI ID of the product', examples=['87b1']
+        None, description="PCI ID of the product", examples=["87b1"]
     )
     sriov: ResourcesNetworkCardSRIOV | None = None
     usb_address: str | None = Field(
-        None, description='USB address (for USB cards)', examples=['2:7']
+        None, description="USB address (for USB cards)", examples=["2:7"]
     )
     vdpa: ResourcesNetworkCardVDPA | None = None
     vendor: str | None = Field(
-        None, description='Name of the vendor', examples=['Aquantia Corp.']
+        None, description="Name of the vendor", examples=["Aquantia Corp."]
     )
     vendor_id: str | None = Field(
-        None, description='PCI ID of the vendor', examples=['1d6a']
+        None, description="PCI ID of the vendor", examples=["1d6a"]
     )
 
 
 class ResourcesNetworkCardSRIOV(BaseModel):
     current_vfs: int | None = Field(
-        None, description='Number of VFs currently configured', examples=[0]
+        None, description="Number of VFs currently configured", examples=[0]
     )
     maximum_vfs: int | None = Field(
-        None, description='Maximum number of supported VFs', examples=[0]
+        None, description="Maximum number of supported VFs", examples=[0]
     )
     vfs: list[ResourcesNetworkCard] | None = Field(
-        None, description='List of VFs (as additional Network devices)', examples=[None]
+        None, description="List of VFs (as additional Network devices)", examples=[None]
     )
 
 

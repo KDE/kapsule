@@ -17,8 +17,15 @@ async def create_account(ctx: UserSetupContext) -> None:
     ctx.info(f"Creating group '{ctx.username}' (gid={ctx.gid})")
     result = subprocess.run(
         [
-            "incus", "exec", ctx.container_name, "--",
-            "groupadd", "-o", "-g", str(ctx.gid), ctx.username,
+            "incus",
+            "exec",
+            ctx.container_name,
+            "--",
+            "groupadd",
+            "-o",
+            "-g",
+            str(ctx.gid),
+            ctx.username,
         ],
         capture_output=True,
         text=True,
@@ -30,14 +37,21 @@ async def create_account(ctx: UserSetupContext) -> None:
     ctx.info(f"Creating user '{ctx.username}' (uid={ctx.uid})")
     result = subprocess.run(
         [
-            "incus", "exec", ctx.container_name, "--",
+            "incus",
+            "exec",
+            ctx.container_name,
+            "--",
             "useradd",
             "-o",  # Allow duplicate UID
             "-M",  # Don't create home directory
-            "-u", str(ctx.uid),
-            "-g", str(ctx.gid),
-            "-d", ctx.container_home,
-            "-s", "/bin/bash",
+            "-u",
+            str(ctx.uid),
+            "-g",
+            str(ctx.gid),
+            "-d",
+            ctx.container_home,
+            "-s",
+            "/bin/bash",
             ctx.username,
         ],
         capture_output=True,

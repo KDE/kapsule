@@ -17,9 +17,12 @@ import pytest
 
 TEST_VM = os.environ.get("KAPSULE_TEST_VM", "192.168.100.129")
 SSH_OPTS = [
-    "-o", "ConnectTimeout=5",
-    "-o", "StrictHostKeyChecking=no",
-    "-o", "LogLevel=ERROR",
+    "-o",
+    "ConnectTimeout=5",
+    "-o",
+    "StrictHostKeyChecking=no",
+    "-o",
+    "LogLevel=ERROR",
 ]
 
 
@@ -28,6 +31,8 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
+
+
 async def ssh_run_on_vm(*cmd: str) -> asyncio.subprocess.Process:
     """Run a command on the test VM over SSH and return the process.
 

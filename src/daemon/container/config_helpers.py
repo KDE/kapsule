@@ -54,7 +54,9 @@ def base_container_config(nvidia_drivers: bool) -> dict[str, str]:
     }
 
 
-def base_container_devices(host_rootfs: bool, gpu: bool = True) -> dict[str, dict[str, str]]:
+def base_container_devices(
+    host_rootfs: bool, gpu: bool = True
+) -> dict[str, dict[str, str]]:
     """Base Incus devices applied to every new Kapsule container.
 
     Args:

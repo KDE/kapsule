@@ -17,7 +17,13 @@ from typing import Annotated
 from dbus_fast.aio import MessageBus
 from dbus_fast.service import ServiceInterface, dbus_property, dbus_method, dbus_signal
 from dbus_fast.constants import PropertyAccess
-from dbus_fast.annotations import DBusStr, DBusBool, DBusObjectPath, DBusSignature, DBusUInt32
+from dbus_fast.annotations import (
+    DBusStr,
+    DBusBool,
+    DBusObjectPath,
+    DBusSignature,
+    DBusUInt32,
+)
 from dbus_fast import BusType, Message, MessageType, Variant
 
 from .dbus_types import (
@@ -68,7 +74,9 @@ class KapsuleManagerInterface(ServiceInterface):
     Progress is reported via signals that clients can subscribe to.
     """
 
-    def __init__(self, container_service: ContainerService, bus: MessageBus | None = None):
+    def __init__(
+        self, container_service: ContainerService, bus: MessageBus | None = None
+    ):
         super().__init__("org.kde.kapsule.Manager")
         self._service = container_service
         self._version = __version__
@@ -123,7 +131,9 @@ class KapsuleManagerInterface(ServiceInterface):
         )
         reply = await self._bus.call(msg)
         if reply.message_type == MessageType.ERROR:
-            raise RuntimeError(f"Failed to get UID: {reply.body[0] if reply.body else 'unknown error'}")
+            raise RuntimeError(
+                f"Failed to get UID: {reply.body[0] if reply.body else 'unknown error'}"
+            )
         uid = reply.body[0]
 
         # Get PID to look up GID and environment
@@ -137,7 +147,9 @@ class KapsuleManagerInterface(ServiceInterface):
         )
         reply = await self._bus.call(msg)
         if reply.message_type == MessageType.ERROR:
-            raise RuntimeError(f"Failed to get PID: {reply.body[0] if reply.body else 'unknown error'}")
+            raise RuntimeError(
+                f"Failed to get PID: {reply.body[0] if reply.body else 'unknown error'}"
+            )
         pid = reply.body[0]
 
         # Read GID from /proc/<pid>/status
@@ -267,7 +279,9 @@ class KapsuleManagerInterface(ServiceInterface):
         if not image:
             sender = _current_sender.get()
             if not sender:
-                raise Exception("No image specified and could not determine caller identity")
+                raise Exception(
+                    "No image specified and could not determine caller identity"
+                )
 
             try:
                 creds = await self._get_caller_credentials(sender)

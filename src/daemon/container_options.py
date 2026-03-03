@@ -222,6 +222,7 @@ def get_create_schema_json() -> str:
 # Defaults & Validation
 # =============================================================================
 
+
 def _build_defaults() -> dict[str, Any]:
     """Build a flat dict of option key -> default value from the schema."""
     defaults: dict[str, Any] = {}
@@ -363,8 +364,6 @@ def parse_options(raw: dict[str, Any]) -> ContainerOptions:
 
     # nvidia_drivers requires gpu
     if opts.nvidia_drivers and not opts.gpu:
-        raise OptionValidationError(
-            "nvidia_drivers requires gpu to be enabled"
-        )
+        raise OptionValidationError("nvidia_drivers requires gpu to be enabled")
 
     return opts

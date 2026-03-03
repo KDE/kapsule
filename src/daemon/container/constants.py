@@ -31,18 +31,25 @@ KAPSULE_DBUS_SOCKET_USER_PATH = "kapsule/{container}/dbus.socket"
 KAPSULE_DBUS_SOCKET_SYSTEMD = "/.kapsule/host%t/" + KAPSULE_DBUS_SOCKET_USER_PATH
 
 # Environment variables to skip when passing through to container
-ENTER_ENV_SKIP = frozenset({
-    "_",              # Last command (set by shell)
-    "SHLVL",          # Shell nesting level
-    "OLDPWD",         # Previous directory
-    "PWD",            # Current directory (will be wrong in container)
-    "HOSTNAME",       # Host's hostname
-    "HOST",           # Host's hostname (zsh)
-    "LS_COLORS",      # Often huge and causes issues
-    "LESS_TERMCAP_mb", "LESS_TERMCAP_md", "LESS_TERMCAP_me",  # Less colors
-    "LESS_TERMCAP_se", "LESS_TERMCAP_so", "LESS_TERMCAP_ue", "LESS_TERMCAP_us",
-    "PATH",           # Set explicitly for su lookup inside container.
-})
+ENTER_ENV_SKIP = frozenset(
+    {
+        "_",  # Last command (set by shell)
+        "SHLVL",  # Shell nesting level
+        "OLDPWD",  # Previous directory
+        "PWD",  # Current directory (will be wrong in container)
+        "HOSTNAME",  # Host's hostname
+        "HOST",  # Host's hostname (zsh)
+        "LS_COLORS",  # Often huge and causes issues
+        "LESS_TERMCAP_mb",
+        "LESS_TERMCAP_md",
+        "LESS_TERMCAP_me",  # Less colors
+        "LESS_TERMCAP_se",
+        "LESS_TERMCAP_so",
+        "LESS_TERMCAP_ue",
+        "LESS_TERMCAP_us",
+        "PATH",  # Set explicitly for su lookup inside container.
+    }
+)
 
 
 @dataclass(frozen=True)

@@ -73,6 +73,7 @@ class Pipeline(Generic[_Ctx]):
         Can be used bare (``@pipeline.step``) or with arguments
         (``@pipeline.step(order=200)``).
         """
+
         def _register(f: _StepFn[_Ctx]) -> _StepFn[_Ctx]:
             self._entries.append((order, self._seq, f))
             self._seq += 1

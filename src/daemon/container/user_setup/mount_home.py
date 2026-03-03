@@ -36,8 +36,11 @@ async def mount_home(ctx: UserSetupContext) -> None:
         # Ensure the home path exists inside the container
         try:
             await ctx.incus.mkdir(
-                ctx.container_name, ctx.container_home,
-                uid=ctx.uid, gid=ctx.gid, mode="0700",
+                ctx.container_name,
+                ctx.container_home,
+                uid=ctx.uid,
+                gid=ctx.gid,
+                mode="0700",
             )
         except IncusError:
             pass  # May already exist
