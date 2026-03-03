@@ -22,16 +22,16 @@ mkdir -p "$install_dir"
 # Start by building kapsule with kde-builder
 # --install-dir /usr so hardcoded paths are correct for the sysext.
 # DESTDIR redirects the actual file installation to the staging directory.
-DESTDIR="$install_dir" kde-builder --no-src --build-when-unchanged \
+DESTDIR="$install_dir" kde-builder --no-src  \
     --install-dir /usr \
     kapsule
 
 # Build konsole with kapsule support
-DESTDIR="$install_dir" kde-builder --no-src --build-when-unchanged \
-    --no-include-dependencies \
-    --install-dir /usr \
-    --cmake-options "-DCMAKE_PREFIX_PATH=$install_dir/usr -DWITH_KAPSULE=ON" \
-    konsole
+#DESTDIR="$install_dir" kde-builder --no-src  \
+#    --no-include-dependencies \
+#    --install-dir /usr \
+#    --cmake-options "-DCMAKE_PREFIX_PATH=$install_dir/usr -DWITH_KAPSULE=ON" \
+#    konsole
 
 # add kapsule-dbus-mux to the sysext
 # this will eventually come from the AUR or something
@@ -56,11 +56,11 @@ mkdir -p "$serve_dir"
 
 sudo tar -cf ${serve_dir}/kapsule.tar -C "$install_dir" usr
 
-python -m http.server --directory "$serve_dir" 8000 &
+python -m http.server --directory "$serve_dir" 8080 &
 trap "kill $!" EXIT
 
 ssh root@192.168.100.129 \
-    "importctl pull-tar --class=sysext --verify=no --force http://192.168.100.1:8000/kapsule.tar && \
+    "importctl pull-tar --class=sysext --verify=no --force http://192.168.100.1:8080/kapsule.tar && \
      systemd-sysext refresh && \
      systemctl daemon-reload && \
      systemctl restart kapsule-daemon.service"
