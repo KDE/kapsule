@@ -541,8 +541,7 @@ class KapsuleService:
         # So we use deferred initialization
         interface = KapsuleManagerInterface.create_deferred(bus)
 
-        container_service = ContainerService(interface, incus)
-        container_service.set_bus(bus)  # Enable operation D-Bus objects
+        container_service = ContainerService(interface, incus, bus)
         interface.set_service(container_service)
 
         # Export the interface

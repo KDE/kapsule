@@ -56,16 +56,18 @@ class ContainerService:
         self,
         interface: "KapsuleManagerInterface",
         incus: IncusClient,
+        bus: "MessageBus",
     ):
         """Initialize the container service.
 
         Args:
             interface: D-Bus interface for emitting signals
             incus: Incus API client
+            bus: D-Bus message bus for exporting operation objects
         """
         self._interface = interface
         self._incus = incus
-        self._tracker = OperationTracker()
+        self._tracker = OperationTracker(bus)
 
         # Cache for runtime bind mounts.
         # Key: (container_name, uid)
@@ -73,13 +75,6 @@ class ContainerService:
         # Invalidated when the container restarts (started_at changes)
         # or the relevant env vars change (different WAYLAND_DISPLAY, etc.).
         self._mount_cache: dict[tuple[str, int], tuple[str, str]] = {}
-
-    def set_bus(self, bus: MessageBus) -> None:
-        """Set the message bus for operation object export.
-
-        Must be called after initialization to enable D-Bus operation objects.
-        """
-        self._tracker.set_bus(bus)
 
     def list_operations(self) -> list[str]:
         """List D-Bus object paths of all running operations."""

@@ -462,26 +462,20 @@ def _make_operations_dict() -> dict[str, RunningOperation]:
 class OperationTracker:
     """Tracks all running operations in the daemon."""
 
+    _bus: MessageBus
     _operations: dict[str, RunningOperation] = field(
         default_factory=_make_operations_dict
     )
-    _bus: MessageBus | None = None
     _cleanup_delay: float = 5.0  # Seconds to keep completed operations
-
-    def set_bus(self, bus: MessageBus) -> None:
-        """Set the message bus for exporting operation objects."""
-        print(f"[OperationTracker] set_bus called with bus={bus}")
-        self._bus = bus
 
     def add(self, op: RunningOperation) -> None:
         """Register a running operation and export it to D-Bus."""
         self._operations[op.id] = op
-        if self._bus:
-            print(
-                f"[OperationTracker] Exporting operation {op.id} to {op.interface.object_path}"
-            )
-            self._bus.export(op.interface.object_path, op.interface)
-            print(f"[OperationTracker] Export complete for {op.id}")
+        print(
+            f"[OperationTracker] Exporting operation {op.id} to {op.interface.object_path}"
+        )
+        self._bus.export(op.interface.object_path, op.interface)
+        print(f"[OperationTracker] Export complete for {op.id}")
 
     def remove(self, op_id: str) -> None:
         """Remove a completed operation from tracking.
@@ -490,18 +484,17 @@ class OperationTracker:
         to read the final state.
         """
         op = self._operations.pop(op_id, None)
-        if op and self._bus:
+        if op:
             # Schedule delayed unexport
             asyncio.create_task(self._delayed_unexport(op.interface))
 
     async def _delayed_unexport(self, interface: OperationInterface) -> None:
         """Unexport an operation after a delay."""
         await asyncio.sleep(self._cleanup_delay)
-        if self._bus:
-            try:
-                self._bus.unexport(interface.object_path, interface)
-            except Exception:
-                pass  # Already unexported or bus closed
+        try:
+            self._bus.unexport(interface.object_path, interface)
+        except Exception:
+            pass  # Already unexported or bus closed
 
     def get(self, op_id: str) -> RunningOperation | None:
         """Get an operation by ID."""
