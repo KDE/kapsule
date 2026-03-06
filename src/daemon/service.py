@@ -74,36 +74,33 @@ class KapsuleManagerInterface(ServiceInterface):
     Progress is reported via signals that clients can subscribe to.
     """
 
-    def __init__(
-        self, container_service: ContainerService, bus: MessageBus | None = None
-    ):
+    def __init__(self, container_service: ContainerService, bus: MessageBus):
         super().__init__("org.kde.kapsule.Manager")
         self._service = container_service
         self._version = __version__
         self._bus = bus
 
     @classmethod
-    def create_deferred(cls, bus: MessageBus) -> "KapsuleManagerInterface":
-        """Create an interface with deferred service initialization.
+    def create(cls, bus: MessageBus, incus: IncusClient) -> "KapsuleManagerInterface":
+        """Create a fully-initialized interface with its ContainerService.
 
-        Used when the container service needs a reference to this interface.
-        Call set_service() after creating the ContainerService.
+        Resolves the circular dependency between the interface and
+        ContainerService internally: a partially-initialized instance is
+        created first, passed to ContainerService, and then completed
+        before being returned.
         """
-        # Create instance without calling __init__
         instance = cls.__new__(cls)
         ServiceInterface.__init__(instance, "org.kde.kapsule.Manager")
         instance._version = __version__
         instance._bus = bus
-        instance._service = None  # type: ignore[assignment]
+        container_service = ContainerService(instance, incus, bus)
+        instance._service = container_service
         return instance
 
-    def set_service(self, service: ContainerService) -> None:
-        """Set the container service (for deferred initialization)."""
-        self._service = service
-
-    def set_bus(self, bus: MessageBus) -> None:
-        """Set the message bus for credential lookups."""
-        self._bus = bus
+    @property
+    def container_service(self) -> ContainerService:
+        """The container service managed by this interface."""
+        return self._service
 
     async def _get_caller_credentials(self, sender: str) -> CallerCredentials:
         """Get the UID, GID, and PID of a D-Bus caller.
@@ -117,9 +114,6 @@ class KapsuleManagerInterface(ServiceInterface):
         Raises:
             RuntimeError: If credentials cannot be obtained
         """
-        if self._bus is None:
-            raise RuntimeError("Bus not set")
-
         # Get UID
         msg = Message(
             destination="org.freedesktop.DBus",
@@ -537,12 +531,9 @@ class KapsuleService:
         await cls._ensure_storage_pool(incus)
 
         # Create the interface and container service
-        # The interface needs the service, and the service needs the interface
-        # So we use deferred initialization
-        interface = KapsuleManagerInterface.create_deferred(bus)
-
-        container_service = ContainerService(interface, incus, bus)
-        interface.set_service(container_service)
+        # The create() factory resolves the circular dependency internally
+        interface = KapsuleManagerInterface.create(bus, incus)
+        container_service = interface.container_service
 
         # Export the interface
         bus.export("/org/kde/kapsule", interface)
