@@ -489,50 +489,64 @@ class KapsuleService:
     """Main D-Bus service manager.
 
     Handles D-Bus connection lifecycle and hosts the KapsuleManagerInterface.
+
+    Use the async ``init`` classmethod to construct an instance — the regular
+    ``__init__`` is only meant to be called by ``init``.
     """
 
     def __init__(
         self,
+        *,
+        bus: MessageBus,
+        bus_type: BusType,
+        interface: KapsuleManagerInterface,
+        incus: IncusClient,
+        container_service: ContainerService,
+    ):
+        self._bus = bus
+        self._bus_type = bus_type
+        self._interface = interface
+        self._incus = incus
+        self._container_service = container_service
+
+    @classmethod
+    async def init(
+        cls,
         bus_type: str = "system",
         socket_path: str = "/var/lib/incus/unix.socket",
-    ):
-        """Initialize the service.
+    ) -> KapsuleService:
+        """Create and start the Kapsule D-Bus service.
+
+        This is the primary constructor.  It connects to D-Bus, initialises the
+        Incus client, ensures the storage pool exists, wires up the interface
+        and container service, and returns a fully-ready ``KapsuleService``.
 
         Args:
             bus_type: "session" or "system" bus for the daemon's interface
             socket_path: Path to Incus Unix socket
         """
-        self._bus_type = BusType.SYSTEM if bus_type == "system" else BusType.SESSION
-        self._socket_path = socket_path
-        self._bus: MessageBus | None = None
-        self._interface: KapsuleManagerInterface | None = None
-        self._incus: IncusClient | None = None
-        self._container_service: ContainerService | None = None
+        resolved_bus_type = BusType.SYSTEM if bus_type == "system" else BusType.SESSION
 
-    async def start(self) -> None:
-        """Start the D-Bus service."""
         # Connect to D-Bus
-        self._bus = await MessageBus(bus_type=self._bus_type).connect()
+        bus = await MessageBus(bus_type=resolved_bus_type).connect()
 
         # Create Incus client
-        self._incus = IncusClient(socket_path=self._socket_path)
+        incus = IncusClient(socket_path=socket_path)
 
         # Ensure Incus is initialized with the storage pool we need
-        await self._ensure_storage_pool()
+        await cls._ensure_storage_pool(incus)
 
         # Create the interface and container service
         # The interface needs the service, and the service needs the interface
         # So we use deferred initialization
-        temp_interface = KapsuleManagerInterface.create_deferred(self._bus)
+        interface = KapsuleManagerInterface.create_deferred(bus)
 
-        self._container_service = ContainerService(temp_interface, self._incus)
-        self._container_service.set_bus(self._bus)  # Enable operation D-Bus objects
-        temp_interface.set_service(self._container_service)
-
-        self._interface = temp_interface
+        container_service = ContainerService(interface, incus)
+        container_service.set_bus(bus)  # Enable operation D-Bus objects
+        interface.set_service(container_service)
 
         # Export the interface
-        self._bus.export("/org/kde/kapsule", self._interface)
+        bus.export("/org/kde/kapsule", interface)
 
         # Add message handler to capture sender for credential verification
         def capture_sender(msg: Message) -> bool | None:
@@ -541,33 +555,35 @@ class KapsuleService:
                 _current_sender.set(msg.sender)
             return None  # Let normal processing continue
 
-        self._bus.add_message_handler(capture_sender)
+        bus.add_message_handler(capture_sender)
 
         # Request the well-known name
-        await self._bus.request_name("org.kde.kapsule")
+        await bus.request_name("org.kde.kapsule")
 
-        bus_name = "system" if self._bus_type == BusType.SYSTEM else "session"
+        bus_name = "system" if resolved_bus_type == BusType.SYSTEM else "session"
         print(f"Kapsule daemon v{__version__} running on {bus_name} bus")
         print("Service: org.kde.kapsule")
         print("Object:  /org/kde/kapsule")
 
+        return cls(
+            bus=bus,
+            bus_type=resolved_bus_type,
+            interface=interface,
+            incus=incus,
+            container_service=container_service,
+        )
+
     async def run(self) -> None:
         """Run the service until disconnected."""
-        if self._bus is None:
-            raise RuntimeError("Service not started")
         await self._bus.wait_for_disconnect()
 
     async def stop(self) -> None:
         """Stop the D-Bus service."""
-        if self._incus:
-            await self._incus.close()
-            self._incus = None
+        await self._incus.close()
+        self._bus.disconnect()
 
-        if self._bus:
-            self._bus.disconnect()
-            self._bus = None
-
-    async def _ensure_storage_pool(self) -> None:
+    @staticmethod
+    async def _ensure_storage_pool(incus: IncusClient) -> None:
         """Ensure the 'default' btrfs storage pool exists.
 
         KDE Linux uses btrfs for container storage.  If Incus has not
@@ -577,14 +593,13 @@ class KapsuleService:
 
         This is fatal — without a storage pool nothing will work.
         """
-        assert self._incus is not None
-        if await self._incus.storage_pool_exists("default"):
+        if await incus.storage_pool_exists("default"):
             logger.info("Storage pool 'default' already exists")
             return
 
         logger.info("Creating btrfs storage pool 'default'...")
         try:
-            await self._incus.create_storage_pool(
+            await incus.create_storage_pool(
                 name="default",
                 driver="btrfs",
                 config={"source": "/var/lib/incus/storage-pools/default"},
@@ -595,6 +610,6 @@ class KapsuleService:
         logger.info("Storage pool 'default' created")
 
     @property
-    def container_service(self) -> ContainerService | None:
+    def container_service(self) -> ContainerService:
         """Get the container service."""
         return self._container_service

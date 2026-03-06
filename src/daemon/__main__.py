@@ -21,8 +21,6 @@ async def run_daemon(bus_type: str = "system") -> None:
     """Run the Kapsule D-Bus daemon."""
     from .service import KapsuleService
 
-    service = KapsuleService(bus_type=bus_type)
-
     # Handle shutdown signals
     loop = asyncio.get_running_loop()
     shutdown_event = asyncio.Event()
@@ -34,9 +32,9 @@ async def run_daemon(bus_type: str = "system") -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
-    try:
-        await service.start()
+    service = await KapsuleService.init(bus_type=bus_type)
 
+    try:
         # Wait for either disconnect or shutdown signal
         _, pending = await asyncio.wait(
             [
