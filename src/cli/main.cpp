@@ -363,41 +363,16 @@ QCoro::Task<int> cmdEnter(KapsuleClient &client, const QStringList &args)
         command = positional.mid(1);
     }
 
-    auto config = co_await client.config();
-    if (config.contains(QStringLiteral("error"))) {
-        o.error(config.value(QStringLiteral("error")).toString().toStdString());
-        co_return 1;
-    }
-
-    const QString defaultContainer = config.value(QStringLiteral("default_container")).toString();
-    const QString defaultImage = config.value(QStringLiteral("default_image")).toString();
-    const QString targetContainer = containerName.isEmpty() ? defaultContainer : containerName;
-
-    if (!targetContainer.isEmpty() && targetContainer == defaultContainer) {
-        bool containerExists = false;
-        const auto containers = co_await client.listContainers();
-        for (const auto &container : containers) {
-            if (container.name() == targetContainer) {
-                containerExists = true;
-                break;
-            }
-        }
-
-        if (!containerExists) {
-            o.section(QStringLiteral("Creating container: %1").arg(targetContainer).toStdString());
-            auto createResult = co_await client.createContainer(targetContainer, defaultImage, {},
-                [&o](MessageType type, const QString &msg, int indent) {
-                    o.print(type, msg.toStdString(), indent);
-                });
-
-            if (!createResult.success
-                && !createResult.error.contains(QStringLiteral("already exists"), Qt::CaseInsensitive)) {
-                o.failure(createResult.error.toStdString());
-                co_return 1;
-            }
+    // Determine the target container name for OSC 777 notifications
+    QString targetContainer = containerName;
+    if (targetContainer.isEmpty()) {
+        auto config = co_await client.config();
+        if (!config.contains(QStringLiteral("error"))) {
+            targetContainer = config.value(QStringLiteral("default_container")).toString();
         }
     }
 
+    // PrepareEnter handles everything: creation, starting, user setup
     auto result = co_await client.prepareEnter(containerName, command);
 
     if (!result.success) {

@@ -32,7 +32,6 @@ from .dbus_types import (
     DBusVariantDict,
     DBusContainer,
     DBusContainerList,
-    DBusEnterResult,
 )
 
 from . import __version__
@@ -435,7 +434,7 @@ class KapsuleManagerInterface(ServiceInterface):
         self,
         container_name: DBusStr,
         command: DBusStrArray,
-    ) -> DBusEnterResult:
+    ) -> DBusObjectPath:
         """Prepare to enter a container.
 
         This method handles all setup for entering a container:
@@ -452,31 +451,30 @@ class KapsuleManagerInterface(ServiceInterface):
             command: Command to run inside (empty array for shell)
 
         Returns:
-            Tuple of (success, error_message, command_array)
-            On success: (True, "", ["incus", "exec", ...])
-            On failure: (False, "error message", [])
+            D-Bus object path for tracking operation progress.
+            On completion, the operation's Result property contains the
+            exec args (the command array to execvp).
         """
         # Get the sender from context (set by message handler)
         sender = _current_sender.get()
         if sender is None:
-            return (False, "Could not determine caller identity", [])
+            raise Exception("Could not determine caller identity")
 
         try:
             creds = await self._get_caller_credentials(sender)
         except RuntimeError as e:
-            return (False, f"Failed to get caller credentials: {e}", [])
+            raise Exception(f"Failed to get caller credentials: {e}")
 
         # Read environment from caller's process
         env = self._get_process_environ(creds.pid)
 
-        success, message, cmd = await self._service.prepare_enter(
+        return await self._service.prepare_enter(
             uid=creds.uid,
             gid=creds.gid,
             container_name=container_name if container_name else None,
             command=list(command),
             env=env,
         )
-        return (success, message, cmd)
 
 
 class KapsuleService:

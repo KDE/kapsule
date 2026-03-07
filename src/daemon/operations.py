@@ -93,6 +93,7 @@ class OperationInterface(ServiceInterface):
         self._status = "running"
         self._cancel_requested = False
         self._task: asyncio.Task[None] | None = None
+        self._result: list[str] = []
 
     @property
     def object_path(self) -> str:
@@ -131,6 +132,16 @@ class OperationInterface(ServiceInterface):
     def Status(self) -> DBusStr:
         """Current status: running, completed, failed, cancelled."""
         return self._status
+
+    @dbus_property(access=PropertyAccess.READ)
+    def Result(self) -> Annotated[list[str], DBusSignature("as")]:
+        """Operation result data.
+
+        For operations that produce a result (e.g. PrepareEnter returns
+        exec args), this property holds the result after completion.
+        Empty for operations that don't produce a result.
+        """
+        return self._result
 
     # -------------------------------------------------------------------------
     # Signals
@@ -245,6 +256,14 @@ class OperationInterface(ServiceInterface):
     def is_cancel_requested(self) -> bool:
         """Check if cancellation has been requested."""
         return self._cancel_requested
+
+    def set_result(self, result: list[str]) -> None:
+        """Set the operation result data.
+
+        Must be called before mark_completed() so that clients can read
+        the Result property after receiving the Completed signal.
+        """
+        self._result = result
 
     def mark_completed(self, success: bool, message: str = "") -> None:
         """Mark the operation as completed and emit the Completed signal."""
@@ -435,6 +454,14 @@ class OperationReporter:
             _operation=self._operation,
             _indent=self._indent + levels,
         )
+
+    def set_result(self, result: list[str]) -> None:
+        """Set the operation's result data.
+
+        For operations that produce a result (e.g. PrepareEnter returns
+        exec args), call this before the operation completes.
+        """
+        self._operation.set_result(result)
 
 
 # =============================================================================

@@ -437,14 +437,21 @@ class ContainerService:
             "default_image": config.default_image,
         }
 
+    @operation(
+        "prepare_enter",
+        description="Preparing to enter container",
+        target_param="container_name",
+    )
     async def prepare_enter(
         self,
+        progress: OperationReporter,
+        *,
         uid: int,
         gid: int,
         container_name: str | None,
         command: list[str],
         env: dict[str, str],
-    ) -> tuple[bool, str, list[str]]:
+    ) -> None:
         """Prepare everything needed to enter a container.
 
         This method handles all the setup logic for entering a container:
@@ -455,17 +462,15 @@ class ContainerService:
         - Configures runtime directory symlinks
         - Builds the full command to execute
 
+        On success, the operation's Result property contains the exec args.
+
         Args:
+            progress: Operation reporter (auto-injected)
             uid: Caller's user ID (from D-Bus credentials)
             gid: Caller's group ID
             container_name: Container to enter, or None for default
             command: Command to run inside container (empty for shell)
             env: Environment variables from the caller
-
-        Returns:
-            Tuple of (success, message, command_array)
-            On success: (True, "", ["incus", "exec", ...])
-            On failure: (False, "error message", [])
         """
         # Get user info from UID
         try:
@@ -473,7 +478,7 @@ class ContainerService:
             username = pw_entry.pw_name
             home_dir = pw_entry.pw_dir
         except KeyError:
-            return (False, f"User with UID {uid} not found", [])
+            raise OperationError(f"User with UID {uid} not found")
 
         # Load config for defaults (using caller's home for XDG paths)
         config = load_config(home_dir=home_dir)
@@ -488,17 +493,18 @@ class ContainerService:
         if not container_exists:
             # Only auto-create if using default container
             if container_name == config.default_container:
-                # Create the container (this is a synchronous operation here)
-                try:
-                    await self._run_create(
-                        name=container_name,
-                        image=config.default_image,
-                        opts=ContainerOptions.default(),
-                    )
-                except OperationError as e:
-                    return (False, str(e), [])
+                # Create the container with progress reporting
+                progress.info(f"Container '{container_name}' not found, creating...")
+                await self._run_create(
+                    name=container_name,
+                    image=config.default_image,
+                    opts=ContainerOptions.default(),
+                    progress=progress,
+                )
+                progress.success(f"Container '{container_name}' created")
+                self._interface.ContainersChanged()
             else:
-                return (False, f"Container '{container_name}' does not exist", [])
+                raise OperationError(f"Container '{container_name}' does not exist")
 
         # Check container status
         instance = await self._incus.get_instance(container_name)
@@ -506,35 +512,34 @@ class ContainerService:
 
         if status != "running":
             # Start the container
+            progress.info("Starting container...")
             try:
                 op = await self._incus.start_instance(container_name, wait=True)
                 if op.status != "Success":
-                    return (
-                        False,
-                        f"Failed to start container: {op.err or op.status}",
-                        [],
+                    raise OperationError(
+                        f"Failed to start container: {op.err or op.status}"
                     )
             except IncusError as e:
-                return (False, f"Failed to start container: {e}", [])
+                raise OperationError(f"Failed to start container: {e}")
+            progress.success("Container started")
+            self._interface.ContainersChanged()
 
         # Set up user if needed
         if not await self.is_user_setup(container_name, uid):
-            try:
-                await self._run_user_setup(
-                    container_name,
-                    uid,
-                    gid,
-                    username,
-                    home_dir,
-                )
-            except OperationError as e:
-                return (False, str(e), [])
+            progress.info("Setting up user...")
+            await self._run_user_setup(
+                container_name,
+                uid,
+                gid,
+                username,
+                home_dir,
+                progress=progress,
+            )
+            progress.success("User setup complete")
 
         # Set up runtime directory symlinks
-        try:
-            await self._setup_runtime_symlinks(container_name, uid, gid, env)
-        except OperationError as e:
-            return (False, str(e), [])
+        progress.info("Configuring runtime directories...")
+        await self._setup_runtime_symlinks(container_name, uid, gid, env)
 
         # Build environment arguments
         env_args: list[str] = []
@@ -587,7 +592,8 @@ class ContainerService:
             *exec_cmd,
         ]
 
-        return (True, "", exec_args)
+        # Store the exec args as the operation result
+        progress.set_result(exec_args)
 
     # -------------------------------------------------------------------------
     # Private Helper Methods

@@ -311,7 +311,8 @@ QCoro::Task<OperationResult> KapsuleClient::stopContainer(
 
 QCoro::Task<EnterResult> KapsuleClient::prepareEnter(
     const QString &containerName,
-    const QStringList &command)
+    const QStringList &command,
+    ProgressHandler progress)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon"), {}};
@@ -322,8 +323,23 @@ QCoro::Task<EnterResult> KapsuleClient::prepareEnter(
         co_return {false, reply.error().message(), {}};
     }
 
-    // EnterResult is directly returned from D-Bus now
-    co_return reply.value();
+    // PrepareEnter now returns an operation object path
+    QDBusObjectPath opPath = reply.value();
+    auto opResult = co_await d->waitForOperation(opPath.path(), progress);
+
+    if (!opResult.success) {
+        co_return {false, opResult.error, {}};
+    }
+
+    // Read the Result property from the operation to get exec args
+    auto opProxy = std::make_unique<OrgKdeKapsuleOperationInterface>(
+        QStringLiteral("org.kde.kapsule"),
+        opPath.path(),
+        QDBusConnection::systemBus()
+    );
+
+    QStringList execArgs = opProxy->result();
+    co_return {true, {}, execArgs};
 }
 
 } // namespace Kapsule

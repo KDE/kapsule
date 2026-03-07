@@ -76,13 +76,6 @@ DBusContainerList = Annotated[
 ]
 """List of container info tuples"""
 
-DBusEnterResult = Annotated[
-    tuple[bool, str, list[str]],
-    DBusSignature("(bsas)"),
-    CppType("Kapsule::EnterResult"),
-]
-"""PrepareEnter result: (success, error_message, command_array)"""
-
 
 __all__ = [
     # Convenience types
@@ -92,7 +85,6 @@ __all__ = [
     # Kapsule composite types
     "DBusContainer",
     "DBusContainerList",
-    "DBusEnterResult",
     # Metadata
     "CppType",
 ]

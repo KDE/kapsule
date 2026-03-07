@@ -184,11 +184,13 @@ public:
      *
      * @param containerName Container to enter (empty for default).
      * @param command Command to run inside (empty for shell).
+     * @param progress Optional callback for progress messages.
      * @return Enter result with success/error and exec args.
      */
     QCoro::Task<EnterResult> prepareEnter(
         const QString &containerName = {},
-        const QStringList &command = {});
+        const QStringList &command = {},
+        ProgressHandler progress = {});
 
 Q_SIGNALS:
     /**

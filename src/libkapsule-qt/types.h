@@ -23,7 +23,7 @@ namespace Kapsule {
 Q_NAMESPACE_EXPORT(KAPSULE_EXPORT)
 
 /**
- * @brief Result of prepareEnter() - D-Bus signature (bsas)
+ * @brief Result of prepareEnter() - contains exec args for entering a container.
  */
 struct KAPSULE_EXPORT EnterResult {
     bool success = false;
