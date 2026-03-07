@@ -39,15 +39,6 @@ class CreateContext:
     )
     source: InstanceSource | None = None
 
-    def info(self, msg: str) -> None:
-        self.progress.info(msg)
-
-    def dim(self, msg: str) -> None:
-        self.progress.dim(msg)
-
-    def warning(self, msg: str) -> None:
-        self.progress.warning(msg)
-
 
 @dataclass
 class UserSetupContext:
@@ -66,9 +57,3 @@ class UserSetupContext:
     instance_config: dict[str, str]
     incus: IncusClient
     progress: OperationReporter
-
-    def info(self, msg: str) -> None:
-        self.progress.info(msg)
-
-    def warning(self, msg: str) -> None:
-        self.progress.warning(msg)

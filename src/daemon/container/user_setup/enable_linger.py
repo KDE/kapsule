@@ -18,7 +18,7 @@ async def enable_linger(ctx: UserSetupContext) -> None:
     if not session_mode:
         return
 
-    ctx.info(f"Enabling linger for '{ctx.username}' (session mode)")
+    ctx.progress.info(f"Enabling linger for '{ctx.username}' (session mode)")
     result = subprocess.run(
         [
             "incus",
@@ -33,4 +33,4 @@ async def enable_linger(ctx: UserSetupContext) -> None:
         text=True,
     )
     if result.returncode != 0:
-        ctx.warning(f"loginctl enable-linger: {result.stderr.strip()}")
+        ctx.progress.warning(f"loginctl enable-linger: {result.stderr.strip()}")

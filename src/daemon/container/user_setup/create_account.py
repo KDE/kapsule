@@ -14,7 +14,7 @@ from . import user_setup_pipeline
 async def create_account(ctx: UserSetupContext) -> None:
     """Create user group and account in the container."""
     # Create group
-    ctx.info(f"Creating group '{ctx.username}' (gid={ctx.gid})")
+    ctx.progress.info(f"Creating group '{ctx.username}' (gid={ctx.gid})")
     result = subprocess.run(
         [
             "incus",
@@ -31,10 +31,10 @@ async def create_account(ctx: UserSetupContext) -> None:
         text=True,
     )
     if result.returncode != 0 and "already exists" not in result.stderr:
-        ctx.warning(f"groupadd: {result.stderr.strip()}")
+        ctx.progress.warning(f"groupadd: {result.stderr.strip()}")
 
     # Create user
-    ctx.info(f"Creating user '{ctx.username}' (uid={ctx.uid})")
+    ctx.progress.info(f"Creating user '{ctx.username}' (uid={ctx.uid})")
     result = subprocess.run(
         [
             "incus",
@@ -58,4 +58,4 @@ async def create_account(ctx: UserSetupContext) -> None:
         text=True,
     )
     if result.returncode != 0 and "already exists" not in result.stderr:
-        ctx.warning(f"useradd: {result.stderr.strip()}")
+        ctx.progress.warning(f"useradd: {result.stderr.strip()}")

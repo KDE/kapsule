@@ -34,6 +34,8 @@ async def fix_file_capabilities(ctx: CreateContext) -> None:
         )
         if result.returncode != 0:
             # Binary or setcap may not exist on every image — not fatal
-            ctx.warning(f"Could not set {cap} on {binary}: {result.stderr.strip()}")
+            ctx.progress.warning(
+                f"Could not set {cap} on {binary}: {result.stderr.strip()}"
+            )
         else:
-            ctx.dim(f"Set {cap} on {binary}")
+            ctx.progress.dim(f"Set {cap} on {binary}")

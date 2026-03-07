@@ -78,14 +78,14 @@ async def build_base_config(ctx: CreateContext) -> None:
         nvidia_drivers=ctx.opts.gpu and ctx.opts.nvidia_drivers,
     )
 
-    ctx.info(f"Image: {ctx.image}")
+    ctx.progress.info(f"Image: {ctx.image}")
     if not ctx.opts.gpu:
-        ctx.info("GPU passthrough: disabled")
+        ctx.progress.info("GPU passthrough: disabled")
     if ctx.opts.gpu and not ctx.opts.nvidia_drivers:
-        ctx.info("NVIDIA driver injection: disabled")
+        ctx.progress.info("NVIDIA driver injection: disabled")
 
     if NVIDIA_HOOK_PATH in ctx.instance_config.get("raw.lxc", ""):
-        ctx.dim("NVIDIA userspace drivers will be injected on start")
+        ctx.progress.dim("NVIDIA userspace drivers will be injected on start")
 
 
 @create_pipeline.step(order=-200)

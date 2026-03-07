@@ -20,7 +20,7 @@ async def host_network_fixups(ctx: CreateContext) -> None:
 
     We mask that service since the host network is already online.
     """
-    ctx.info("Masking systemd-networkd-wait-online.service (host networking)")
+    ctx.progress.info("Masking systemd-networkd-wait-online.service (host networking)")
     try:
         await ctx.incus.create_symlink(
             ctx.name,
@@ -31,4 +31,4 @@ async def host_network_fixups(ctx: CreateContext) -> None:
         )
     except IncusError as e:
         # Not fatal - some images may not have systemd
-        ctx.warning(f"Could not mask systemd-networkd-wait-online: {e}")
+        ctx.progress.warning(f"Could not mask systemd-networkd-wait-online: {e}")

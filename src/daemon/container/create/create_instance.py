@@ -20,7 +20,7 @@ async def create_instance(ctx: CreateContext) -> None:
     By this point ``ctx.instance_config``, ``ctx.devices``, and
     ``ctx.source`` have been populated by earlier pipeline steps.
     """
-    ctx.info("Downloading image and creating container...")
+    ctx.progress.info("Downloading image and creating container...")
 
     instance_config = InstancesPost(
         name=ctx.name,

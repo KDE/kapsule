@@ -17,7 +17,9 @@ async def mount_home(ctx: UserSetupContext) -> None:
     mount_home = ctx.instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
 
     if mount_home:
-        ctx.info(f"Mounting home directory: {ctx.home_dir} -> {ctx.container_home}")
+        ctx.progress.info(
+            f"Mounting home directory: {ctx.home_dir} -> {ctx.container_home}"
+        )
         device_name = f"kapsule-home-{ctx.username}"
         try:
             await ctx.incus.add_instance_device(
@@ -32,7 +34,7 @@ async def mount_home(ctx: UserSetupContext) -> None:
         except IncusError as e:
             raise OperationError(f"Failed to mount home directory: {e}")
     else:
-        ctx.info("Home directory mount: skipped (disabled)")
+        ctx.progress.info("Home directory mount: skipped (disabled)")
         # Ensure the home path exists inside the container
         try:
             await ctx.incus.mkdir(

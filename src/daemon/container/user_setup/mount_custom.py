@@ -27,11 +27,11 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
     try:
         custom_mounts: list[str] = json.loads(raw)
     except json.JSONDecodeError:
-        ctx.warning(f"Invalid custom-mounts config: {raw}")
+        ctx.progress.warning(f"Invalid custom-mounts config: {raw}")
         return
 
     if custom_mounts:
-        ctx.info(f"Custom mounts: {', '.join(custom_mounts)}")
+        ctx.progress.info(f"Custom mounts: {', '.join(custom_mounts)}")
 
     for mount_path in custom_mounts:
         # Sanitise the path for use as an Incus device name
@@ -40,10 +40,10 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
         container_path = mount_path  # Same path inside container
 
         if not os.path.isdir(mount_path):
-            ctx.warning(f"Custom mount source does not exist: {mount_path}")
+            ctx.progress.warning(f"Custom mount source does not exist: {mount_path}")
             continue
 
-        ctx.info(f"Custom mount: {mount_path} -> {container_path}")
+        ctx.progress.info(f"Custom mount: {mount_path} -> {container_path}")
         try:
             await ctx.incus.add_instance_device(
                 ctx.container_name,
@@ -55,4 +55,4 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
                 },
             )
         except IncusError as e:
-            ctx.warning(f"Failed to mount {mount_path}: {e}")
+            ctx.progress.warning(f"Failed to mount {mount_path}: {e}")
