@@ -81,6 +81,7 @@ if(INSTALL_PYTHON_DAEMON)
         src/daemon/config.py
         src/daemon/container_options.py
         src/daemon/dbus_types.py
+        src/daemon/host_config_sync.py
         src/daemon/incus_client.py
         src/daemon/models_generated.py
         src/daemon/operations.py
@@ -107,6 +108,7 @@ if(INSTALL_PYTHON_DAEMON)
         src/daemon/container/create/file_capabilities.py
         src/daemon/container/create/host_network.py
         src/daemon/container/create/session_mode.py
+        src/daemon/container/create/sync_host_config.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container/create"
     )
 

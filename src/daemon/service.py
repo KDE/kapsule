@@ -42,6 +42,7 @@ from .container_options import (
     parse_options,
 )
 from .container import ContainerService
+from .host_config_sync import HostConfigSync
 
 # Re-export IncusClient for use in __main__ and CLI
 from .incus_client import IncusClient, IncusError
@@ -508,6 +509,7 @@ class KapsuleService:
         self._interface: KapsuleManagerInterface | None = None
         self._incus: IncusClient | None = None
         self._container_service: ContainerService | None = None
+        self._host_config_sync: HostConfigSync | None = None
 
     async def start(self) -> None:
         """Start the D-Bus service."""
@@ -525,11 +527,18 @@ class KapsuleService:
         # So we use deferred initialization
         temp_interface = KapsuleManagerInterface.create_deferred(self._bus)
 
-        self._container_service = ContainerService(temp_interface, self._incus)
+        # Initialize host config sync (timezone, locale, DNS)
+        self._host_config_sync = HostConfigSync(self._bus, self._incus)
+
+        self._container_service = ContainerService(
+            temp_interface, self._incus, self._host_config_sync
+        )
         self._container_service.set_bus(self._bus)  # Enable operation D-Bus objects
         temp_interface.set_service(self._container_service)
 
         self._interface = temp_interface
+
+        await self._host_config_sync.start()
 
         # Export the interface
         self._bus.export("/org/kde/kapsule", self._interface)
@@ -559,6 +568,8 @@ class KapsuleService:
 
     async def stop(self) -> None:
         """Stop the D-Bus service."""
+        self._host_config_sync = None
+
         if self._incus:
             await self._incus.close()
             self._incus = None

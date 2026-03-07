@@ -44,6 +44,7 @@ from .create import create_pipeline
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
+    from ..host_config_sync import HostConfigSync
     from ..service import KapsuleManagerInterface
     from dbus_fast.aio import MessageBus
 
@@ -62,15 +63,18 @@ class ContainerService:
         self,
         interface: "KapsuleManagerInterface",
         incus: IncusClient,
+        host_config_sync: "HostConfigSync",
     ):
         """Initialize the container service.
 
         Args:
             interface: D-Bus interface for emitting signals
             incus: Incus API client
+            host_config_sync: Host config sync for container creation
         """
         self._interface = interface
         self._incus = incus
+        self._host_config_sync = host_config_sync
         self._tracker = OperationTracker()
 
         # Cache for runtime bind mounts.
@@ -109,6 +113,7 @@ class ContainerService:
             opts=opts,
             incus=self._incus,
             progress=progress,
+            host_config_sync=self._host_config_sync,
         )
         await create_pipeline.run(ctx)
 

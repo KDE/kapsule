@@ -7,11 +7,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ..container_options import ContainerOptions
 from ..incus_client import IncusClient
 from ..models_generated import InstanceSource
 from ..operations import OperationReporter
+
+if TYPE_CHECKING:
+    from ..host_config_sync import HostConfigSync
 
 
 @dataclass
@@ -31,6 +35,7 @@ class CreateContext:
     opts: ContainerOptions
     incus: IncusClient
     progress: OperationReporter
+    host_config_sync: HostConfigSync
 
     # Built up by pipeline steps
     instance_config: dict[str, str] = field(default_factory=lambda: dict[str, str]())
