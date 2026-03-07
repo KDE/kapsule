@@ -39,7 +39,7 @@ async def _setup_session_mode_impl(
     name: str,
     dbus_mux: bool,
     incus: IncusClient,
-    progress: OperationReporter | None,
+    progress: OperationReporter,
 ) -> None:
     """Set up session mode for a container.
 
@@ -52,16 +52,14 @@ async def _setup_session_mode_impl(
     kapsule-dbus-mux.service that listens at the normal /run/user/$uid/bus.
     """
     if not dbus_mux:
-        if progress:
-            progress.info("Session mode: container will use its own D-Bus session bus")
+        progress.info("Session mode: container will use its own D-Bus session bus")
         return
 
     # Use uid 1000 as placeholder - the drop-in uses %t so it works for any user
     uid = 1000
     host_socket_path = f"/run/user/{uid}/kapsule/{name}/dbus.socket"
 
-    if progress:
-        progress.info(f"Configuring container D-Bus socket at: {host_socket_path}")
+    progress.info(f"Configuring container D-Bus socket at: {host_socket_path}")
 
     # Create the directory on host with correct ownership
     kapsule_base_dir = f"/run/user/{uid}/kapsule"
@@ -99,8 +97,7 @@ ListenStream={systemd_socket_path}
     await _setup_dbus_mux_impl(name, incus, progress)
 
     # Reload systemd
-    if progress:
-        progress.info("Reloading systemd user configuration...")
+    progress.info("Reloading systemd user configuration...")
     subprocess.run(
         [
             "incus",
@@ -119,11 +116,10 @@ ListenStream={systemd_socket_path}
 async def _setup_dbus_mux_impl(
     name: str,
     incus: IncusClient,
-    progress: OperationReporter | None,
+    progress: OperationReporter,
 ) -> None:
     """Install kapsule-dbus-mux.service in a container."""
-    if progress:
-        progress.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
+    progress.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
 
     service_dir = "/etc/systemd/user"
     try:
@@ -164,8 +160,7 @@ WantedBy=default.target
     except IncusError as e:
         raise OperationError(f"Failed to install dbus-mux service: {e}")
 
-    if progress:
-        progress.info("Enabling kapsule-dbus-mux.service globally")
+    progress.info("Enabling kapsule-dbus-mux.service globally")
     subprocess.run(
         [
             "incus",
@@ -185,7 +180,7 @@ WantedBy=default.target
 async def _configure_rootless_podman_impl(
     name: str,
     incus: IncusClient,
-    progress: OperationReporter | None,
+    progress: OperationReporter,
 ) -> None:
     """Configure rootless Podman for non-session containers.
 
@@ -228,9 +223,7 @@ async def _configure_rootless_podman_impl(
         )
     except IncusError as e:
         # Not fatal – best-effort config for when Podman is installed later
-        if progress:
-            progress.warning(f"Could not configure rootless Podman: {e}")
+        progress.warning(f"Could not configure rootless Podman: {e}")
         return
 
-    if progress:
-        progress.dim("Configured rootless Podman (cgroup_manager=cgroupfs)")
+    progress.dim("Configured rootless Podman (cgroup_manager=cgroupfs)")

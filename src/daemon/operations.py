@@ -25,12 +25,15 @@ from enum import IntEnum
 from typing import (
     Annotated,
     Any,
+    AsyncContextManager,
     AsyncIterator,
     Awaitable,
     Callable,
     Concatenate,
     ParamSpec,
+    Protocol,
     TypeVar,
+    runtime_checkable,
 )
 
 from dbus_fast.service import ServiceInterface, dbus_property, dbus_method, dbus_signal
@@ -289,12 +292,119 @@ class ProgressBar:
         self._operation.ProgressCompleted(self.progress_id, success, message)
 
 
-@dataclass
-class OperationReporter:
-    """Injected into operations for progress reporting.
+class NullProgressBar:
+    """No-op progress bar for contexts without progress reporting."""
 
-    This is the main interface operations use to report progress.
-    Messages are emitted as D-Bus signals on the operation object.
+    def update(self, current: int, rate: float = 0.0) -> None:
+        pass
+
+    def complete(self, success: bool = True, message: str = "") -> None:
+        pass
+
+
+@runtime_checkable
+class OperationReporter(Protocol):
+    """Protocol for progress reporting during operations.
+
+    Consumers should type-hint against this protocol rather than
+    a concrete implementation. This allows no-op reporters to be
+    used in contexts where progress reporting is not needed.
+    """
+
+    @property
+    def operation_id(self) -> str: ...
+
+    def is_cancelled(self) -> bool: ...
+
+    def info(self, message: str, indent: int | None = None) -> None: ...
+
+    def success(self, message: str, indent: int | None = None) -> None: ...
+
+    def warning(self, message: str, indent: int | None = None) -> None: ...
+
+    def error(self, message: str, indent: int | None = None) -> None: ...
+
+    def dim(self, message: str, indent: int | None = None) -> None: ...
+
+    def hint(self, message: str, indent: int | None = None) -> None: ...
+
+    def start_progress(
+        self,
+        description: str,
+        total: int = -1,
+        indent: int | None = None,
+    ) -> ProgressBar | NullProgressBar: ...
+
+    def track(
+        self,
+        description: str,
+        total: int = -1,
+        indent: int | None = None,
+        success_message: str = "",
+    ) -> AsyncContextManager[ProgressBar | NullProgressBar]: ...
+
+    def indented(self, levels: int = 1) -> OperationReporter: ...
+
+
+class NullOperationReporter:
+    """No-op implementation of OperationReporter.
+
+    Used in contexts where progress reporting is not needed,
+    such as internal operations that are not exposed over D-Bus.
+    """
+
+    @property
+    def operation_id(self) -> str:
+        return ""
+
+    def is_cancelled(self) -> bool:
+        return False
+
+    def info(self, message: str, indent: int | None = None) -> None:
+        pass
+
+    def success(self, message: str, indent: int | None = None) -> None:
+        pass
+
+    def warning(self, message: str, indent: int | None = None) -> None:
+        pass
+
+    def error(self, message: str, indent: int | None = None) -> None:
+        pass
+
+    def dim(self, message: str, indent: int | None = None) -> None:
+        pass
+
+    def hint(self, message: str, indent: int | None = None) -> None:
+        pass
+
+    def start_progress(
+        self,
+        description: str,
+        total: int = -1,
+        indent: int | None = None,
+    ) -> NullProgressBar:
+        return NullProgressBar()
+
+    @asynccontextmanager
+    async def track(
+        self,
+        description: str,
+        total: int = -1,
+        indent: int | None = None,
+        success_message: str = "",
+    ) -> AsyncIterator[NullProgressBar]:
+        yield NullProgressBar()
+
+    def indented(self, levels: int = 1) -> NullOperationReporter:
+        return self
+
+
+@dataclass
+class DBusOperationReporter:
+    """D-Bus-backed implementation of OperationReporter.
+
+    Reports progress by emitting D-Bus signals on the operation object.
 
     Usage in operation methods:
         async def create_container(self, progress: OperationReporter, name: str, ...):
@@ -423,7 +533,7 @@ class OperationReporter:
             bar.complete(success=False)
             raise
 
-    def indented(self, levels: int = 1) -> "OperationReporter":
+    def indented(self, levels: int = 1) -> DBusOperationReporter:
         """Return a reporter with increased indent level.
 
         Use for sub-operations that should appear nested in the output.
@@ -431,7 +541,7 @@ class OperationReporter:
         Args:
             levels: Number of indent levels to add
         """
-        return OperationReporter(
+        return DBusOperationReporter(
             _operation=self._operation,
             _indent=self._indent + levels,
         )
@@ -578,7 +688,7 @@ def operation(
             op_interface = OperationInterface(op_id, operation_type, desc, target)
 
             # Create the reporter that wraps the interface
-            reporter = OperationReporter(
+            reporter = DBusOperationReporter(
                 _operation=op_interface,
             )
 

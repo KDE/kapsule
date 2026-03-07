@@ -25,7 +25,13 @@ from typing import TYPE_CHECKING
 from ..config import load_config
 from ..container_options import ContainerOptions
 from ..incus_client import IncusClient, IncusError
-from ..operations import OperationError, OperationReporter, OperationTracker, operation
+from ..operations import (
+    NullOperationReporter,
+    OperationError,
+    OperationReporter,
+    OperationTracker,
+    operation,
+)
 from .constants import (
     ENTER_ENV_SKIP,
     KAPSULE_DBUS_MUX_KEY,
@@ -94,7 +100,7 @@ class ContainerService:
         name: str,
         image: str,
         opts: ContainerOptions,
-        progress: OperationReporter | None = None,
+        progress: OperationReporter,
     ) -> None:
         """Run the full container creation pipeline."""
         ctx = CreateContext(
@@ -113,7 +119,7 @@ class ContainerService:
         gid: int,
         username: str,
         home_dir: str,
-        progress: OperationReporter | None = None,
+        progress: OperationReporter,
     ) -> None:
         """Run the user setup pipeline."""
         instance = await self._incus.get_instance(container_name)
@@ -519,6 +525,7 @@ class ContainerService:
                     gid,
                     username,
                     home_dir,
+                    NullOperationReporter(),
                 )
             except OperationError as e:
                 return (False, str(e), [])

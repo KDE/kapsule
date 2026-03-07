@@ -30,7 +30,7 @@ class CreateContext:
     image: str
     opts: ContainerOptions
     incus: IncusClient
-    progress: OperationReporter | None
+    progress: OperationReporter
 
     # Built up by pipeline steps
     instance_config: dict[str, str] = field(default_factory=lambda: dict[str, str]())
@@ -40,16 +40,13 @@ class CreateContext:
     source: InstanceSource | None = None
 
     def info(self, msg: str) -> None:
-        if self.progress:
-            self.progress.info(msg)
+        self.progress.info(msg)
 
     def dim(self, msg: str) -> None:
-        if self.progress:
-            self.progress.dim(msg)
+        self.progress.dim(msg)
 
     def warning(self, msg: str) -> None:
-        if self.progress:
-            self.progress.warning(msg)
+        self.progress.warning(msg)
 
 
 @dataclass
@@ -68,12 +65,10 @@ class UserSetupContext:
     container_home: str
     instance_config: dict[str, str]
     incus: IncusClient
-    progress: OperationReporter | None
+    progress: OperationReporter
 
     def info(self, msg: str) -> None:
-        if self.progress:
-            self.progress.info(msg)
+        self.progress.info(msg)
 
     def warning(self, msg: str) -> None:
-        if self.progress:
-            self.progress.warning(msg)
+        self.progress.warning(msg)

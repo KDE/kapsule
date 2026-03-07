@@ -13,6 +13,7 @@ from .service import KapsuleService, KapsuleManagerInterface
 from .container import ContainerService
 from .operations import (
     MessageType,
+    NullOperationReporter,
     OperationError,
     OperationReporter,
     operation,
@@ -23,6 +24,7 @@ __all__ = [
     "KapsuleManagerInterface",
     "KapsuleService",
     "MessageType",
+    "NullOperationReporter",
     "OperationError",
     "OperationReporter",
     "__version__",
