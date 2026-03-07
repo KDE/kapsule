@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from dbus_fast import Message, MessageType, Variant
@@ -25,16 +26,6 @@ from dbus_fast.aio import MessageBus
 from .incus_client import IncusClient
 
 logger = logging.getLogger(__name__)
-
-# D-Bus service definitions for the three host-config sources.
-_TIMEDATE_BUS = "org.freedesktop.timedate1"
-_TIMEDATE_PATH = "/org/freedesktop/timedate1"
-
-_LOCALE_BUS = "org.freedesktop.locale1"
-_LOCALE_PATH = "/org/freedesktop/locale1"
-
-_RESOLVE_BUS = "org.freedesktop.resolve1"
-_RESOLVE_PATH = "/org/freedesktop/resolve1"
 
 _PROPS_INTERFACE = "org.freedesktop.DBus.Properties"
 
@@ -112,6 +103,102 @@ async def _subscribe_properties_changed(
     bus.add_message_handler(handler)
 
 
+# ------------------------------------------------------------------
+# Sync source descriptors
+# ------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _SyncSource:
+    """Declarative description of a single host-config sync source.
+
+    Each instance captures the D-Bus coordinates, a property to watch
+    for changes, how to extract the sync payload from a
+    ``PropertiesChanged`` signal, and how to fetch the current value
+    for initial container sync.
+
+    Attributes:
+        name: Human-readable label and sync-script name (e.g. ``"timezone"``).
+        bus_name: D-Bus service name (e.g. ``"org.freedesktop.timedate1"``).
+        object_path: D-Bus object path.
+        watched_property: If set, the handler only fires when this property
+            appears in the ``PropertiesChanged`` dict.  If ``None``, any
+            property change on the object triggers the handler.
+        extract_from_signal: Synchronous callable that receives the
+            ``changed`` dict (``dict[str, Variant]``) from the signal
+            and returns the data string to pipe into containers.
+        fetch_current: Async callable that receives the ``MessageBus``
+            and returns the current data string (used for initial sync
+            at container creation time).
+    """
+
+    name: str
+    bus_name: str
+    object_path: str
+    watched_property: str | None
+    extract_from_signal: Callable[[dict[str, Variant]], str]
+    fetch_current: Callable[[MessageBus], Awaitable[str]]
+
+
+# -- fetch_current helpers -------------------------------------------------
+
+
+async def _fetch_timezone(bus: MessageBus) -> str:
+    variant = await _get_dbus_property(
+        bus,
+        "org.freedesktop.timedate1",
+        "/org/freedesktop/timedate1",
+        "org.freedesktop.timedate1",
+        "Timezone",
+    )
+    result: str = variant.value
+    return result
+
+
+async def _fetch_locale(bus: MessageBus) -> str:
+    variant = await _get_dbus_property(
+        bus,
+        "org.freedesktop.locale1",
+        "/org/freedesktop/locale1",
+        "org.freedesktop.locale1",
+        "Locale",
+    )
+    locale_array: list[str] = variant.value
+    return "\n".join(locale_array)
+
+
+async def _fetch_dns(_bus: MessageBus) -> str:
+    return Path("/etc/resolv.conf").read_text()
+
+
+_SYNC_SOURCES: list[_SyncSource] = [
+    _SyncSource(
+        name="timezone",
+        bus_name="org.freedesktop.timedate1",
+        object_path="/org/freedesktop/timedate1",
+        watched_property="Timezone",
+        extract_from_signal=lambda changed: changed["Timezone"].value,
+        fetch_current=_fetch_timezone,
+    ),
+    _SyncSource(
+        name="locale",
+        bus_name="org.freedesktop.locale1",
+        object_path="/org/freedesktop/locale1",
+        watched_property="Locale",
+        extract_from_signal=lambda changed: "\n".join(changed["Locale"].value),
+        fetch_current=_fetch_locale,
+    ),
+    _SyncSource(
+        name="dns",
+        bus_name="org.freedesktop.resolve1",
+        object_path="/org/freedesktop/resolve1",
+        watched_property=None,
+        extract_from_signal=lambda _: Path("/etc/resolv.conf").read_text(),
+        fetch_current=_fetch_dns,
+    ),
+]
+
+
 class HostConfigSync:
     """Watch host config via D-Bus and push changes into containers."""
 
@@ -130,9 +217,8 @@ class HostConfigSync:
         (e.g. systemd-resolved is not running) a warning is logged and
         the remaining subscriptions proceed normally.
         """
-        await self._subscribe_timedate()
-        await self._subscribe_locale()
-        await self._subscribe_resolve()
+        for source in _SYNC_SOURCES:
+            await self._subscribe(source)
 
     async def sync_container(self, container_name: str) -> None:
         """Push all current host config values into a single container.
@@ -141,112 +227,76 @@ class HostConfigSync:
         container starts with the host's current timezone, locale, and
         DNS configuration.
         """
-        await self._sync_timezone_to(container_name)
-        await self._sync_locale_to(container_name)
-        await self._sync_dns_to(container_name)
+        for source in _SYNC_SOURCES:
+            await self._sync_to(source, container_name)
 
     # ------------------------------------------------------------------
-    # Subscription helpers
+    # Generic subscription & signal handling
     # ------------------------------------------------------------------
 
-    async def _subscribe_timedate(self) -> None:
+    async def _subscribe(self, source: _SyncSource) -> None:
+        """Subscribe to PropertiesChanged for a single sync source."""
         try:
+            handler = self._make_handler(source)
             await _subscribe_properties_changed(
-                self._bus,
-                _TIMEDATE_BUS,
-                _TIMEDATE_PATH,
-                self._on_timedate_changed,
+                self._bus, source.bus_name, source.object_path, handler
             )
-            logger.info("Subscribed to timezone changes on %s", _TIMEDATE_BUS)
+            logger.info("Subscribed to %s changes on %s", source.name, source.bus_name)
         except Exception:
             logger.warning(
-                "Could not subscribe to %s — timezone sync disabled",
-                _TIMEDATE_BUS,
+                "Could not subscribe to %s — %s sync disabled",
+                source.bus_name,
+                source.name,
                 exc_info=True,
             )
 
-    async def _subscribe_locale(self) -> None:
-        try:
-            await _subscribe_properties_changed(
-                self._bus,
-                _LOCALE_BUS,
-                _LOCALE_PATH,
-                self._on_locale_changed,
-            )
-            logger.info("Subscribed to locale changes on %s", _LOCALE_BUS)
-        except Exception:
-            logger.warning(
-                "Could not subscribe to %s — locale sync disabled",
-                _LOCALE_BUS,
-                exc_info=True,
-            )
+    def _make_handler(self, source: _SyncSource) -> Callable[[Message], bool | None]:
+        """Create a D-Bus message handler closure for *source*."""
 
-    async def _subscribe_resolve(self) -> None:
-        try:
-            await _subscribe_properties_changed(
-                self._bus,
-                _RESOLVE_BUS,
-                _RESOLVE_PATH,
-                self._on_resolve_changed,
-            )
-            logger.info("Subscribed to DNS changes on %s", _RESOLVE_BUS)
-        except Exception:
-            logger.warning(
-                "Could not subscribe to %s — DNS sync disabled",
-                _RESOLVE_BUS,
-                exc_info=True,
-            )
+        def handler(msg: Message) -> bool | None:
+            if (
+                msg.message_type != MessageType.SIGNAL
+                or msg.member != "PropertiesChanged"
+                or msg.path != source.object_path
+            ):
+                return None
+
+            changed: dict[str, Variant] = msg.body[1]
+            if source.watched_property and source.watched_property not in changed:
+                return None
+
+            try:
+                data = source.extract_from_signal(changed)
+            except Exception:
+                logger.warning(
+                    "Failed to extract %s data from signal",
+                    source.name,
+                    exc_info=True,
+                )
+                return None
+
+            logger.info("Host %s changed", source.name)
+            asyncio.ensure_future(self._sync_running_containers(source.name, data))
+            return None
+
+        return handler
 
     # ------------------------------------------------------------------
-    # Signal callbacks
+    # Single-container sync (used at creation time)
     # ------------------------------------------------------------------
 
-    def _on_timedate_changed(self, msg: Message) -> bool | None:
-        if (
-            msg.message_type != MessageType.SIGNAL
-            or msg.member != "PropertiesChanged"
-            or msg.path != _TIMEDATE_PATH
-        ):
-            return None
-        changed: dict[str, Variant] = msg.body[1]
-        if "Timezone" not in changed:
-            return None
-        tz_value: str = changed["Timezone"].value
-        logger.info("Host timezone changed to %s", tz_value)
-        asyncio.ensure_future(self._sync_running_containers("timezone", tz_value))
-        return None
-
-    def _on_locale_changed(self, msg: Message) -> bool | None:
-        if (
-            msg.message_type != MessageType.SIGNAL
-            or msg.member != "PropertiesChanged"
-            or msg.path != _LOCALE_PATH
-        ):
-            return None
-        changed: dict[str, Variant] = msg.body[1]
-        if "Locale" not in changed:
-            return None
-        locale_array: list[str] = changed["Locale"].value
-        joined = "\n".join(locale_array)
-        logger.info("Host locale changed: %s", locale_array)
-        asyncio.ensure_future(self._sync_running_containers("locale", joined))
-        return None
-
-    def _on_resolve_changed(self, msg: Message) -> bool | None:
-        if (
-            msg.message_type != MessageType.SIGNAL
-            or msg.member != "PropertiesChanged"
-            or msg.path != _RESOLVE_PATH
-        ):
-            return None
+    async def _sync_to(self, source: _SyncSource, container_name: str) -> None:
+        """Fetch the current value for *source* and sync it into one container."""
         try:
-            resolv_content = Path("/etc/resolv.conf").read_text()
-        except OSError:
-            logger.warning("Could not read /etc/resolv.conf after DNS change")
-            return None
-        logger.info("Host DNS configuration changed")
-        asyncio.ensure_future(self._sync_running_containers("dns", resolv_content))
-        return None
+            data = await source.fetch_current(self._bus)
+            await self._exec_sync_script(container_name, source.name, data)
+        except Exception:
+            logger.warning(
+                "Could not sync %s into container %s",
+                source.name,
+                container_name,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Container sync logic
@@ -306,7 +356,7 @@ class HostConfigSync:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate(input=data.encode())
+        _stdout, stderr = await proc.communicate(input=data.encode())
         if proc.returncode != 0:
             logger.warning(
                 "Sync script %s failed in container %s (rc=%d): %s",
@@ -317,47 +367,3 @@ class HostConfigSync:
             )
         else:
             logger.info("Synced %s into container %s", sync_type, name)
-
-    # ------------------------------------------------------------------
-    # Single-container sync (used at creation time)
-    # ------------------------------------------------------------------
-
-    async def _sync_timezone_to(self, container_name: str) -> None:
-        try:
-            variant = await _get_dbus_property(
-                self._bus, _TIMEDATE_BUS, _TIMEDATE_PATH, _TIMEDATE_BUS, "Timezone"
-            )
-            timezone: str = variant.value
-            await self._exec_sync_script(container_name, "timezone", timezone)
-        except Exception:
-            logger.warning(
-                "Could not sync timezone into container %s",
-                container_name,
-                exc_info=True,
-            )
-
-    async def _sync_locale_to(self, container_name: str) -> None:
-        try:
-            variant = await _get_dbus_property(
-                self._bus, _LOCALE_BUS, _LOCALE_PATH, _LOCALE_BUS, "Locale"
-            )
-            locale_array: list[str] = variant.value
-            joined = "\n".join(locale_array)
-            await self._exec_sync_script(container_name, "locale", joined)
-        except Exception:
-            logger.warning(
-                "Could not sync locale into container %s",
-                container_name,
-                exc_info=True,
-            )
-
-    async def _sync_dns_to(self, container_name: str) -> None:
-        try:
-            resolv_content = Path("/etc/resolv.conf").read_text()
-            await self._exec_sync_script(container_name, "dns", resolv_content)
-        except Exception:
-            logger.warning(
-                "Could not sync DNS into container %s",
-                container_name,
-                exc_info=True,
-            )
