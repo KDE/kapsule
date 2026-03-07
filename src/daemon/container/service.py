@@ -491,19 +491,7 @@ class ContainerService:
         container_exists = await self._incus.instance_exists(container_name)
 
         if not container_exists:
-            # Only auto-create if using default container
-            if container_name == config.default_container:
-                # Create the container (this is a synchronous operation here)
-                try:
-                    await self._run_create(
-                        name=container_name,
-                        image=config.default_image,
-                        opts=ContainerOptions.default(),
-                    )
-                except OperationError as e:
-                    return (False, str(e), [])
-            else:
-                return (False, f"Container '{container_name}' does not exist", [])
+            return (False, f"Container '{container_name}' does not exist", [])
 
         # Check container status
         instance = await self._incus.get_instance(container_name)
