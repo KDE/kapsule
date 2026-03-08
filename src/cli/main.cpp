@@ -71,6 +71,7 @@ QCoro::Task<int> cmdStart(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdStop(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdRm(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdConfig(KapsuleClient &client, const QStringList &args);
+QCoro::Task<int> cmdImage(KapsuleClient &client, const QStringList &args);
 
 void printUsage()
 {
@@ -87,6 +88,7 @@ void printUsage()
         o.info("stop <name>      Stop a running container");
         o.info("rm <name>        Remove a container");
         o.info("config           Show configuration");
+        o.info("image refresh    Refresh cached images");
     }
     o.info("");
     o.dim(QStringLiteral("Run '%1 <command> --help' for command-specific help.").arg(programName).toStdString());
@@ -141,6 +143,8 @@ QCoro::Task<int> asyncMain(const QStringList &args)
         co_return co_await cmdRm(client, cmdArgs);
     } else if (command == QStringLiteral("config")) {
         co_return co_await cmdConfig(client, cmdArgs);
+    } else if (command == QStringLiteral("image")) {
+        co_return co_await cmdImage(client, cmdArgs);
     } else {
         o.error(QStringLiteral("Unknown command: %1").arg(command).toStdString());
         printUsage();
@@ -771,6 +775,83 @@ QCoro::Task<int> cmdConfig(KapsuleClient &client, const QStringList &args)
             co_return 1;
         }
         o.info(QStringLiteral("%1 = %2").arg(key, config.value(key).toString()).toStdString());
+    }
+
+    co_return 0;
+}
+
+// =============================================================================
+// Command: image
+// =============================================================================
+
+QCoro::Task<int> cmdImageRefresh(KapsuleClient &client, const QStringList &args);
+
+QCoro::Task<int> cmdImage(KapsuleClient &client, const QStringList &args)
+{
+    auto &o = out();
+
+    if (args.isEmpty()) {
+        o.info(QStringLiteral("Usage: %1 image <subcommand>").arg(programName).toStdString());
+        o.info("");
+        o.section("Subcommands:");
+        {
+            IndentGuard g(o);
+            o.info("refresh [server:alias]   Refresh cached images");
+        }
+        co_return 0;
+    }
+
+    QString subcommand = args.at(0);
+    QStringList subArgs = args.mid(1);
+
+    if (subcommand == QStringLiteral("refresh")) {
+        co_return co_await cmdImageRefresh(client, subArgs);
+    } else {
+        o.error(QStringLiteral("Unknown image subcommand: %1").arg(subcommand).toStdString());
+        co_return 1;
+    }
+}
+
+QCoro::Task<int> cmdImageRefresh(KapsuleClient &client, const QStringList &args)
+{
+    auto &o = out();
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Refresh cached images from upstream"));
+    parser.addHelpOption();
+    parser.addPositionalArgument(
+        QStringLiteral("image"),
+        QStringLiteral("Image to refresh in server:alias format (e.g., kapsule:archlinux). "
+                       "Omit to refresh all auto-update images."));
+
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" image refresh")} + args;
+    if (!parser.parse(fullArgs)) {
+        o.error(parser.errorText().toStdString());
+        co_return 1;
+    }
+
+    if (parser.isSet(QStringLiteral("help"))) {
+        std::cout << parser.helpText().toStdString();
+        co_return 0;
+    }
+
+    QStringList positional = parser.positionalArguments();
+    QString imageSpec = positional.value(0);
+
+    if (imageSpec.isEmpty()) {
+        o.section("Refreshing all cached images");
+    } else {
+        o.section(QStringLiteral("Refreshing image: %1").arg(imageSpec).toStdString());
+    }
+
+    auto result = co_await client.refreshImages(imageSpec,
+        [&o](MessageType type, const QString &msg, int indent) {
+            o.print(type, msg.toStdString(), indent);
+        });
+
+    if (!result.success) {
+        o.failure(result.error.toStdString());
+        co_return 1;
     }
 
     co_return 0;

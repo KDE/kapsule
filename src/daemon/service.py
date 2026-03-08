@@ -337,6 +337,24 @@ class KapsuleManagerInterface(ServiceInterface):
         """
         return await self._service.stop_container(name=name, force=force)
 
+    @dbus_method()
+    async def RefreshImages(self, image: DBusStr) -> DBusObjectPath:
+        """Refresh cached images from their upstream sources.
+
+        Triggers an immediate re-download of cached images that have
+        auto_update enabled. Use this after rebuilding images upstream
+        to ensure newly created containers get the latest version.
+
+        Args:
+            image: Image filter in "server:alias" format (e.g.,
+                "kapsule:archlinux"), or empty string to refresh all
+                auto-update images.
+
+        Returns:
+            D-Bus object path for tracking operation progress
+        """
+        return await self._service.refresh_images(image_spec=image)
+
     # =========================================================================
     # Methods - User Setup
     # =========================================================================

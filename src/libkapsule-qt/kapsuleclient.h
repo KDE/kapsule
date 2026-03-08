@@ -190,6 +190,22 @@ public:
         const QString &containerName = {},
         const QStringList &command = {});
 
+    /**
+     * @brief Refresh cached images from their upstream sources.
+     *
+     * Triggers an immediate re-download of cached images that have
+     * auto_update enabled. Use this after rebuilding images upstream
+     * to ensure newly created containers get the latest version.
+     *
+     * @param image Image filter in "server:alias" format (e.g.,
+     *     "kapsule:archlinux"), or empty string to refresh all.
+     * @param progress Optional callback for progress messages.
+     * @return Operation result with success/error info.
+     */
+    QCoro::Task<OperationResult> refreshImages(
+        const QString &image = {},
+        ProgressHandler progress = {});
+
 Q_SIGNALS:
     /**
      * @brief Emitted when the connection state changes.

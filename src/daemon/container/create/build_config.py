@@ -20,7 +20,7 @@ from ..contexts import CreateContext
 from . import create_pipeline
 
 # Map common server aliases to URLs
-_SERVER_MAP = {
+SERVER_MAP = {
     "images": "https://images.linuxcontainers.org",
     "ubuntu": "https://cloud-images.ubuntu.com/releases",
     "kapsule": "https://fernando.local-kde.org/kapsule-images",
@@ -41,7 +41,7 @@ async def parse_image_source(ctx: CreateContext) -> None:
 
     if ":" in image:
         server_alias, image_alias = image.split(":", 1)
-        server_url = _SERVER_MAP.get(server_alias)
+        server_url = SERVER_MAP.get(server_alias)
         if not server_url:
             raise OperationError(f"Invalid image format: {image}")
     else:

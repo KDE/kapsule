@@ -326,4 +326,21 @@ QCoro::Task<EnterResult> KapsuleClient::prepareEnter(
     co_return reply.value();
 }
 
+QCoro::Task<OperationResult> KapsuleClient::refreshImages(
+    const QString &image,
+    ProgressHandler progress)
+{
+    if (!d->connected) {
+        co_return {false, QStringLiteral("Not connected to daemon")};
+    }
+
+    auto reply = co_await d->interface->RefreshImages(image);
+    if (reply.isError()) {
+        co_return {false, reply.error().message()};
+    }
+
+    QDBusObjectPath opPath = reply.value();
+    co_return co_await d->waitForOperation(opPath.path(), progress);
+}
+
 } // namespace Kapsule

@@ -41,6 +41,7 @@ from .constants import (
 )
 from .contexts import CreateContext, UserSetupContext
 from .create import create_pipeline
+from .create.build_config import SERVER_MAP
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
@@ -348,6 +349,100 @@ class ContainerService:
             progress,
         )
         progress.success(f"User '{username}' configured")
+
+    # -------------------------------------------------------------------------
+    # Image Operations
+    # -------------------------------------------------------------------------
+
+    @operation(
+        "refresh_images",
+        description="Refreshing cached images",
+    )
+    async def refresh_images(
+        self,
+        progress: OperationReporter,
+        *,
+        image_spec: str,
+    ) -> None:
+        """Refresh cached images from their upstream sources.
+
+        Args:
+            progress: Operation reporter (auto-injected)
+            image_spec: Image filter in "server:alias" format, or empty
+                string to refresh all auto-update images.
+        """
+        # Parse the image_spec filter
+        filter_server: str | None = None
+        filter_alias: str | None = None
+
+        if image_spec:
+            if ":" in image_spec:
+                server_alias, filter_alias = image_spec.split(":", 1)
+                filter_server = SERVER_MAP.get(server_alias)
+                if not filter_server:
+                    raise OperationError(
+                        f"Unknown server alias: '{server_alias}'. "
+                        f"Known aliases: {', '.join(SERVER_MAP.keys())}"
+                    )
+            else:
+                # Bare alias — match any server with this alias
+                filter_alias = image_spec
+
+        # List all cached images
+        all_images = await self._incus.list_images()
+
+        # Filter to auto-update cached images
+        candidates = [
+            img
+            for img in all_images
+            if img.auto_update and img.cached and img.update_source
+        ]
+
+        if not candidates:
+            progress.warning("No cached auto-update images found")
+            return
+
+        # Apply server:alias filter
+        matched = []
+        for img in candidates:
+            src = img.update_source
+            assert src is not None  # guarded by filter above
+
+            if filter_server and src.server != filter_server:
+                continue
+            if filter_alias and src.alias != filter_alias:
+                continue
+            matched.append(img)
+
+        if not matched:
+            if image_spec:
+                raise OperationError(f"No cached images match '{image_spec}'")
+            progress.warning("No images matched the filter")
+            return
+
+        progress.info(f"Found {len(matched)} image(s) to refresh")
+
+        refreshed = 0
+        for img in matched:
+            src = img.update_source
+            assert src is not None
+            label = f"{src.alias} from {src.server}"
+            progress.info(f"Refreshing: {label}")
+
+            try:
+                assert img.fingerprint is not None
+                op = await self._incus.refresh_image(img.fingerprint)
+                if op.status == "Success":
+                    progress.success(f"Refreshed: {label}")
+                    refreshed += 1
+                else:
+                    progress.warning(
+                        f"Refresh returned status '{op.status}' for {label}"
+                    )
+            except IncusError as e:
+                progress.error(f"Failed to refresh {label}: {e}")
+
+        progress.success(f"Refreshed {refreshed}/{len(matched)} image(s)")
 
     # -------------------------------------------------------------------------
     # Query Methods (non-operation, synchronous response)

@@ -18,6 +18,7 @@ from pydantic import BaseModel, RootModel
 T = TypeVar("T", bound=BaseModel)
 
 from .models_generated import (
+    Image,
     Instance,
     InstancePut,
     InstancesPost,
@@ -46,6 +47,12 @@ class StringList(RootModel[list[str]]):
 
 class StoragePoolList(RootModel[list[StoragePool]]):
     """List of StoragePool objects."""
+
+    pass
+
+
+class ImageList(RootModel[list[Image]]):
+    """List of Image objects."""
 
     pass
 
@@ -741,6 +748,54 @@ class IncusClient:
             response_type=EmptyResponse,
             json=pool.model_dump(exclude_none=True),
         )
+
+    # -------------------------------------------------------------------------
+    # Image operations
+    # -------------------------------------------------------------------------
+
+    async def list_images(self, recursion: int = 1) -> list[Image]:
+        """List all images.
+
+        Args:
+            recursion: 0 returns just URLs, 1 returns full objects.
+
+        Returns:
+            List of Image objects.
+        """
+        result = await self._request(
+            "GET",
+            f"/1.0/images?recursion={recursion}",
+            response_type=ImageList,
+        )
+        return result.root
+
+    async def refresh_image(self, fingerprint: str) -> Operation:
+        """Trigger an immediate refresh of a cached image from its upstream source.
+
+        This is an async Incus operation. The image must have auto_update=True
+        and a valid update_source.
+
+        Args:
+            fingerprint: Full SHA-256 fingerprint of the image.
+
+        Returns:
+            Operation with status info.
+        """
+        response = await self._request(
+            "POST",
+            f"/1.0/images/{fingerprint}/refresh",
+            response_type=AsyncOperationResponse,
+        )
+
+        operation = response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
+
+        # Wait for the refresh to complete (may download a new image)
+        if operation.id:
+            operation = await self.wait_operation(operation.id, timeout=300)
+
+        return operation
 
     # -------------------------------------------------------------------------
     # Server configuration
