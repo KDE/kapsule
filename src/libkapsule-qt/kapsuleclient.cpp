@@ -119,32 +119,48 @@ QCoro::Task<OperationResult> KapsuleClientPrivate::waitForOperation(
 
     qCDebug(KAPSULE_LOG) << "Operation proxy created successfully";
 
-    // Subscribe to progress messages if handler provided
-    QMetaObject::Connection messageConn;
-    if (progress) {
-        messageConn = QObject::connect(
+    // -----------------------------------------------------------------------
+    // Race-condition guard: check if the operation already completed before
+    // we subscribe to the Completed signal.  The status() call is a
+    // synchronous D-Bus property Get — while the daemon handles this request
+    // its single-threaded asyncio loop cannot emit Completed, so the window
+    // between this check and the co_await below is safe.
+    // -----------------------------------------------------------------------
+    bool success = false;
+    QString error;
+
+    const QString currentStatus = opProxy->status();
+    qCDebug(KAPSULE_LOG) << "Current operation status:" << currentStatus;
+
+    if (currentStatus == QLatin1String("running")) {
+        // Subscribe to progress messages if handler provided
+        QMetaObject::Connection messageConn;
+        if (progress) {
+            messageConn = QObject::connect(
+                opProxy.get(),
+                &OrgKdeKapsuleOperationInterface::Message,
+                [progress](int type, const QString &msg, int indent) {
+                    qCDebug(KAPSULE_LOG) << "Got Message signal:" << type << msg;
+                    progress(static_cast<MessageType>(type), msg, indent);
+                });
+            qCDebug(KAPSULE_LOG) << "Subscribed to Message signal";
+        }
+
+        qCDebug(KAPSULE_LOG) << "Waiting for Completed signal...";
+        std::tie(success, error) = co_await qCoro(
             opProxy.get(),
-            &OrgKdeKapsuleOperationInterface::Message,
-            [progress](int type, const QString &msg, int indent) {
-                qCDebug(KAPSULE_LOG) << "Got Message signal:" << type << msg;
-                progress(static_cast<MessageType>(type), msg, indent);
-            });
-        qCDebug(KAPSULE_LOG) << "Subscribed to Message signal";
+            &OrgKdeKapsuleOperationInterface::Completed);
+
+        if (progress) {
+            QObject::disconnect(messageConn);
+        }
+    } else {
+        // Operation already finished — read result from properties
+        success = (currentStatus == QLatin1String("completed"));
+        error = opProxy->errorMessage();
     }
 
-    qCDebug(KAPSULE_LOG) << "Waiting for Completed signal...";
-    // Await the Completed signal directly using qCoro - no polling!
-    auto [success, error] = co_await qCoro(
-        opProxy.get(),
-        &OrgKdeKapsuleOperationInterface::Completed);
-
-    qCDebug(KAPSULE_LOG) << "Got Completed signal: success=" << success << "error=" << error;
-
-    // Clean up
-    if (progress) {
-        QObject::disconnect(messageConn);
-    }
-
+    qCDebug(KAPSULE_LOG) << "Operation finished: success=" << success << "error=" << error;
     co_return OperationResult{success, error};
 }
 

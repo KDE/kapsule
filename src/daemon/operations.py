@@ -94,6 +94,7 @@ class OperationInterface(ServiceInterface):
         self._description = description
         self._target = target
         self._status = "running"
+        self._error_message = ""
         self._cancel_requested = False
         self._task: asyncio.Task[None] | None = None
 
@@ -134,6 +135,11 @@ class OperationInterface(ServiceInterface):
     def Status(self) -> DBusStr:
         """Current status: running, completed, failed, cancelled."""
         return self._status
+
+    @dbus_property(access=PropertyAccess.READ)
+    def ErrorMessage(self) -> DBusStr:
+        """Error message if the operation failed, empty otherwise."""
+        return self._error_message
 
     # -------------------------------------------------------------------------
     # Signals
@@ -254,6 +260,14 @@ class OperationInterface(ServiceInterface):
         self._status = "completed" if success else "failed"
         if self._cancel_requested and not success:
             self._status = "cancelled"
+        self._error_message = message
+
+        # Emit PropertiesChanged so clients polling Status (rather than
+        # listening for the Completed signal) are notified immediately.
+        self.emit_properties_changed(
+            {"Status": self._status, "ErrorMessage": self._error_message}
+        )
+
         print(
             f"[Operation {self._op_id}] Emitting Completed signal: success={success}, message={message!r}"
         )
