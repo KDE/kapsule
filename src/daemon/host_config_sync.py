@@ -306,7 +306,7 @@ class HostConfigSync:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate(input=data.encode())
+        _stdout, stderr = await proc.communicate(input=data.encode())
         if proc.returncode != 0:
             logger.warning(
                 "Sync script %s failed in container %s (rc=%d): %s",
