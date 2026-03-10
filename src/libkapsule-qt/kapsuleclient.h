@@ -206,6 +206,47 @@ public:
         const QString &image = {},
         ProgressHandler progress = {});
 
+    /**
+     * @brief Import a split image from a local directory.
+     *
+     * The directory must contain incus.tar.xz (metadata) and
+     * rootfs.squashfs (root filesystem). If an image with the
+     * given alias already exists it is replaced.
+     *
+     * @param path Path to the directory containing image files.
+     * @param alias Alias name to assign to the imported image.
+     * @param progress Optional callback for progress messages.
+     * @return Operation result with success/error info.
+     */
+    QCoro::Task<OperationResult> importImage(
+        const QString &path,
+        const QString &alias,
+        ProgressHandler progress = {});
+
+    /**
+     * @brief List all images known to the local Incus daemon.
+     *
+     * Returns a JSON string with an array of image objects.
+     * The caller is responsible for parsing the JSON.
+     *
+     * @return JSON string with the image list, or empty string on error.
+     */
+    QCoro::Task<QString> listImages();
+
+    /**
+     * @brief Delete an image by alias or fingerprint.
+     *
+     * Short identifiers (< 64 chars) are treated as aliases and
+     * resolved to a fingerprint first.
+     *
+     * @param identifier Image alias or full SHA-256 fingerprint.
+     * @param progress Optional callback for progress messages.
+     * @return Operation result with success/error info.
+     */
+    QCoro::Task<OperationResult> deleteImage(
+        const QString &identifier,
+        ProgressHandler progress = {});
+
 Q_SIGNALS:
     /**
      * @brief Emitted when the connection state changes.

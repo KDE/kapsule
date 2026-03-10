@@ -10,6 +10,8 @@ communicating over the Unix socket at /var/lib/incus/unix.socket.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, TypeVar
 
 import httpx
@@ -19,6 +21,7 @@ T = TypeVar("T", bound=BaseModel)
 
 from .models_generated import (
     Image,
+    ImageAliasesEntry,
     Instance,
     InstancePut,
     InstancesPost,
@@ -796,6 +799,110 @@ class IncusClient:
             operation = await self.wait_operation(operation.id, timeout=300)
 
         return operation
+
+    async def import_image(
+        self, meta_path: Path, rootfs_path: Path, aliases: list[str]
+    ) -> str:
+        """Import a split image (metadata tarball + rootfs) into Incus.
+
+        Uploads via multipart/form-data with two file parts. Bypasses
+        ``_request()`` since it only handles JSON bodies.
+
+        Args:
+            meta_path: Path to the metadata tarball (e.g., ``incus.tar.xz``).
+            rootfs_path: Path to the rootfs file (e.g., ``rootfs.squashfs``).
+            aliases: List of alias names to assign to the image.
+
+        Returns:
+            The SHA-256 fingerprint of the imported image.
+        """
+        alias_dicts = [{"name": a} for a in aliases]
+
+        client = await self._get_client()
+        response = await client.post(
+            "/1.0/images",
+            headers={
+                "X-Incus-aliases": json.dumps(alias_dicts),
+            },
+            files={
+                "metadata": (
+                    meta_path.name,
+                    meta_path.read_bytes(),
+                    "application/octet-stream",
+                ),
+                "rootfs": (
+                    rootfs_path.name,
+                    rootfs_path.read_bytes(),
+                    "application/octet-stream",
+                ),
+            },
+        )
+
+        if response.status_code >= 400:
+            raise IncusError(
+                f"Failed to import image: {response.text}",
+                response.status_code,
+            )
+
+        data = response.json()
+        if data.get("type") == "error":
+            raise IncusError(
+                data.get("error", "Unknown error"),
+                data.get("error_code"),
+            )
+
+        op_response = AsyncOperationResponse.model_validate(data)
+        operation = op_response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
+
+        if operation.id:
+            operation = await self.wait_operation(operation.id, timeout=300)
+
+        if operation.metadata is None or "fingerprint" not in operation.metadata:
+            raise IncusError("No fingerprint in operation metadata")
+
+        return operation.metadata["fingerprint"]
+
+    async def delete_image(self, fingerprint: str) -> None:
+        """Delete an image by fingerprint.
+
+        Args:
+            fingerprint: Full SHA-256 fingerprint of the image to delete.
+        """
+        response = await self._request(
+            "DELETE",
+            f"/1.0/images/{fingerprint}",
+            response_type=AsyncOperationResponse,
+        )
+
+        operation = response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
+
+        if operation.id:
+            await self.wait_operation(operation.id)
+
+    async def get_image_fingerprint_by_alias(self, alias: str) -> str | None:
+        """Look up an image fingerprint by alias name.
+
+        Args:
+            alias: Image alias name to look up.
+
+        Returns:
+            The fingerprint string if the alias exists, or ``None`` if not found.
+        """
+        try:
+            entry = await self._request(
+                "GET",
+                f"/1.0/images/aliases/{alias}",
+                response_type=ImageAliasesEntry,
+            )
+            return entry.target
+        except IncusError as exc:
+            if exc.code == 404:
+                return None
+            raise
 
     # -------------------------------------------------------------------------
     # Server configuration

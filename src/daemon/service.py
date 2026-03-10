@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextvars
 from dataclasses import dataclass
+import json
 import logging
 from typing import Annotated
 
@@ -354,6 +355,48 @@ class KapsuleManagerInterface(ServiceInterface):
             D-Bus object path for tracking operation progress
         """
         return await self._service.refresh_images(image_spec=image)
+
+    @dbus_method()
+    async def ImportImage(self, path: DBusStr, alias: DBusStr) -> DBusObjectPath:
+        """Import a split image from a local directory.
+
+        The directory must contain ``incus.tar.xz`` (metadata) and
+        ``rootfs.squashfs`` (root filesystem).  If an image with the
+        given alias already exists it is replaced.
+
+        Args:
+            path: Path to the directory containing image files
+            alias: Alias name to assign to the imported image
+
+        Returns:
+            D-Bus object path for tracking operation progress
+        """
+        return await self._service.import_image(path=path, alias=alias)
+
+    @dbus_method()
+    async def ListImages(self) -> DBusStr:
+        """List all images known to the local Incus daemon.
+
+        Returns:
+            JSON string with an array of image objects
+        """
+        images = await self._service.list_images()
+        return json.dumps([img.model_dump(mode="json") for img in images])
+
+    @dbus_method()
+    async def DeleteImage(self, identifier: DBusStr) -> DBusObjectPath:
+        """Delete an image by alias or fingerprint.
+
+        Short identifiers (< 64 chars) are treated as aliases and
+        resolved to a fingerprint first.
+
+        Args:
+            identifier: Image alias or full SHA-256 fingerprint
+
+        Returns:
+            D-Bus object path for tracking operation progress
+        """
+        return await self._service.delete_image(identifier=identifier)
 
     # =========================================================================
     # Methods - User Setup

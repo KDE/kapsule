@@ -12,7 +12,11 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include <qcoro/qcorotask.h>
 #include <qcoro/qcorocore.h>
@@ -72,6 +76,9 @@ QCoro::Task<int> cmdStop(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdRm(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdConfig(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdImage(KapsuleClient &client, const QStringList &args);
+QCoro::Task<int> cmdImageImport(KapsuleClient &client, const QStringList &args);
+QCoro::Task<int> cmdImageList(KapsuleClient &client, const QStringList &args);
+QCoro::Task<int> cmdImageDelete(KapsuleClient &client, const QStringList &args);
 
 void printUsage()
 {
@@ -88,6 +95,9 @@ void printUsage()
         o.info("stop <name>      Stop a running container");
         o.info("rm <name>        Remove a container");
         o.info("config           Show configuration");
+        o.info("image import     Import a local image");
+        o.info("image list       List imported images");
+        o.info("image delete     Delete an image");
         o.info("image refresh    Refresh cached images");
     }
     o.info("");
@@ -796,6 +806,9 @@ QCoro::Task<int> cmdImage(KapsuleClient &client, const QStringList &args)
         o.section("Subcommands:");
         {
             IndentGuard g(o);
+            o.info("import <path>            Import a local image");
+            o.info("list                     List imported images");
+            o.info("delete <id>              Delete an image");
             o.info("refresh [server:alias]   Refresh cached images");
         }
         co_return 0;
@@ -804,7 +817,13 @@ QCoro::Task<int> cmdImage(KapsuleClient &client, const QStringList &args)
     QString subcommand = args.at(0);
     QStringList subArgs = args.mid(1);
 
-    if (subcommand == QStringLiteral("refresh")) {
+    if (subcommand == QStringLiteral("import")) {
+        co_return co_await cmdImageImport(client, subArgs);
+    } else if (subcommand == QStringLiteral("list") || subcommand == QStringLiteral("ls")) {
+        co_return co_await cmdImageList(client, subArgs);
+    } else if (subcommand == QStringLiteral("delete") || subcommand == QStringLiteral("rm")) {
+        co_return co_await cmdImageDelete(client, subArgs);
+    } else if (subcommand == QStringLiteral("refresh")) {
         co_return co_await cmdImageRefresh(client, subArgs);
     } else {
         o.error(QStringLiteral("Unknown image subcommand: %1").arg(subcommand).toStdString());
@@ -854,6 +873,206 @@ QCoro::Task<int> cmdImageRefresh(KapsuleClient &client, const QStringList &args)
         co_return 1;
     }
 
+    co_return 0;
+}
+
+// =============================================================================
+// Command: image import
+// =============================================================================
+
+QCoro::Task<int> cmdImageImport(KapsuleClient &client, const QStringList &args)
+{
+    auto &o = out();
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Import a local image into kapsule"));
+    parser.addHelpOption();
+    parser.addPositionalArgument(QStringLiteral("path"),
+        QStringLiteral("Directory containing the built image (e.g., out/archlinux/)"));
+    parser.addOption({{QStringLiteral("a"), QStringLiteral("alias")},
+                      QStringLiteral("Alias name for the image (defaults to directory name)"),
+                      QStringLiteral("name")});
+
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" image import")} + args;
+    if (!parser.parse(fullArgs)) {
+        o.error(parser.errorText().toStdString());
+        co_return 1;
+    }
+
+    if (parser.isSet(QStringLiteral("help"))) {
+        std::cout << parser.helpText().toStdString();
+        co_return 0;
+    }
+
+    QStringList positional = parser.positionalArguments();
+    if (positional.isEmpty()) {
+        o.error("Image path required");
+        o.hint(QStringLiteral("Usage: %1 image import <path> [--alias <name>]").arg(programName).toStdString());
+        co_return 1;
+    }
+
+    QString path = positional.at(0);
+    QString alias = parser.value(QStringLiteral("alias"));
+
+    // Derive alias from directory name if not specified
+    if (alias.isEmpty()) {
+        alias = QDir(path).dirName();
+    }
+
+    o.section(QStringLiteral("Importing image: %1").arg(alias).toStdString());
+
+    auto result = co_await client.importImage(path, alias,
+        [&o](MessageType type, const QString &msg, int indent) {
+            o.print(type, msg.toStdString(), indent);
+        });
+
+    if (!result.success) {
+        o.failure(result.error.toStdString());
+        co_return 1;
+    }
+
+    o.success(QStringLiteral("Image imported successfully as \"%1\"").arg(alias).toStdString());
+    co_return 0;
+}
+
+// =============================================================================
+// Command: image list
+// =============================================================================
+
+static QString formatImageSize(qint64 bytes)
+{
+    if (bytes < 0) {
+        return QStringLiteral("-");
+    }
+    constexpr qint64 GB = 1024LL * 1024 * 1024;
+    constexpr qint64 MB = 1024LL * 1024;
+    if (bytes >= GB) {
+        return QStringLiteral("%1 GB").arg(static_cast<double>(bytes) / GB, 0, 'f', 1);
+    }
+    return QStringLiteral("%1 MB").arg(static_cast<double>(bytes) / MB, 0, 'f', 1);
+}
+
+QCoro::Task<int> cmdImageList(KapsuleClient &client, const QStringList &args)
+{
+    auto &o = out();
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("List imported images"));
+    parser.addHelpOption();
+
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" image list")} + args;
+    if (!parser.parse(fullArgs)) {
+        o.error(parser.errorText().toStdString());
+        co_return 1;
+    }
+
+    if (parser.isSet(QStringLiteral("help"))) {
+        std::cout << parser.helpText().toStdString();
+        co_return 0;
+    }
+
+    QString json = co_await client.listImages();
+    if (json.isEmpty()) {
+        o.error("Failed to retrieve image list from daemon");
+        co_return 1;
+    }
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        o.error(QStringLiteral("Failed to parse image list: %1").arg(parseError.errorString()).toStdString());
+        co_return 1;
+    }
+
+    QJsonArray images = doc.array();
+    if (images.isEmpty()) {
+        o.dim("No images found.");
+        co_return 0;
+    }
+
+    // Print table header
+    std::cout << rang::style::bold
+              << std::left << std::setw(14) << "FINGERPRINT"
+              << std::setw(20) << "ALIAS"
+              << std::setw(30) << "DESCRIPTION"
+              << std::setw(10) << "SIZE"
+              << "UPLOADED"
+              << rang::style::reset << '\n';
+
+    // Print rows
+    for (const QJsonValue &val : images) {
+        QJsonObject img = val.toObject();
+
+        QString fingerprint = img.value(QStringLiteral("fingerprint")).toString().left(12);
+        QString description = img.value(QStringLiteral("description")).toString();
+        qint64 size = img.value(QStringLiteral("size")).toInteger(-1);
+        QString uploaded = img.value(QStringLiteral("uploaded_at")).toString().left(10);
+
+        // Extract first alias
+        QString alias;
+        QJsonArray aliases = img.value(QStringLiteral("aliases")).toArray();
+        if (!aliases.isEmpty()) {
+            alias = aliases.first().toObject().value(QStringLiteral("name")).toString();
+        }
+
+        std::cout << std::left << std::setw(14) << fingerprint.toStdString()
+                  << std::setw(20) << alias.toStdString()
+                  << std::setw(30) << description.left(28).toStdString()
+                  << std::setw(10) << formatImageSize(size).toStdString()
+                  << uploaded.toStdString()
+                  << '\n';
+    }
+
+    co_return 0;
+}
+
+// =============================================================================
+// Command: image delete
+// =============================================================================
+
+QCoro::Task<int> cmdImageDelete(KapsuleClient &client, const QStringList &args)
+{
+    auto &o = out();
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Delete an image by alias or fingerprint"));
+    parser.addHelpOption();
+    parser.addPositionalArgument(QStringLiteral("identifier"),
+        QStringLiteral("Image alias or fingerprint"));
+
+    QStringList fullArgs = QStringList{programName + QStringLiteral(" image delete")} + args;
+    if (!parser.parse(fullArgs)) {
+        o.error(parser.errorText().toStdString());
+        co_return 1;
+    }
+
+    if (parser.isSet(QStringLiteral("help"))) {
+        std::cout << parser.helpText().toStdString();
+        co_return 0;
+    }
+
+    QStringList positional = parser.positionalArguments();
+    if (positional.isEmpty()) {
+        o.error("Image identifier required");
+        o.hint(QStringLiteral("Usage: %1 image delete <fingerprint-or-alias>").arg(programName).toStdString());
+        co_return 1;
+    }
+
+    QString identifier = positional.at(0);
+
+    o.section(QStringLiteral("Deleting image: %1").arg(identifier).toStdString());
+
+    auto result = co_await client.deleteImage(identifier,
+        [&o](MessageType type, const QString &msg, int indent) {
+            o.print(type, msg.toStdString(), indent);
+        });
+
+    if (!result.success) {
+        o.failure(result.error.toStdString());
+        co_return 1;
+    }
+
+    o.success("Image deleted");
     co_return 0;
 }
 

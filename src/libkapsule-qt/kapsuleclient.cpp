@@ -359,4 +359,54 @@ QCoro::Task<OperationResult> KapsuleClient::refreshImages(
     co_return co_await d->waitForOperation(opPath.path(), progress);
 }
 
+QCoro::Task<OperationResult> KapsuleClient::importImage(
+    const QString &path,
+    const QString &alias,
+    ProgressHandler progress)
+{
+    if (!d->connected) {
+        co_return {false, QStringLiteral("Not connected to daemon")};
+    }
+
+    auto reply = co_await d->interface->ImportImage(path, alias);
+    if (reply.isError()) {
+        co_return {false, reply.error().message()};
+    }
+
+    QDBusObjectPath opPath = reply.value();
+    co_return co_await d->waitForOperation(opPath.path(), progress);
+}
+
+QCoro::Task<QString> KapsuleClient::listImages()
+{
+    if (!d->connected) {
+        co_return {};
+    }
+
+    auto reply = co_await d->interface->ListImages();
+    if (reply.isError()) {
+        qCWarning(KAPSULE_LOG) << "ListImages failed:" << reply.error().message();
+        co_return {};
+    }
+
+    co_return reply.value();
+}
+
+QCoro::Task<OperationResult> KapsuleClient::deleteImage(
+    const QString &identifier,
+    ProgressHandler progress)
+{
+    if (!d->connected) {
+        co_return {false, QStringLiteral("Not connected to daemon")};
+    }
+
+    auto reply = co_await d->interface->DeleteImage(identifier);
+    if (reply.isError()) {
+        co_return {false, reply.error().message()};
+    }
+
+    QDBusObjectPath opPath = reply.value();
+    co_return co_await d->waitForOperation(opPath.path(), progress);
+}
+
 } // namespace Kapsule

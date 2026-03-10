@@ -20,6 +20,7 @@ import logging
 import os
 import pwd
 import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import load_config
@@ -443,6 +444,103 @@ class ContainerService:
                 progress.error(f"Failed to refresh {label}: {e}")
 
         progress.success(f"Refreshed {refreshed}/{len(matched)} image(s)")
+
+    @operation(
+        "import_image",
+        description="Importing image: {alias}",
+        target_param="alias",
+    )
+    async def import_image(
+        self,
+        progress: OperationReporter,
+        *,
+        path: str,
+        alias: str,
+    ) -> None:
+        """Import a split image from a local directory.
+
+        Expects the directory to contain ``incus.tar.xz`` (metadata)
+        and ``rootfs.squashfs`` (root filesystem).  If an image with
+        the given alias already exists it is replaced.
+
+        Args:
+            progress: Operation reporter (auto-injected)
+            path: Path to a directory containing the image files
+            alias: Alias name to assign to the imported image
+        """
+        image_dir = Path(path)
+        meta_path = image_dir / "incus.tar.xz"
+        rootfs_path = image_dir / "rootfs.squashfs"
+
+        if not image_dir.is_dir():
+            raise OperationError(f"Image directory does not exist: {path}")
+        if not meta_path.is_file():
+            raise OperationError(f"Missing metadata file: {meta_path}")
+        if not rootfs_path.is_file():
+            raise OperationError(f"Missing rootfs file: {rootfs_path}")
+
+        # Replace existing image with the same alias
+        old_fingerprint = await self._incus.get_image_fingerprint_by_alias(alias)
+        if old_fingerprint:
+            progress.info(f"Replacing existing image with alias '{alias}'")
+            try:
+                await self._incus.delete_image(old_fingerprint)
+            except IncusError as e:
+                raise OperationError(f"Failed to delete old image: {e}")
+
+        progress.info("Uploading image...")
+        try:
+            fingerprint = await self._incus.import_image(
+                meta_path, rootfs_path, [alias]
+            )
+        except IncusError as e:
+            raise OperationError(f"Failed to import image: {e}")
+
+        progress.success(f"Image imported: {fingerprint}")
+
+    async def list_images(self) -> list:
+        """List all images.
+
+        Returns:
+            List of Image objects from the Incus API
+        """
+        return await self._incus.list_images()
+
+    @operation(
+        "delete_image",
+        description="Deleting image: {identifier}",
+        target_param="identifier",
+    )
+    async def delete_image(
+        self,
+        progress: OperationReporter,
+        *,
+        identifier: str,
+    ) -> None:
+        """Delete an image by alias or fingerprint.
+
+        If *identifier* is shorter than 64 characters it is treated as
+        an alias and resolved to a fingerprint first.
+
+        Args:
+            progress: Operation reporter (auto-injected)
+            identifier: Image alias or full SHA-256 fingerprint
+        """
+        if len(identifier) < 64:
+            # Treat as alias
+            fingerprint = await self._incus.get_image_fingerprint_by_alias(identifier)
+            if not fingerprint:
+                raise OperationError(f"No image found with alias '{identifier}'")
+        else:
+            fingerprint = identifier
+
+        progress.info(f"Deleting image {fingerprint[:12]}...")
+        try:
+            await self._incus.delete_image(fingerprint)
+        except IncusError as e:
+            raise OperationError(f"Failed to delete image: {e}")
+
+        progress.success("Image deleted")
 
     # -------------------------------------------------------------------------
     # Query Methods (non-operation, synchronous response)

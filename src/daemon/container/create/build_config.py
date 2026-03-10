@@ -41,6 +41,34 @@ async def parse_image_source(ctx: CreateContext) -> None:
 
     if ":" in image:
         server_alias, image_alias = image.split(":", 1)
+
+        # "local:" references images already present in the Incus local image
+        # store (imported via `kapsule image import`).  No remote server or
+        # simplestreams metadata is involved.
+        if server_alias == "local":
+            ctx.source = InstanceSource(
+                type="image",
+                alias=image_alias,
+                server=None,
+                protocol=None,
+                allow_inconsistent=None,
+                certificate=None,
+                fingerprint=None,
+                instance_only=None,
+                live=None,
+                mode=None,
+                operation=None,
+                project=None,
+                properties=None,
+                refresh=None,
+                refresh_exclude_older=None,
+                secret=None,
+                secrets=None,
+                source=None,
+                **{"base-image": None},
+            )
+            return
+
         server_url = SERVER_MAP.get(server_alias)
         if not server_url:
             raise OperationError(f"Invalid image format: {image}")
