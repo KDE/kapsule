@@ -1,0 +1,142 @@
+image:
+  distribution: archlinux
+  description: |-
+    Arch Linux development environment for Kapsule contributors
+
+source:
+  downloader: archlinux-http
+  url: https://archive.archlinux.org/iso/
+
+files:
+- name: hostname
+  path: /etc/hostname
+  generator: hostname
+
+- name: hosts
+  path: /etc/hosts
+  generator: hosts
+
+- name: sync-scripts
+  path: /.kapsule/sync/
+  generator: copy
+  source: images/shared/sync/
+  mode: "0755"
+
+- name: kde-builder-config
+  path: /etc/skel/.config/
+  generator: copy
+  source: images/kapsule-dev/overlay/etc/skel/.config/
+
+packages:
+  manager: pacman
+  update: true
+  cleanup: true
+  sets:
+  # Base system (same as the archlinux image)
+  - packages:
+    - base
+    - diffutils
+    - file
+    - gettext
+    - grep
+    - grml-zsh-config
+    - groff
+    - gzip
+    - inetutils
+    - iproute2
+    - iputils
+    - less
+    - licenses
+    - logrotate
+    - man-db
+    - man-pages
+    - nano
+    - procps-ng
+    - psmisc
+    - sed
+    - sudo
+    - sysfsutils
+    - systemd-sysvcompat
+    - tar
+    - texinfo
+    - vi
+    - which
+    action: install
+
+  # Build toolchain
+  - packages:
+    - base-devel
+    - cmake
+    - ninja
+    - git
+    - python
+    - python-pip
+    action: install
+
+  # Qt6 / KDE Frameworks / QCoro (C++ build dependencies)
+  - packages:
+    - extra-cmake-modules
+    - qt6-base
+    - kcoreaddons
+    - ki18n
+    - kconfig
+    - qcoro
+    - kio
+    - kcmutils
+    action: install
+
+  # Python runtime dependencies
+  - packages:
+    - python-httpx
+    - python-dbus-fast
+    - python-typer
+    - python-rich
+    - python-yaml
+    - python-pydantic
+    # kde-builder runtime deps
+    - dbus-python
+    - python-setproctitle
+    action: install
+
+  # Python development tools
+  - packages:
+    - python-pytest
+    - python-pytest-asyncio
+    - python-pytest-cov
+    - python-black
+    - ruff
+    - mypy
+    action: install
+
+actions:
+- trigger: post-unpack
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Update pacman-keyring to ensure package installs will not break because of GPG issues
+    pacman -Sy --needed --noconfirm archlinux-keyring
+
+- trigger: post-packages
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Fix ping in unprivileged containers
+    setcap cap_net_raw=ep /usr/bin/ping || chmod +s /usr/bin/ping
+
+    # Default new users to zsh
+    sed -i 's|^SHELL=.*|SHELL=/bin/zsh|' /etc/default/useradd
+
+    # Install Python type stubs not available as Arch packages
+    pip install --break-system-packages types-PyYAML
+
+    # Install kde-builder into /etc/skel so each user gets their own copy.
+    # kde-builder's --self-update runs "git pull" in its own directory with
+    # no permission handling, so it must be user-writable.
+    mkdir -p /etc/skel/.local/share /etc/skel/.local/bin
+    git clone https://invent.kde.org/sdk/kde-builder.git /etc/skel/.local/share/kde-builder
+    ln -s ../share/kde-builder/kde-builder /etc/skel/.local/bin/kde-builder
+
+mappings:
+  architecture_map: archlinux

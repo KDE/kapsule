@@ -1,0 +1,81 @@
+image:
+  distribution: archlinux
+  description: |-
+    Arch Linux container for Kapsule
+
+source:
+  downloader: archlinux-http
+  url: https://archive.archlinux.org/iso/
+
+files:
+- name: hostname
+  path: /etc/hostname
+  generator: hostname
+
+- name: hosts
+  path: /etc/hosts
+  generator: hosts
+
+- name: sync-scripts
+  path: /.kapsule/sync/
+  generator: copy
+  source: images/shared/sync/
+  mode: "0755"
+
+packages:
+  manager: pacman
+  update: true
+  cleanup: true
+  sets:
+  - packages:
+    - base
+    - diffutils
+    - file
+    - gettext
+    - grep
+    - grml-zsh-config
+    - groff
+    - gzip
+    - inetutils
+    - iproute2
+    - iputils
+    - less
+    - licenses
+    - logrotate
+    - man-db
+    - man-pages
+    - nano
+    - procps-ng
+    - psmisc
+    - sed
+    - sudo
+    - sysfsutils
+    - systemd-sysvcompat
+    - tar
+    - texinfo
+    - vi
+    - which
+    action: install
+
+actions:
+- trigger: post-unpack
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Update pacman-keyring to ensure package installs will not break because of GPG issues
+    pacman -Sy --needed --noconfirm archlinux-keyring
+
+- trigger: post-packages
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Fix ping in unprivileged containers
+    setcap cap_net_raw=ep /usr/bin/ping || chmod +s /usr/bin/ping
+
+    # Default new users to zsh
+    sed -i 's|^SHELL=.*|SHELL=/bin/zsh|' /etc/default/useradd
+
+mappings:
+  architecture_map: archlinux

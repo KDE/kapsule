@@ -1,0 +1,8 @@
+description: "Arch Linux development environment for Kapsule contributors"
+aliases:
+  - kapsule-dev
+default_options:
+  mount_home: false
+  custom_mounts:
+    - "~/kde"
+  nvidia_drivers: false

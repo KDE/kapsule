@@ -1,0 +1,44 @@
+# kde-builder configuration for Kapsule development inside a capsule.
+#
+# This image does NOT mount the host home directory, so this config
+# won't interfere with any host kde-builder setup. The ~/kde directory
+# IS mounted from the host, so source code persists across container
+# rebuilds.
+#
+# Install directly to /usr inside the container so built binaries are
+# immediately available on $PATH without extra environment setup.
+#
+# All options: https://kde-builder.kde.org/en/configuration/conf-options-table.html
+
+config-version: 2
+global:
+  branch-group: latest-kf6
+
+  source-dir: ~/kde/src
+  build-dir: ~/kde/build
+  log-dir: ~/kde/log
+
+  # Install directly into the container's /usr -- changes are ephemeral
+  # and isolated from the host. Requires sudo (see make-install-prefix).
+  install-dir: /usr
+  make-install-prefix: sudo
+
+  # Only build kapsule itself, not the entire KDE dependency tree
+  # (all KDE libraries are pre-installed in this image)
+  include-dependencies: false
+
+  cmake-options: >
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    -DKDE_INSTALL_USE_QT_SYS_PATHS=ON
+    -DBUILD_TESTING=ON
+    -DCMAKE_INSTALL_LIBEXECDIR=lib
+
+  num-cores: "auto"
+  num-cores-low-mem: "auto"
+
+  stop-on-failure: true
+  directory-layout: flat
+  cmake-generator: Ninja
+
+  compile-commands-linking: true
+  compile-commands-export: true

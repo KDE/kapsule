@@ -1,0 +1,17 @@
+#!/bin/sh
+# Receives locale.conf-formatted lines (e.g. "LANG=en_US.UTF-8") on stdin,
+# extracts the locale/charmap pairs to regenerate locales, then writes locale.conf
+input=$(cat)
+
+# Generate all needed locales from the KEY=value pairs
+echo "$input" | while IFS='=' read -r key value; do
+    [ -z "$value" ] && continue
+    # Extract charmap suffix (e.g. "UTF-8" from "en_US.UTF-8"), default to UTF-8
+    charmap="${value##*.}"
+    [ "$charmap" = "$value" ] && charmap="UTF-8"
+    echo "$value $charmap"
+done | sort -u > /etc/locale.gen
+locale-gen
+
+# Write the original input as locale.conf
+echo "$input" > /etc/locale.conf

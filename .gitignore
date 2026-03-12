@@ -9,3 +9,6 @@ arch-container
 **/__pycache__/
 compile_commands.json
 *.egg-info
+
+# Image build output (distrobuilder artifacts)
+out/
