@@ -6,11 +6,12 @@
 
 import subprocess
 
+from ..constants import KAPSULE_MOUNT_HOME_KEY
 from ..contexts import UserSetupContext
 from . import user_setup_pipeline
 
 
-@user_setup_pipeline.step(order=400)
+@user_setup_pipeline.step(order=150)
 async def create_account(ctx: UserSetupContext) -> None:
     """Create user group and account in the container."""
     # Create group
@@ -33,6 +34,13 @@ async def create_account(ctx: UserSetupContext) -> None:
     if result.returncode != 0 and "already exists" not in result.stderr:
         ctx.progress.warning(f"groupadd: {result.stderr.strip()}")
 
+    # When home is bind-mounted from the host, skip home creation (-M)
+    # so we don't clobber existing files.  When home is container-local,
+    # use -m so useradd creates it and copies /etc/skel (images can ship
+    # default dotfiles like kde-builder config this way).
+    mount_home = ctx.instance_config.get(KAPSULE_MOUNT_HOME_KEY, "true") == "true"
+    home_flag = "-M" if mount_home else "-m"
+
     # Create user
     ctx.progress.info(f"Creating user '{ctx.username}' (uid={ctx.uid})")
     result = subprocess.run(
@@ -43,7 +51,7 @@ async def create_account(ctx: UserSetupContext) -> None:
             "--",
             "useradd",
             "-o",  # Allow duplicate UID
-            "-M",  # Don't create home directory
+            home_flag,
             "-u",
             str(ctx.uid),
             "-g",

@@ -35,14 +35,6 @@ async def mount_home(ctx: UserSetupContext) -> None:
             raise OperationError(f"Failed to mount home directory: {e}")
     else:
         ctx.progress.info("Home directory mount: skipped (disabled)")
-        # Ensure the home path exists inside the container
-        try:
-            await ctx.incus.mkdir(
-                ctx.container_name,
-                ctx.container_home,
-                uid=ctx.uid,
-                gid=ctx.gid,
-                mode="0700",
-            )
-        except IncusError:
-            pass  # May already exist
+        # Don't create the home directory here -- useradd -m (in the
+        # create_account step) will create it AND copy /etc/skel.  If we
+        # mkdir first, useradd sees the dir already exists and skips skel.
