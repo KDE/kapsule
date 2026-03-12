@@ -49,8 +49,6 @@ async def parse_image_source(ctx: CreateContext) -> None:
             ctx.source = InstanceSource(
                 type="image",
                 alias=image_alias,
-                server=None,
-                protocol=None,
                 allow_inconsistent=None,
                 certificate=None,
                 fingerprint=None,
@@ -60,10 +58,12 @@ async def parse_image_source(ctx: CreateContext) -> None:
                 operation=None,
                 project=None,
                 properties=None,
+                protocol=None,
                 refresh=None,
                 refresh_exclude_older=None,
                 secret=None,
                 secrets=None,
+                server=None,
                 source=None,
                 **{"base-image": None},
             )

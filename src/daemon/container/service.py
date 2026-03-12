@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 from ..config import load_config
 from ..container_options import ContainerOptions
 from ..incus_client import IncusClient, IncusError
+from ..models_generated import Image
 from ..operations import (
     NullOperationReporter,
     OperationError,
@@ -404,7 +405,7 @@ class ContainerService:
             return
 
         # Apply server:alias filter
-        matched = []
+        matched: list[Image] = []
         for img in candidates:
             src = img.update_source
             assert src is not None  # guarded by filter above
@@ -498,7 +499,7 @@ class ContainerService:
 
         progress.success(f"Image imported: {fingerprint}")
 
-    async def list_images(self) -> list:
+    async def list_images(self) -> list[Image]:
         """List all images.
 
         Returns:

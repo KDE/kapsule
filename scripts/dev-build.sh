@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+REMOTE="${KAPSULE_VM:-192.168.100.129}"
 IMAGE="${1:-archlinux}"
 IMAGE_DIR="images/$IMAGE"
 
@@ -19,7 +20,15 @@ if ! sudo scripts/build-image.sh "$IMAGE_DIR/" "$OUTPUT_DIR/"; then
     exit 1
 fi
 
-echo "Importing $IMAGE into local Incus store ..."
-kapsule image import "$OUTPUT_DIR/" --alias "$IMAGE"
+echo "Deploying $IMAGE to $REMOTE ..."
+# Stage under /var/lib/kapsule/imports/ which the daemon can access
+# (the systemd unit has ProtectSystem=strict + PrivateTmp=true)
+REMOTE_DIR="/var/lib/kapsule/imports/$IMAGE"
+ssh "root@$REMOTE" "mkdir -p $REMOTE_DIR"
+scp "$OUTPUT_DIR/incus.tar.xz" "$OUTPUT_DIR/rootfs.squashfs" "root@$REMOTE:$REMOTE_DIR/"
+
+echo "Importing $IMAGE on $REMOTE ..."
+ssh "fernie@$REMOTE" "kapsule image import $REMOTE_DIR/ --alias $IMAGE"
+ssh "root@$REMOTE" "rm -rf $REMOTE_DIR"
 
 echo "Image ready. Use: kapsule create <name> -i local:$IMAGE"

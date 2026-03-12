@@ -10,7 +10,6 @@ communicating over the Unix socket at /var/lib/incus/unix.socket.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -22,6 +21,7 @@ T = TypeVar("T", bound=BaseModel)
 from .models_generated import (
     Image,
     ImageAliasesEntry,
+    ImageAliasesPost,
     Instance,
     InstancePut,
     InstancesPost,
@@ -816,14 +816,9 @@ class IncusClient:
         Returns:
             The SHA-256 fingerprint of the imported image.
         """
-        alias_dicts = [{"name": a} for a in aliases]
-
         client = await self._get_client()
         response = await client.post(
             "/1.0/images",
-            headers={
-                "X-Incus-aliases": json.dumps(alias_dicts),
-            },
             files={
                 "metadata": (
                     meta_path.name,
@@ -862,7 +857,39 @@ class IncusClient:
         if operation.metadata is None or "fingerprint" not in operation.metadata:
             raise IncusError("No fingerprint in operation metadata")
 
-        return operation.metadata["fingerprint"]
+        fingerprint = operation.metadata["fingerprint"]
+
+        # Create aliases as separate API calls since the X-Incus-aliases
+        # header is not reliably applied during multipart uploads.
+        for alias in aliases:
+            await self.create_image_alias(alias, fingerprint)
+
+        return fingerprint
+
+    async def create_image_alias(self, alias: str, fingerprint: str) -> None:
+        """Create an alias for an image.
+
+        Args:
+            alias: Alias name to create.
+            fingerprint: Full SHA-256 fingerprint of the target image.
+        """
+        client = await self._get_client()
+        body = ImageAliasesPost(
+            name=alias,
+            target=fingerprint,
+            description=None,
+            type=None,
+        )
+        response = await client.post(
+            "/1.0/images/aliases",
+            json=body.model_dump(exclude_none=True),
+        )
+
+        if response.status_code >= 400:
+            raise IncusError(
+                f"Failed to create alias '{alias}': {response.text}",
+                response.status_code,
+            )
 
     async def delete_image(self, fingerprint: str) -> None:
         """Delete an image by fingerprint.
