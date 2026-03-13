@@ -22,6 +22,11 @@ files:
   source: images/shared/sync/
   mode: "0755"
 
+- name: kapsule-source
+  path: /opt/kapsule-src/
+  generator: copy
+  source: ./
+
 - name: kde-builder-config
   path: /etc/skel/.config/
   generator: copy
@@ -69,6 +74,8 @@ packages:
     - cmake
     - ninja
     - git
+    - incus
+    - btrfs-progs
     - python
     - python-pip
     action: install
@@ -117,6 +124,12 @@ actions:
     # Update pacman-keyring to ensure package installs will not break because of GPG issues
     pacman -Sy --needed --noconfirm archlinux-keyring
 
+    # Replace iptables with iptables-nft before the package manager runs,
+    # because incus depends on iptables-nft which conflicts with the default
+    # iptables provider from base.  distrobuilder cannot handle interactive
+    # conflict prompts, so we resolve it here.
+    yes | pacman -S iptables-nft
+
 - trigger: post-packages
   action: |-
     #!/bin/sh
@@ -137,6 +150,27 @@ actions:
     mkdir -p /etc/skel/.local/share /etc/skel/.local/bin
     git clone https://invent.kde.org/sdk/kde-builder.git /etc/skel/.local/share/kde-builder
     ln -s ../share/kde-builder/kde-builder /etc/skel/.local/bin/kde-builder
+
+- trigger: post-files
+  action: |-
+    #!/bin/sh
+    set -eux
+
+    # Build and install kapsule into /usr
+    cmake -B /tmp/kapsule-build -S /opt/kapsule-src \
+      -G Ninja \
+      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DKDE_INSTALL_USE_QT_SYS_PATHS=ON \
+      -DBUILD_TESTING=OFF \
+      -DCMAKE_INSTALL_LIBEXECDIR=lib \
+      -DVENDOR_PYTHON_DEPS=OFF
+
+    cmake --build /tmp/kapsule-build
+    cmake --install /tmp/kapsule-build
+
+    # Clean up build artifacts
+    rm -rf /opt/kapsule-src /tmp/kapsule-build
 
 mappings:
   architecture_map: archlinux
