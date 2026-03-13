@@ -58,8 +58,6 @@ async def create_account(ctx: UserSetupContext) -> None:
             str(ctx.gid),
             "-d",
             ctx.container_home,
-            "-s",
-            "/bin/bash",
             ctx.username,
         ],
         capture_output=True,

@@ -32,6 +32,16 @@ files:
   generator: copy
   source: images/kapsule-dev/overlay/etc/skel/.config/
 
+- name: local-bin-path
+  path: /etc/profile.d/local-bin.sh
+  generator: dump
+  content: |-
+    # Add ~/.local/bin to PATH for tools installed per-user (e.g. kde-builder)
+    if [ -d "$HOME/.local/bin" ]; then
+        PATH="$HOME/.local/bin:$PATH"
+    fi
+  mode: "0644"
+
 packages:
   manager: pacman
   update: true
