@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import itertools
+import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -41,6 +42,8 @@ from dbus_fast.constants import PropertyAccess
 from dbus_fast.annotations import DBusStr, DBusBool, DBusSignature
 from dbus_fast.aio import MessageBus
 
+
+logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -268,11 +271,12 @@ class OperationInterface(ServiceInterface):
             {"Status": self._status, "ErrorMessage": self._error_message}
         )
 
-        print(
-            f"[Operation {self._op_id}] Emitting Completed signal: success={success}, message={message!r}"
-        )
-        result = self.Completed(success, message)
-        print(f"[Operation {self._op_id}] Signal emitted, result={result}")
+        if success:
+            logger.info("Operation %s completed successfully", self._op_id)
+        else:
+            logger.error("Operation %s failed: %s", self._op_id, message)
+
+        self.Completed(success, message)
 
 
 # =============================================================================
@@ -448,6 +452,7 @@ class DBusOperationReporter:
 
     def info(self, message: str, indent: int | None = None) -> None:
         """Emit an info message."""
+        logger.info("[op %s] %s", self.operation_id, message)
         self._operation.Message(
             int(MessageType.INFO),
             message,
@@ -456,6 +461,7 @@ class DBusOperationReporter:
 
     def success(self, message: str, indent: int | None = None) -> None:
         """Emit a success message."""
+        logger.info("[op %s] %s", self.operation_id, message)
         self._operation.Message(
             int(MessageType.SUCCESS),
             message,
@@ -464,6 +470,7 @@ class DBusOperationReporter:
 
     def warning(self, message: str, indent: int | None = None) -> None:
         """Emit a warning message."""
+        logger.warning("[op %s] %s", self.operation_id, message)
         self._operation.Message(
             int(MessageType.WARNING),
             message,
@@ -472,6 +479,7 @@ class DBusOperationReporter:
 
     def error(self, message: str, indent: int | None = None) -> None:
         """Emit an error message."""
+        logger.error("[op %s] %s", self.operation_id, message)
         self._operation.Message(
             int(MessageType.ERROR),
             message,
@@ -480,6 +488,7 @@ class DBusOperationReporter:
 
     def dim(self, message: str, indent: int | None = None) -> None:
         """Emit a dimmed/secondary message."""
+        logger.debug("[op %s] %s", self.operation_id, message)
         self._operation.Message(
             int(MessageType.DIM),
             message,
@@ -488,6 +497,7 @@ class DBusOperationReporter:
 
     def hint(self, message: str, indent: int | None = None) -> None:
         """Emit a hint message."""
+        logger.info("[op %s] %s", self.operation_id, message)
         self._operation.Message(
             int(MessageType.HINT),
             message,
@@ -510,6 +520,12 @@ class DBusOperationReporter:
             indent: Indent level for display
         """
         progress_id = str(next(_operation_counter))
+        logger.info(
+            "[op %s] Progress started: %s (total=%s)",
+            self.operation_id,
+            description,
+            total if total >= 0 else "indeterminate",
+        )
         self._operation.ProgressStarted(
             progress_id,
             description,
@@ -594,18 +610,17 @@ class OperationTracker:
 
     def set_bus(self, bus: MessageBus) -> None:
         """Set the message bus for exporting operation objects."""
-        print(f"[OperationTracker] set_bus called with bus={bus}")
+        logger.debug("OperationTracker: bus set")
         self._bus = bus
 
     def add(self, op: RunningOperation) -> None:
         """Register a running operation and export it to D-Bus."""
         self._operations[op.id] = op
         if self._bus:
-            print(
-                f"[OperationTracker] Exporting operation {op.id} to {op.interface.object_path}"
+            logger.debug(
+                "Exporting operation %s to %s", op.id, op.interface.object_path
             )
             self._bus.export(op.interface.object_path, op.interface)
-            print(f"[OperationTracker] Export complete for {op.id}")
 
     def remove(self, op_id: str) -> None:
         """Remove a completed operation from tracking.
@@ -708,30 +723,31 @@ def operation(
 
             # Run the operation in a task so we return the path immediately
             async def run_operation() -> None:
-                print(f"[Operation {op_id}] Starting execution of {operation_type}")
+                logger.info(
+                    "Operation %s (%s) starting: %s", op_id, operation_type, desc
+                )
                 try:
                     await func(self, reporter, *args, **kwargs)
-                    print(f"[Operation {op_id}] Completed successfully")
                     op_interface.mark_completed(True, "")
                 except asyncio.CancelledError:
                     # Operation was cancelled
-                    print(f"[Operation {op_id}] Cancelled")
+                    logger.info("Operation %s cancelled", op_id)
                     op_interface.mark_completed(False, "Operation cancelled")
                 except OperationError as e:
                     # Expected errors - user-friendly message
-                    print(f"[Operation {op_id}] OperationError: {e}")
+                    logger.warning("Operation %s failed: %s", op_id, e)
                     op_interface.mark_completed(False, str(e))
                 except Exception as e:
-                    # Unexpected errors - log and report
-                    import traceback
-
-                    print(f"[Operation {op_id}] Exception: {e}")
-                    traceback.print_exc()
+                    # Unexpected errors - log full traceback
+                    logger.exception(
+                        "Operation %s (%s) raised an unexpected exception",
+                        op_id,
+                        operation_type,
+                    )
                     op_interface.mark_completed(False, f"Internal error: {e}")
                 finally:
                     # Remove from tracker after completion
                     if hasattr(self, "_tracker"):
-                        print(f"[Operation {op_id}] Removing from tracker")
                         self._tracker.remove(op_id)
 
             # IMPORTANT: Export the operation to D-Bus BEFORE starting the task
@@ -744,7 +760,6 @@ def operation(
                 )
                 op_interface.set_task(task)
 
-                print(f"[Operation {op_id}] Created task, adding to tracker")
                 # Export to D-Bus before the task starts running
                 self._tracker.add(
                     RunningOperation(
@@ -755,7 +770,6 @@ def operation(
                         interface=op_interface,
                     )
                 )
-                print(f"[Operation {op_id}] Added to tracker")
             else:
                 # No tracker - just create the task
                 task = asyncio.create_task(
@@ -764,7 +778,7 @@ def operation(
                 op_interface.set_task(task)
 
             # Return the D-Bus object path
-            print(f"[Operation {op_id}] Returning path: {op_interface.object_path}")
+            logger.debug("Operation %s exposed at %s", op_id, op_interface.object_path)
             return op_interface.object_path
 
         return wrapper

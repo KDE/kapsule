@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import argparse
+import logging
 import signal
+
+logger = logging.getLogger(__name__)
 
 
 async def run_daemon(bus_type: str = "system") -> None:
@@ -28,7 +31,7 @@ async def run_daemon(bus_type: str = "system") -> None:
     shutdown_event = asyncio.Event()
 
     def handle_signal() -> None:
-        print("\nShutting down...")
+        logger.info("Shutting down...")
         shutdown_event.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -77,6 +80,13 @@ def run() -> None:
     )
 
     args = parser.parse_args()
+
+    # Configure logging for systemd journal output.
+    # systemd adds its own timestamps, so we use a minimal format.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(name)s: %(message)s",
+    )
 
     # Determine bus type
     bus_type = "session" if args.session else "system"
