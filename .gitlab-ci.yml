@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+
+include:
+  - project: sysadmin/ci-utilities
+    file:
+      - /gitlab-templates/reuse-lint.yml
+      - /gitlab-templates/blocks/workflow.yml
+
+stages:
+  - validate
+  - build
+
+.build_common: &build_common
+  stage: build
+  image: storage.kde.org/vm-images/kde-linux-builder
+  tags:
+    - VM
+    - amd64
+  id_tokens:
+    MINIO_OIDC:
+      aud: https://tokens.kde.org
+  variables:
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1h
+  artifacts:
+    expire_in: 7 days
+    when: always
+    paths:
+      - out/
+      - streams/
+  script:
+    - sudo pacman -Sy --noconfirm distrobuilder python-yaml jq
+    - mkdir -p out streams
+    - |
+      for image_dir in images/*/; do
+        [ -f "${image_dir}/image.yaml" ] || continue
+        image_name=$(basename "$image_dir")
+        echo "Building $image_name ..."
+        sudo scripts/build-image.sh "$image_dir" "out/$image_name"
+      done
+    - python3 scripts/generate-simplestreams.py images/ out/ streams/
+
+build-images:
+  <<: *build_common
+  rules:
+    - if: $CI_MERGE_REQUEST_DRAFT == "true"
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^work\//
+      when: manual
+    - if: $CI_COMMIT_REF_PROTECTED != 'true' || $CI_DEFAULT_BRANCH != $CI_COMMIT_REF_NAME || $CI_PROJECT_PATH != 'kde-linux/kapsule'
+      when: always
+  after_script:
+    - scripts/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}" || true
+
+build-images+publish:
+  <<: *build_common
+  rules:
+    - if: $CI_COMMIT_REF_PROTECTED == 'true' && $CI_DEFAULT_BRANCH == $CI_COMMIT_REF_NAME && $CI_PROJECT_PATH == 'kde-linux/kapsule'
+      when: always
+  script:
+    - sudo pacman -Sy --noconfirm distrobuilder python-yaml jq
+    - mkdir -p out streams
+    - |
+      for image_dir in images/*/; do
+        [ -f "${image_dir}/image.yaml" ] || continue
+        image_name=$(basename "$image_dir")
+        echo "Building $image_name ..."
+        sudo scripts/build-image.sh "$image_dir" "out/$image_name"
+      done
+    - python3 scripts/generate-simplestreams.py images/ out/ streams/
+    - scripts/upload-images.sh "ci-artifacts/kde-linux/kapsule/images"

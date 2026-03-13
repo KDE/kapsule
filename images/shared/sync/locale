@@ -1,4 +1,9 @@
 #!/bin/sh
+
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Receives locale.conf-formatted lines (e.g. "LANG=en_US.UTF-8") on stdin,
 # extracts the locale/charmap pairs to regenerate locales, then writes locale.conf
 input=$(cat)

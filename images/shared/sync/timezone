@@ -1,4 +1,9 @@
 #!/bin/sh
+
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Receives a timezone name (e.g. "America/New_York") on stdin,
 # symlinks the corresponding zoneinfo file, and records it in /etc/timezone
 tz=$(cat)

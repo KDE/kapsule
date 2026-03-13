@@ -23,7 +23,7 @@ from . import create_pipeline
 SERVER_MAP = {
     "images": "https://images.linuxcontainers.org",
     "ubuntu": "https://cloud-images.ubuntu.com/releases",
-    "kapsule": "https://fernando.local-kde.org/kapsule-images",
+    "kapsule": "https://storage.kde.org/ci-artifacts/kde-linux/kapsule/images",
 }
 
 
