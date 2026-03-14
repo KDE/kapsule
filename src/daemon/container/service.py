@@ -43,7 +43,7 @@ from .constants import (
 )
 from .contexts import CreateContext, UserSetupContext
 from .create import create_pipeline
-from .create.build_config import SERVER_MAP
+from .create.build_config import SERVER_MAP, resolve_server
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
@@ -380,12 +380,7 @@ class ContainerService:
         if image_spec:
             if ":" in image_spec:
                 server_alias, filter_alias = image_spec.split(":", 1)
-                filter_server = SERVER_MAP.get(server_alias)
-                if not filter_server:
-                    raise OperationError(
-                        f"Unknown server alias: '{server_alias}'. "
-                        f"Known aliases: {', '.join(SERVER_MAP.keys())}"
-                    )
+                filter_server = await resolve_server(server_alias)
             else:
                 # Bare alias — match any server with this alias
                 filter_alias = image_spec

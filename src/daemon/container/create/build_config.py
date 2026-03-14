@@ -6,6 +6,10 @@
 
 from __future__ import annotations
 
+import logging
+
+import httpx
+
 from ...models_generated import InstanceSource
 from ...operations import OperationError
 from ..config_helpers import (
@@ -19,12 +23,64 @@ from ..constants import (
 from ..contexts import CreateContext
 from . import create_pipeline
 
+log = logging.getLogger(__name__)
+
 # Map common server aliases to URLs
 SERVER_MAP = {
     "images": "https://images.linuxcontainers.org",
     "ubuntu": "https://cloud-images.ubuntu.com/releases",
-    "kapsule": "https://storage.kde.org/ci-artifacts/kde-linux/kapsule/images",
 }
+
+_KAPSULE_PROJECT_ID = 24978
+_KAPSULE_GITLAB_API = "https://invent.kde.org/api/v4"
+_KAPSULE_S3_BASE = (
+    "https://storage.kde.org/ci-artifacts/kde-linux/kapsule/j"
+)
+
+
+async def resolve_server(alias: str) -> str:
+    """Resolve a server alias to a URL.
+
+    Static aliases are looked up in SERVER_MAP. The ``kapsule`` alias is
+    resolved dynamically by querying the GitLab API for the latest
+    successful build job and constructing the S3 URL for that job's
+    artifacts.
+    """
+    if alias == "kapsule":
+        return await _resolve_kapsule_server()
+    url = SERVER_MAP.get(alias)
+    if not url:
+        raise OperationError(
+            f"Unknown server alias: '{alias}'. "
+            f"Known aliases: {', '.join([*SERVER_MAP, 'kapsule'])}"
+        )
+    return url
+
+
+async def _resolve_kapsule_server() -> str:
+    """Query GitLab for the latest successful kapsule image build job."""
+    url = (
+        f"{_KAPSULE_GITLAB_API}/projects/{_KAPSULE_PROJECT_ID}"
+        f"/jobs?scope=success&per_page=50"
+    )
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        jobs = resp.json()
+
+    # Prefer build-images+publish (protected branch), fall back to build-images
+    for job_name in ("build-images+publish", "build-images"):
+        for job in jobs:
+            if job["name"] == job_name and job["ref"] == "master":
+                job_id = job["id"]
+                server_url = f"{_KAPSULE_S3_BASE}/{job_id}"
+                log.info("Resolved kapsule server to %s", server_url)
+                return server_url
+
+    raise OperationError(
+        "Could not find a successful kapsule image build. "
+        "Check https://invent.kde.org/kde-linux/kapsule/-/pipelines"
+    )
 
 
 @create_pipeline.step(order=-500)
@@ -69,9 +125,7 @@ async def parse_image_source(ctx: CreateContext) -> None:
             )
             return
 
-        server_url = SERVER_MAP.get(server_alias)
-        if not server_url:
-            raise OperationError(f"Invalid image format: {image}")
+        server_url = await resolve_server(server_alias)
     else:
         server_url = "https://images.linuxcontainers.org"
         image_alias = image
