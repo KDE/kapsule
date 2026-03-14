@@ -36,9 +36,9 @@ stages:
         [ -f "${image_dir}/image.yaml" ] || continue
         image_name=$(basename "$image_dir")
         echo "Building $image_name ..."
-        sudo scripts/build-image.sh "$image_dir" "out/$image_name"
+        sudo images/build-image.sh "$image_dir" "out/$image_name"
       done
-    - python3 scripts/generate-simplestreams.py images/ out/ streams/
+    - python3 images/generate-simplestreams.py images/ out/ streams/
 
 build-images:
   <<: *build_common
@@ -48,14 +48,18 @@ build-images:
     - if: $CI_COMMIT_BRANCH =~ /^work\//
       when: manual
     - if: $CI_COMMIT_REF_PROTECTED != 'true' || $CI_DEFAULT_BRANCH != $CI_COMMIT_REF_NAME || $CI_PROJECT_PATH != 'kde-linux/kapsule'
+      changes:
+        - images/**/*
       when: always
   after_script:
-    - scripts/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}" || true
+    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}" || true
 
 build-images+publish:
   <<: *build_common
   rules:
     - if: $CI_COMMIT_REF_PROTECTED == 'true' && $CI_DEFAULT_BRANCH == $CI_COMMIT_REF_NAME && $CI_PROJECT_PATH == 'kde-linux/kapsule'
+      changes:
+        - images/**/*
       when: always
   script:
     - sudo pacman -Sy --noconfirm distrobuilder python-yaml jq
@@ -65,7 +69,7 @@ build-images+publish:
         [ -f "${image_dir}/image.yaml" ] || continue
         image_name=$(basename "$image_dir")
         echo "Building $image_name ..."
-        sudo scripts/build-image.sh "$image_dir" "out/$image_name"
+        sudo images/build-image.sh "$image_dir" "out/$image_name"
       done
-    - python3 scripts/generate-simplestreams.py images/ out/ streams/
-    - scripts/upload-images.sh "ci-artifacts/kde-linux/kapsule/images"
+    - python3 images/generate-simplestreams.py images/ out/ streams/
+    - images/upload-images.sh "ci-artifacts/kde-linux/kapsule/images"

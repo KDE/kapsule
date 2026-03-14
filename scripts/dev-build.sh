@@ -20,7 +20,7 @@ fi
 OUTPUT_DIR="out/$IMAGE"
 
 echo "Building $IMAGE ..."
-if ! sudo scripts/build-image.sh "$IMAGE_DIR/" "$OUTPUT_DIR/"; then
+if ! sudo images/build-image.sh "$IMAGE_DIR/" "$OUTPUT_DIR/"; then
     echo "Error: build failed for $IMAGE" >&2
     exit 1
 fi
