@@ -67,6 +67,10 @@ actions:
     #!/bin/sh
     set -eux
 
+    # The bootstrap mirrorlist only contains mirrors.kernel.org which can be
+    # unreliable. Replace it with the Arch geo-balanced mirror.
+    echo 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' > /etc/pacman.d/mirrorlist
+
     # Update pacman-keyring to ensure package installs will not break because of GPG issues
     pacman -Sy --needed --noconfirm archlinux-keyring
 
