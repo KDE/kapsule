@@ -61,15 +61,5 @@ build-images+publish:
       changes:
         - images/**/*
       when: always
-  script:
-    - sudo pacman -Sy --noconfirm distrobuilder python-yaml jq
-    - mkdir -p out streams
-    - |
-      for image_dir in images/*/; do
-        [ -f "${image_dir}/image.yaml" ] || continue
-        image_name=$(basename "$image_dir")
-        echo "Building $image_name ..."
-        sudo images/build-image.sh "$image_dir" "out/$image_name"
-      done
-    - python3 images/generate-simplestreams.py images/ out/ streams/
-    - images/upload-images.sh "ci-artifacts/kde-linux/kapsule/images"
+  after_script:
+    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}" || true

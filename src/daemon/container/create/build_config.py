@@ -58,24 +58,45 @@ async def resolve_server(alias: str) -> str:
 
 
 async def _resolve_kapsule_server() -> str:
-    """Query GitLab for the latest successful kapsule image build job."""
-    url = (
+    """Query GitLab for the latest successful kapsule image build job.
+
+    Uses the pipelines API (public) followed by the pipeline-jobs API
+    (also public), because the top-level ``/jobs`` endpoint on
+    invent.kde.org requires authentication even for public projects.
+    """
+    pipelines_url = (
         f"{_KAPSULE_GITLAB_API}/projects/{_KAPSULE_PROJECT_ID}"
-        f"/jobs?scope=success&per_page=50"
+        f"/pipelines?status=success&ref=master&per_page=20"
     )
     async with httpx.AsyncClient() as client:
-        resp = await client.get(url)
+        resp = await client.get(pipelines_url)
         resp.raise_for_status()
-        jobs = resp.json()
+        pipelines = resp.json()
 
-    # Prefer build-images+publish (protected branch), fall back to build-images
-    for job_name in ("build-images+publish", "build-images"):
-        for job in jobs:
-            if job["name"] == job_name and job["ref"] == "master":
-                job_id = job["id"]
-                server_url = f"{_KAPSULE_S3_BASE}/{job_id}"
-                log.info("Resolved kapsule server to %s", server_url)
-                return server_url
+        # Walk pipelines newest-first, looking for an image-build job.
+        for pipeline in pipelines:
+            jobs_url = (
+                f"{_KAPSULE_GITLAB_API}/projects/{_KAPSULE_PROJECT_ID}"
+                f"/pipelines/{pipeline['id']}/jobs"
+            )
+            resp = await client.get(jobs_url)
+            resp.raise_for_status()
+            jobs = resp.json()
+
+            for preferred in ("build-images+publish", "build-images"):
+                for job in jobs:
+                    if (
+                        job["name"] == preferred
+                        and job["status"] == "success"
+                    ):
+                        job_id = job["id"]
+                        server_url = f"{_KAPSULE_S3_BASE}/{job_id}"
+                        log.info(
+                            "Resolved kapsule server to %s (pipeline %s)",
+                            server_url,
+                            pipeline["id"],
+                        )
+                        return server_url
 
     raise OperationError(
         "Could not find a successful kapsule image build. "
