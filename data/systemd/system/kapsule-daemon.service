@@ -24,12 +24,5 @@ User=root
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=@KAPSULE_VENDOR_DIR@:@KAPSULE_PYTHON_DIR@
 
-# Security hardening (less restrictive than user service due to system bus needs)
-ProtectSystem=strict
-PrivateTmp=true
-
-# Allow access to Incus socket and image import staging
-ReadWritePaths=/var/lib/incus /var/lib/kapsule
-
 [Install]
 WantedBy=multi-user.target
