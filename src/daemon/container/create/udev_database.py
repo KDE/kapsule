@@ -27,7 +27,7 @@ Before=systemd-udevd.service
 What=/.kapsule/host/run/udev
 Where=/run/udev
 Type=none
-Options=bind
+Options=bind,ro
 
 [Install]
 WantedBy=sysinit.target
