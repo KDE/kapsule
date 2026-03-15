@@ -1,0 +1,12 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Runs outside the image sandbox, operating on the rootfs directory.
+# $BUILDROOT points to the image root filesystem.
+
+set -eux
+
+# Default new users to zsh
+sed -i 's|^SHELL=.*|SHELL=/bin/zsh|' "$BUILDROOT/etc/default/useradd"

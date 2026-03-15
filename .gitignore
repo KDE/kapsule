@@ -10,5 +10,7 @@ arch-container
 compile_commands.json
 *.egg-info
 
-# Image build output (distrobuilder artifacts)
+# Image build output (mkosi + Incus artifacts)
 out/
+streams/
+images/mkosi.output/

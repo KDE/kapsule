@@ -1,0 +1,46 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Finalize script — runs outside the image sandbox with write access.
+# $BUILDROOT points to the rootfs directory.
+
+set -eux
+
+# Give the chroot DNS resolution for git clone
+cp /etc/resolv.conf "$BUILDROOT/etc/resolv.conf" 2>/dev/null || true
+
+# Install Python type stubs not available as Arch packages
+chroot "$BUILDROOT" pip install --break-system-packages types-PyYAML
+
+# Install kde-builder into /etc/skel so each user gets their own copy.
+# kde-builder's --self-update runs "git pull" in its own directory with
+# no permission handling, so it must be user-writable.
+mkdir -p "$BUILDROOT/etc/skel/.local/share" "$BUILDROOT/etc/skel/.local/bin"
+git clone https://invent.kde.org/sdk/kde-builder.git "$BUILDROOT/etc/skel/.local/share/kde-builder"
+ln -s ../share/kde-builder/kde-builder "$BUILDROOT/etc/skel/.local/bin/kde-builder"
+
+# Build and install kapsule into /usr using chroot
+# (cmake, ninja, etc. are inside the rootfs)
+# Mount /proc and /dev for cmake/ninja to work properly in chroot
+mount -t proc proc "$BUILDROOT/proc"
+mount --rbind /dev "$BUILDROOT/dev"
+trap 'umount -R "$BUILDROOT/proc" "$BUILDROOT/dev" 2>/dev/null || true' EXIT
+
+chroot "$BUILDROOT" sh -eux <<'CHROOT'
+cmake -B /tmp/kapsule-build -S /opt/kapsule-src \
+  -G Ninja \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DKDE_INSTALL_USE_QT_SYS_PATHS=ON \
+  -DBUILD_TESTING=OFF \
+  -DCMAKE_INSTALL_LIBEXECDIR=lib \
+  -DVENDOR_PYTHON_DEPS=OFF
+
+cmake --build /tmp/kapsule-build
+cmake --install /tmp/kapsule-build
+
+# Clean up build artifacts and source tree
+rm -rf /opt/kapsule-src /tmp/kapsule-build
+CHROOT

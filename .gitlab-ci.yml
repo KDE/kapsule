@@ -29,15 +29,9 @@ stages:
       - out/
       - streams/
   script:
-    - sudo pacman -Sy --noconfirm distrobuilder python-yaml jq
+    - sudo pacman -Sy --noconfirm python-yaml jq squashfs-tools mkosi
     - mkdir -p out streams
-    - |
-      for image_dir in images/*/; do
-        [ -f "${image_dir}/image.yaml" ] || continue
-        image_name=$(basename "$image_dir")
-        echo "Building $image_name ..."
-        sudo images/build-image.sh "$image_dir" "out/$image_name"
-      done
+    - sudo images/build-image.sh out/
     - python3 images/generate-simplestreams.py images/ out/ streams/
 
 build-images:

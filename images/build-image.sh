@@ -4,42 +4,40 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+# Build all Kapsule images using mkosi, then package each into Incus
+# artifacts (incus.tar.xz + rootfs.squashfs).
+#
+# Usage: sudo build-image.sh <output-dir>
+# Example: sudo images/build-image.sh out/
+
 set -euo pipefail
 
-if [ $# -ne 2 ]; then
-    echo "Usage: sudo $0 <image-dir> <output-dir>" >&2
-    echo "Example: sudo $0 images/archlinux/ out/archlinux/" >&2
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ $# -ne 1 ]; then
+    echo "Usage: sudo $0 <output-dir>" >&2
+    echo "Example: sudo $0 out/" >&2
     exit 1
 fi
 
-IMAGE_DIR="$1"
-OUTPUT_DIR="$2"
-IMAGE_YAML="${IMAGE_DIR}/image.yaml"
+OUTPUT_BASE="$1"
 
-if [ ! -f "$IMAGE_YAML" ]; then
-    echo "Error: $IMAGE_YAML not found" >&2
-    exit 1
-fi
+echo "Building all images with mkosi ..."
+mkosi --directory="$SCRIPT_DIR" build
 
-VERSION=$(date +%Y%m%d)
+# Package each image output into Incus artifacts
+for image_dir in "$SCRIPT_DIR"/mkosi.images/*/; do
+    [ -d "$image_dir" ] || continue
+    image_name=$(basename "$image_dir")
+    rootfs_dir="$SCRIPT_DIR/mkosi.output/$image_name"
 
-# Create a temporary build directory
-BUILD_DIR=$(mktemp -d)
-trap 'rm -rf "$BUILD_DIR"' EXIT
+    if [ ! -d "$rootfs_dir" ]; then
+        echo "Warning: no output for $image_name at $rootfs_dir, skipping" >&2
+        continue
+    fi
 
-echo "Building image from $IMAGE_YAML ..."
-distrobuilder build-incus "$IMAGE_YAML" "$BUILD_DIR"
+    echo "Packaging $image_name for Incus ..."
+    "$SCRIPT_DIR/package-incus.sh" "$rootfs_dir" "$OUTPUT_BASE/$image_name"
+done
 
-# Create output directory structure
-mkdir -p "$OUTPUT_DIR"
-
-echo "Moving build artifacts to $OUTPUT_DIR ..."
-mv "$BUILD_DIR/incus.tar.xz" "$OUTPUT_DIR/incus.tar.xz"
-mv "$BUILD_DIR/rootfs.squashfs" "$OUTPUT_DIR/rootfs.squashfs"
-
-# Write version file
-echo "$VERSION" > "$OUTPUT_DIR/version"
-
-echo "Build complete: version=$VERSION"
-echo "  $OUTPUT_DIR/incus.tar.xz"
-echo "  $OUTPUT_DIR/rootfs.squashfs"
+echo "All images built and packaged."
