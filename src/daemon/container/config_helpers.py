@@ -35,6 +35,13 @@ def base_container_config(nvidia_drivers: bool) -> dict[str, str]:
     """
     raw_lxc = "lxc.net.0.type=none\n"
 
+    # Bind-mount the host /dev into the container so that *all* device
+    # nodes (input, DRI, sound, etc.) are visible without enumeration.
+    # LXC processes lxc.mount.entry after console setup and re-binds
+    # /dev/console on top, so the allocated PTY survives this mount.
+    raw_lxc += "lxc.mount.entry=/dev dev none bind,create=dir 0 0\n"
+    raw_lxc += "lxc.cgroup.devices.allow=a\n"
+
     # Register NVIDIA driver injection hook when enabled.
     # We use our own hook rather than Incus's nvidia.runtime because
     # upstream rejects that option on privileged containers.  See the
@@ -55,17 +62,16 @@ def base_container_config(nvidia_drivers: bool) -> dict[str, str]:
 
 
 def base_container_devices(
-    host_rootfs: bool, gpu: bool = True
+    host_rootfs: bool,
 ) -> dict[str, dict[str, str]]:
     """Base Incus devices applied to every new Kapsule container.
 
     Args:
         host_rootfs: If True, mount the entire host filesystem at /.kapsule/host.
             If False, only targeted mounts are added later during user setup.
-        gpu: If True, include GPU passthrough device.
 
     Returns:
-        Devices dict with root disk, optionally GPU passthrough, and optionally host filesystem.
+        Devices dict with root disk and optionally host filesystem.
     """
     devices: dict[str, dict[str, str]] = {
         # Root disk - required for container storage
@@ -76,12 +82,9 @@ def base_container_devices(
         },
     }
 
-    if gpu:
-        # GPU passthrough — in privileged containers this exposes all GPU
-        # device nodes (/dev/nvidia*, /dev/dri/*, etc.) automatically.
-        devices["gpu"] = {
-            "type": "gpu",
-        }
+    # GPU device nodes are already visible via the host /dev bind-mount
+    # (lxc.mount.entry=/dev in raw.lxc).  The Incus "gpu" device type
+    # is no longer needed.
 
     if host_rootfs:
         # Mount the entire host filesystem at /.kapsule/host

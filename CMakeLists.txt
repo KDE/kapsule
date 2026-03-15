@@ -109,6 +109,7 @@ if(INSTALL_PYTHON_DAEMON)
         src/daemon/container/create/host_network.py
         src/daemon/container/create/session_mode.py
         src/daemon/container/create/sync_host_config.py
+        src/daemon/container/create/udev_database.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon/container/create"
     )
 

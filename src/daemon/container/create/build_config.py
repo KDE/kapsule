@@ -202,5 +202,4 @@ async def build_devices(ctx: CreateContext) -> None:
     """Build base Incus devices (root disk, GPU, hostfs)."""
     ctx.devices = base_container_devices(
         host_rootfs=ctx.opts.host_rootfs,
-        gpu=ctx.opts.gpu,
     )
