@@ -1,0 +1,23 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Prepare script — runs inside the image chroot after packages are installed.
+# Called with "final" after main packages and "build" after build overlay packages.
+
+set -eux
+
+if [ "$1" = "build" ]; then
+    exit 0
+fi
+
+# Install Python type stubs not available as Arch packages
+pip install --break-system-packages types-PyYAML
+
+# Install kde-builder into /etc/skel so each user gets their own copy.
+# kde-builder's --self-update runs "git pull" in its own directory with
+# no permission handling, so it must be user-writable.
+mkdir -p /etc/skel/.local/share /etc/skel/.local/bin
+git clone https://invent.kde.org/sdk/kde-builder.git /etc/skel/.local/share/kde-builder
+ln -s ../share/kde-builder/kde-builder /etc/skel/.local/bin/kde-builder
