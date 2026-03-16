@@ -73,7 +73,7 @@ check_vm() {
 # Deploy latest sysext to VM
 deploy_sysext() {
     log_info "Deploying sysext to test VM..."
-    if ! "$PROJECT_ROOT/sysext.sh"; then
+    if ! "$PROJECT_ROOT/deploy-to-lasaths-test-vm.sh"; then
         echo -e "${RED}ERROR: Failed to deploy sysext${NC}"
         exit 1
     fi

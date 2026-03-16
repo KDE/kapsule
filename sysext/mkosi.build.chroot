@@ -1,0 +1,22 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Build kapsule and install to $DESTDIR for sysext packaging.
+# Python dependencies are vendored (VENDOR_PYTHON_DEPS=ON) so the sysext
+# is self-contained and works on systems without these packages installed.
+
+set -eux
+
+cmake -B /tmp/kapsule-build -S "$SRCDIR/kapsule" \
+  -G Ninja \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DKDE_INSTALL_USE_QT_SYS_PATHS=ON \
+  -DBUILD_TESTING=OFF \
+  -DCMAKE_INSTALL_LIBEXECDIR=lib \
+  -DVENDOR_PYTHON_DEPS=ON
+
+cmake --build /tmp/kapsule-build
+DESTDIR="$DESTDIR" cmake --install /tmp/kapsule-build

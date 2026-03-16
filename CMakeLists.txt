@@ -318,6 +318,20 @@ if(INSTALL_PYTHON_DAEMON)
         DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
     )
 
+    # kapsule-install-branch: pull latest CI-built sysext for a given branch
+    install(PROGRAMS
+        data/kapsule-install-branch.sh
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
+        RENAME kapsule-install-branch
+    )
+
+    # kapsule-uninstall-branch: remove sysext and revert to OS version
+    install(PROGRAMS
+        data/kapsule-uninstall-branch.sh
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
+        RENAME kapsule-uninstall-branch
+    )
+
 endif()
 
 # ============================================================================

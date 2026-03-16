@@ -14,3 +14,4 @@ compile_commands.json
 out/
 streams/
 images/mkosi.output/
+sysext/mkosi.output/

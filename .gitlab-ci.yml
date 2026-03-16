@@ -59,3 +59,31 @@ build-images+publish:
       when: always
   after_script:
     - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}" || true
+
+build-sysext:
+  stage: build
+  image: storage.kde.org/vm-images/kde-linux-builder
+  tags:
+    - VM
+    - amd64
+  id_tokens:
+    MINIO_OIDC:
+      aud: https://tokens.kde.org
+  variables:
+    RUNNER_AFTER_SCRIPT_TIMEOUT: 1h
+  artifacts:
+    expire_in: 7 days
+    when: always
+    paths:
+      - sysext/mkosi.output/kapsule.raw
+  rules:
+    - if: $CI_MERGE_REQUEST_DRAFT == "true"
+      when: manual
+    - if: $CI_COMMIT_BRANCH =~ /^work\//
+      when: manual
+    - when: always
+  script:
+    - sudo pacman -Sy --noconfirm mkosi erofs-utils
+    - sudo mkosi --directory=sysext build
+  after_script:
+    - scripts/upload-sysext.sh "ci-artifacts/${CI_PROJECT_PATH}/sysext/j/${CI_JOB_ID}" sysext/mkosi.output/kapsule.raw || true
