@@ -22,6 +22,8 @@ from .models_generated import (
     Image,
     ImageAliasesEntry,
     ImageAliasesPost,
+    ImagesPost,
+    ImagesPostSource,
     Instance,
     InstancePut,
     InstancesPost,
@@ -795,6 +797,71 @@ class IncusClient:
             raise IncusError("No operation metadata in response")
 
         # Wait for the refresh to complete (may download a new image)
+        if operation.id:
+            operation = await self.wait_operation(operation.id, timeout=300)
+
+        return operation
+
+    async def download_remote_image(
+        self,
+        server: str,
+        protocol: str,
+        alias: str,
+        *,
+        auto_update: bool = True,
+    ) -> Operation:
+        """Download an image from a remote server into the local image store.
+
+        Issues ``POST /1.0/images`` with a pull-mode source so Incus
+        fetches the image directly from the remote simplestreams (or LXD)
+        server.
+
+        Args:
+            server: URL of the remote image server.
+            protocol: Transfer protocol (``"simplestreams"`` or ``"lxd"``).
+            alias: Image alias to pull from the remote server.
+            auto_update: Whether the cached image should auto-update.
+
+        Returns:
+            Completed :class:`Operation`.
+        """
+        body = ImagesPost(
+            auto_update=auto_update,
+            source=ImagesPostSource(
+                type="image",
+                mode="pull",
+                server=server,
+                protocol=protocol,
+                alias=alias,
+                certificate=None,
+                fingerprint=None,
+                image_type=None,
+                name=None,
+                project=None,
+                secret=None,
+                url=None,
+            ),
+            aliases=None,
+            compression_algorithm=None,
+            expires_at=None,
+            filename=None,
+            format=None,
+            profiles=None,
+            properties=None,
+            public=None,
+        )
+
+        response = await self._request(
+            "POST",
+            "/1.0/images",
+            response_type=AsyncOperationResponse,
+            json=body.model_dump(exclude_none=True),
+        )
+
+        operation = response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
+
         if operation.id:
             operation = await self.wait_operation(operation.id, timeout=300)
 

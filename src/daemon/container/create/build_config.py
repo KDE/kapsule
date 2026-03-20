@@ -33,9 +33,18 @@ SERVER_MAP = {
 
 _KAPSULE_PROJECT_ID = 24978
 _KAPSULE_GITLAB_API = "https://invent.kde.org/api/v4"
-_KAPSULE_S3_BASE = (
-    "https://storage.kde.org/ci-artifacts/kde-linux/kapsule/j"
-)
+_KAPSULE_S3_BASE = "https://storage.kde.org/ci-artifacts/kde-linux/kapsule/j"
+
+
+def is_kapsule_server(url: str) -> bool:
+    """Return ``True`` if *url* points to the kapsule S3 artifact store.
+
+    Kapsule server URLs contain a per-build job ID suffix
+    (e.g. ``.../j/4177006``), so two URLs from different builds will never
+    be equal even though they reference the same logical image server.
+    This helper lets callers match on the stable prefix instead.
+    """
+    return url.startswith(_KAPSULE_S3_BASE + "/")
 
 
 async def resolve_server(alias: str) -> str:
@@ -85,10 +94,7 @@ async def _resolve_kapsule_server() -> str:
 
             for preferred in ("build-images+publish", "build-images"):
                 for job in jobs:
-                    if (
-                        job["name"] == preferred
-                        and job["status"] == "success"
-                    ):
+                    if job["name"] == preferred and job["status"] == "success":
                         job_id = job["id"]
                         server_url = f"{_KAPSULE_S3_BASE}/{job_id}"
                         log.info(

@@ -43,7 +43,7 @@ from .constants import (
 )
 from .contexts import CreateContext, UserSetupContext
 from .create import create_pipeline
-from .create.build_config import SERVER_MAP, resolve_server
+from .create.build_config import SERVER_MAP, is_kapsule_server, resolve_server
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
@@ -368,6 +368,13 @@ class ContainerService:
     ) -> None:
         """Refresh cached images from their upstream sources.
 
+        For most image servers the upstream URL is stable and Incus can
+        refresh in-place.  Kapsule images are special: the server URL
+        contains a CI job ID that changes with every build, so the URL
+        stored in the cached image's ``update_source`` will eventually
+        go stale.  When that happens we delete the old cached image and
+        re-download from the latest server URL.
+
         Args:
             progress: Operation reporter (auto-injected)
             image_spec: Image filter in "server:alias" format, or empty
@@ -399,14 +406,22 @@ class ContainerService:
             progress.warning("No cached auto-update images found")
             return
 
-        # Apply server:alias filter
+        # Apply server:alias filter.
+        # Kapsule server URLs embed a per-build job ID, so a straight
+        # equality check would never match once a new build is published.
+        # Use a prefix match for kapsule URLs instead.
         matched: list[Image] = []
         for img in candidates:
             src = img.update_source
             assert src is not None  # guarded by filter above
 
-            if filter_server and src.server != filter_server:
-                continue
+            if filter_server and src.server:
+                if filter_server == src.server:
+                    pass  # exact match — always OK
+                elif is_kapsule_server(filter_server) and is_kapsule_server(src.server):
+                    pass  # both are kapsule URLs — match on prefix
+                else:
+                    continue
             if filter_alias and src.alias != filter_alias:
                 continue
             matched.append(img)
@@ -419,16 +434,71 @@ class ContainerService:
 
         progress.info(f"Found {len(matched)} image(s) to refresh")
 
+        # When refreshing all images (no explicit filter), we still need
+        # to know the current kapsule server URL so that stale kapsule
+        # images can be re-downloaded from the latest build.
+        kapsule_server: str | None = filter_server
+        if kapsule_server is None and any(
+            img.update_source
+            and img.update_source.server
+            and is_kapsule_server(img.update_source.server)
+            for img in matched
+        ):
+            try:
+                kapsule_server = await resolve_server("kapsule")
+            except Exception:
+                logger.warning(
+                    "Could not resolve latest kapsule server; "
+                    "kapsule images will attempt in-place refresh",
+                    exc_info=True,
+                )
+
         refreshed = 0
         for img in matched:
             src = img.update_source
             assert src is not None
             label = f"{src.alias} from {src.server}"
-            progress.info(f"Refreshing: {label}")
 
             try:
                 assert img.fingerprint is not None
-                op = await self._incus.refresh_image(img.fingerprint)
+
+                # Kapsule images: if the resolved server URL differs from
+                # the one baked into the cached image we must delete and
+                # re-download, because Incus refresh_image always pulls
+                # from the original update_source URL which may no longer
+                # exist on the CDN.
+                effective_server = (
+                    kapsule_server
+                    if (src.server and is_kapsule_server(src.server))
+                    else filter_server
+                )
+
+                needs_redownload = (
+                    effective_server
+                    and src.server
+                    and effective_server != src.server
+                    and is_kapsule_server(src.server)
+                )
+
+                if needs_redownload:
+                    assert src.alias is not None
+                    assert src.protocol is not None
+                    assert effective_server is not None
+
+                    progress.info(
+                        f"New kapsule build detected, "
+                        f"re-downloading {src.alias} from {effective_server}"
+                    )
+                    await self._incus.delete_image(img.fingerprint)
+                    op = await self._incus.download_remote_image(
+                        server=effective_server,
+                        protocol=src.protocol,
+                        alias=src.alias,
+                    )
+                else:
+                    progress.info(f"Refreshing: {label}")
+                    op = await self._incus.refresh_image(img.fingerprint)
+
                 if op.status == "Success":
                     progress.success(f"Refreshed: {label}")
                     refreshed += 1

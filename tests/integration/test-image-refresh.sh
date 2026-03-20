@@ -37,7 +37,7 @@ output=$(ssh_vm "kapsule image refresh kapsule:archlinux" 2>&1)
 assert_success "Command exits successfully" test $? -eq 0
 assert_contains "Shows refreshing header" "$output" "Refreshing image: kapsule:archlinux"
 assert_contains "Finds exactly 1 image" "$output" "Found 1 image(s) to refresh"
-assert_contains "Refreshes from kapsule server" "$output" "fernando.local-kde.org/kapsule-images"
+assert_contains "Refreshes from kapsule server" "$output" "storage.kde.org/ci-artifacts/kde-linux/kapsule"
 assert_contains "Reports success" "$output" "Refreshed 1/1 image(s)"
 
 # --- Test 3: Refresh with bare alias (matches multiple servers) ---
