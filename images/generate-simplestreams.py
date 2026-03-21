@@ -172,7 +172,14 @@ def main() -> None:
         }
 
         if default_options:
-            product_entry["kapsule:default_options"] = default_options
+            # Incus flattens nested dicts into dotted image properties,
+            # e.g. {"kapsule": {"default_options": "..."}} becomes
+            # "kapsule.default_options" in the local image store.
+            # The value must be a string since Incus image properties
+            # are dict[str, str].
+            product_entry["kapsule"] = {
+                "default_options": json.dumps(default_options, separators=(",", ":")),
+            }
 
         products[product_id] = product_entry
 
