@@ -172,14 +172,18 @@ def main() -> None:
         }
 
         if default_options:
-            # Incus flattens nested dicts into dotted image properties,
-            # e.g. {"kapsule": {"default_options": "..."}} becomes
-            # "kapsule.default_options" in the local image store.
-            # The value must be a string since Incus image properties
-            # are dict[str, str].
-            product_entry["kapsule"] = {
-                "default_options": json.dumps(default_options, separators=(",", ":")),
+            # Incus maps the 'requirements' dict from simplestreams products
+            # into image properties prefixed with "requirements.", e.g.
+            #   {"requirements": {"kapsule_default_options": "..."}}
+            # becomes property  requirements.kapsule_default_options = "...".
+            # This is the only extensibility mechanism in the simplestreams
+            # Product struct; arbitrary top-level keys are silently ignored.
+            requirements: dict[str, str] = {
+                "kapsule_default_options": json.dumps(
+                    default_options, separators=(",", ":")
+                ),
             }
+            product_entry["requirements"] = requirements
 
         products[product_id] = product_entry
 

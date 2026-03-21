@@ -229,11 +229,20 @@ async def ensure_image_cached(ctx: CreateContext) -> None:
 
 @create_pipeline.step(order=-380)
 async def read_image_defaults(ctx: CreateContext) -> None:
-    """Read ``kapsule.default_options`` from the cached image's properties.
+    """Read default options from the cached image's properties.
 
-    Populates ``ctx.image_defaults`` with a dict parsed from the JSON
-    value of the ``kapsule.default_options`` image property.  If the
-    property is missing or unparseable, ``image_defaults`` stays empty.
+    Looks for the default-options JSON string under two property keys:
+
+    * ``kapsule.default_options`` — set by ``metadata.yaml`` inside the
+      ``incus.tar.xz`` (used for locally imported images).
+    * ``requirements.kapsule_default_options`` — set by the simplestreams
+      ``requirements`` dict (used for remotely downloaded images, since
+      Incus overwrites ``metadata.yaml`` properties with its own
+      computed set on simplestreams import).
+
+    Populates ``ctx.image_defaults`` with the parsed dict.  If neither
+    property is found or the value is unparseable, ``image_defaults``
+    stays empty.
     """
     if not ctx.image_fingerprint:
         return
@@ -241,7 +250,10 @@ async def read_image_defaults(ctx: CreateContext) -> None:
     try:
         image = await ctx.incus.get_image(ctx.image_fingerprint)
         props = image.properties or {}
-        raw_defaults = props.get("kapsule.default_options")
+        # Try simplestreams key first (most common), then metadata.yaml key
+        raw_defaults = props.get("requirements.kapsule_default_options") or props.get(
+            "kapsule.default_options"
+        )
         if raw_defaults:
             parsed = json.loads(raw_defaults)
             if isinstance(parsed, dict):
