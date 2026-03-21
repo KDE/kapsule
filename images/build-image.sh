@@ -36,8 +36,13 @@ for image_dir in "$SCRIPT_DIR"/mkosi.images/*/; do
         continue
     fi
 
+    # Pass the kapsule.yaml for this image (if it exists) so that
+    # package-incus.sh can embed description and default_options into
+    # the Incus image metadata properties.
+    kapsule_yaml="$SCRIPT_DIR/$image_name/kapsule.yaml"
+
     echo "Packaging $image_name for Incus ..."
-    "$SCRIPT_DIR/package-incus.sh" "$rootfs_dir" "$OUTPUT_BASE/$image_name"
+    "$SCRIPT_DIR/package-incus.sh" "$rootfs_dir" "$OUTPUT_BASE/$image_name" "$kapsule_yaml"
 done
 
 echo "All images built and packaged."

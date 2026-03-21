@@ -111,8 +111,11 @@ Adding a new option
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -285,17 +288,25 @@ class OptionValidationError(Exception):
     """Raised when an option dict fails validation."""
 
 
-def parse_options(raw: dict[str, Any]) -> ContainerOptions:
+def parse_options(
+    raw: dict[str, Any],
+    image_defaults: dict[str, object] | None = None,
+) -> ContainerOptions:
     """Parse and validate an ``a{sv}`` option dict into :class:`ContainerOptions`.
 
     - Unknown keys are rejected.
-    - Missing keys get their schema defaults.
+    - Missing keys get image defaults (if provided), then schema defaults.
     - Type mismatches are rejected.
     - Constraint violations (``requires``) are rejected.
+
+    Precedence (highest wins): *raw* (user) > *image_defaults* > schema defaults.
 
     Args:
         raw: Dict from the D-Bus ``a{sv}`` parameter. Values have already
             been unwrapped from ``Variant`` by dbus-fast.
+        image_defaults: Optional per-image default values read from the
+            image's ``kapsule.default_options`` property.  Only known
+            keys are used; unknown keys are silently ignored.
 
     Returns:
         Validated ``ContainerOptions`` instance.
@@ -303,13 +314,26 @@ def parse_options(raw: dict[str, Any]) -> ContainerOptions:
     Raises:
         OptionValidationError: On validation failure.
     """
-    # Reject unknown keys
+    # Reject unknown keys in user-supplied options
     unknown = set(raw.keys()) - set(_DEFAULTS.keys())
     if unknown:
         raise OptionValidationError(f"Unknown options: {', '.join(sorted(unknown))}")
 
-    # Merge with defaults
-    merged: dict[str, Any] = {**_DEFAULTS, **raw}
+    # Filter image defaults to only known keys, warn about unknown ones
+    filtered_image_defaults: dict[str, object] = {}
+    if image_defaults:
+        unknown_defaults = set(image_defaults.keys()) - set(_DEFAULTS.keys())
+        if unknown_defaults:
+            log.warning(
+                "Image defaults contain unknown options (ignored): %s",
+                ", ".join(sorted(unknown_defaults)),
+            )
+        filtered_image_defaults = {
+            k: v for k, v in image_defaults.items() if k in _DEFAULTS
+        }
+
+    # Merge: schema defaults < image defaults < user options
+    merged: dict[str, Any] = {**_DEFAULTS, **filtered_image_defaults, **raw}
 
     # Type-check each value
     for key, value in merged.items():

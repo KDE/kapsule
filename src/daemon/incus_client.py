@@ -142,6 +142,7 @@ class IncusClient:
         *,
         response_type: type[T],
         json: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> T:
         """Make request and handle Incus response format.
 
@@ -161,12 +162,21 @@ class IncusClient:
             path: API path.
             response_type: Pydantic model to deserialize the response into.
             json: Optional JSON body for the request.
+            timeout: Optional per-request timeout in seconds. Overrides the
+                client default (30s). Use for long-polling endpoints like
+                wait_operation where the server may hold the connection open
+                for minutes.
 
         Returns:
             A validated instance of response_type.
         """
         client = await self._get_client()
-        response = await client.request(method, path, json=json)
+        kwargs: dict[str, Any] = {}
+        if json is not None:
+            kwargs["json"] = json
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        response = await client.request(method, path, **kwargs)
 
         # Handle HTTP errors and convert to IncusError
         if response.status_code >= 400:
@@ -345,9 +355,14 @@ class IncusClient:
     async def wait_operation(self, operation_id: str, timeout: int = 60) -> Operation:
         """Wait for an operation to complete.
 
+        Uses Incus long-polling: the server holds the connection open until the
+        operation finishes or the server-side timeout elapses. The httpx
+        client-side timeout is set to ``timeout + 30`` seconds so it never
+        expires before the server responds.
+
         Args:
             operation_id: Operation UUID.
-            timeout: Timeout in seconds.
+            timeout: Server-side timeout in seconds.
 
         Returns:
             Operation object with final status.
@@ -356,6 +371,7 @@ class IncusClient:
             "GET",
             f"/1.0/operations/{operation_id}/wait?timeout={timeout}",
             response_type=Operation,
+            timeout=timeout + 30,
         )
 
     async def instance_exists(self, name: str) -> bool:
@@ -997,6 +1013,92 @@ class IncusClient:
             if exc.code == 404:
                 return None
             raise
+
+    async def get_image(self, fingerprint: str) -> Image:
+        """Get a single image by fingerprint.
+
+        Args:
+            fingerprint: Full SHA-256 fingerprint of the image.
+
+        Returns:
+            Image object with full details including properties.
+        """
+        return await self._request(
+            "GET",
+            f"/1.0/images/{fingerprint}",
+            response_type=Image,
+        )
+
+    async def download_image(
+        self,
+        source: ImagesPostSource,
+        auto_update: bool = True,
+    ) -> Image:
+        """Download a remote image into the local store.
+
+        Triggers Incus to pull the image from the given source (e.g. a
+        simplestreams server) and cache it locally.  Returns the full
+        ``Image`` object so callers can inspect properties.
+
+        If the image is already cached locally (same alias from the same
+        server), the existing image is returned instead of re-downloading.
+
+        Args:
+            source: Image source descriptor (protocol, server, alias).
+            auto_update: Mark the image for automatic updates.
+
+        Returns:
+            Image object for the locally cached image.
+        """
+        # Check if the image is already cached locally by matching
+        # alias + server in the local image store.
+        if source.alias:
+            for img in await self.list_images():
+                if (
+                    img.update_source
+                    and img.update_source.alias == source.alias
+                    and img.update_source.server == source.server
+                    and img.fingerprint
+                ):
+                    return img
+
+        body = ImagesPost(
+            auto_update=auto_update,
+            source=source,
+            aliases=None,
+            compression_algorithm=None,
+            expires_at=None,
+            filename=None,
+            format=None,
+            profiles=None,
+            properties=None,
+            public=None,
+        )
+
+        response = await self._request(
+            "POST",
+            "/1.0/images",
+            response_type=AsyncOperationResponse,
+            json=body.model_dump(exclude_none=True),
+        )
+
+        operation = response.metadata
+        if operation is None:
+            raise IncusError("No operation metadata in response")
+
+        if operation.id:
+            operation = await self.wait_operation(operation.id, timeout=600)
+
+        if operation.status != "Success":
+            raise IncusError(
+                f"Image download failed: {operation.err or operation.status}"
+            )
+
+        if operation.metadata is None or "fingerprint" not in operation.metadata:
+            raise IncusError("No fingerprint in image download result")
+
+        fingerprint: str = operation.metadata["fingerprint"]
+        return await self.get_image(fingerprint)
 
     # -------------------------------------------------------------------------
     # Server configuration

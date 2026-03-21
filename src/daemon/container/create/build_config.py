@@ -6,11 +6,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 import httpx
 
-from ...models_generated import InstanceSource
+from ...container_options import OptionValidationError, parse_options
+from ...incus_client import IncusError
+from ...models_generated import ImagesPostSource, InstanceSource
 from ...operations import OperationError
 from ..config_helpers import (
     base_container_config,
@@ -180,9 +183,96 @@ async def parse_image_source(ctx: CreateContext) -> None:
     )
 
 
+@create_pipeline.step(order=-390)
+async def ensure_image_cached(ctx: CreateContext) -> None:
+    """Ensure the image is cached locally in the Incus image store.
+
+    For remote (simplestreams) images, downloads via ``POST /1.0/images``
+    and stores the fingerprint on the context.  For local images, resolves
+    the alias to a fingerprint.
+
+    This step must run after ``parse_image_source`` so that ``ctx.source``
+    is populated.
+    """
+    assert ctx.source is not None
+
+    if ctx.source.server and ctx.source.protocol:
+        # Remote image — download into local store (no-ops if already cached)
+        ctx.progress.info("Ensuring image is cached locally...")
+        image_source = ImagesPostSource(
+            type="image",
+            mode="pull",
+            server=ctx.source.server,
+            protocol=ctx.source.protocol,
+            alias=ctx.source.alias,
+            certificate=None,
+            fingerprint=None,
+            image_type=None,
+            name=None,
+            project=None,
+            secret=None,
+            url=None,
+        )
+        try:
+            image = await ctx.incus.download_image(image_source)
+            ctx.image_fingerprint = image.fingerprint
+        except (IncusError, httpx.HTTPError) as e:
+            log.warning("Failed to pre-cache image: %s", e)
+            # Fall through — create_instance will still try using ctx.source
+    else:
+        # Local image — resolve alias to fingerprint
+        alias = ctx.source.alias
+        if alias:
+            fingerprint = await ctx.incus.get_image_fingerprint_by_alias(alias)
+            ctx.image_fingerprint = fingerprint
+
+
+@create_pipeline.step(order=-380)
+async def read_image_defaults(ctx: CreateContext) -> None:
+    """Read ``kapsule.default_options`` from the cached image's properties.
+
+    Populates ``ctx.image_defaults`` with a dict parsed from the JSON
+    value of the ``kapsule.default_options`` image property.  If the
+    property is missing or unparseable, ``image_defaults`` stays empty.
+    """
+    if not ctx.image_fingerprint:
+        return
+
+    try:
+        image = await ctx.incus.get_image(ctx.image_fingerprint)
+        props = image.properties or {}
+        raw_defaults = props.get("kapsule.default_options")
+        if raw_defaults:
+            parsed = json.loads(raw_defaults)
+            if isinstance(parsed, dict):
+                ctx.image_defaults = parsed
+                log.info(
+                    "Image defaults for %s: %s",
+                    ctx.image_fingerprint[:12],
+                    ctx.image_defaults,
+                )
+    except (IncusError, json.JSONDecodeError, TypeError) as e:
+        log.warning("Could not read image defaults: %s", e)
+
+
+@create_pipeline.step(order=-370)
+async def parse_create_options(ctx: CreateContext) -> None:
+    """Merge image defaults with user options and parse into ContainerOptions.
+
+    Precedence: schema defaults < image defaults < user-specified options.
+
+    Raises ``OperationError`` if user-supplied options fail validation.
+    """
+    try:
+        ctx.opts = parse_options(ctx.raw_options, image_defaults=ctx.image_defaults)
+    except OptionValidationError as e:
+        raise OperationError(str(e))
+
+
 @create_pipeline.step(order=-300)
 async def build_base_config(ctx: CreateContext) -> None:
     """Build base container config (security, networking, NVIDIA hook)."""
+    assert ctx.opts is not None
     ctx.instance_config = base_container_config(
         nvidia_drivers=ctx.opts.gpu and ctx.opts.nvidia_drivers,
     )
@@ -200,12 +290,14 @@ async def build_base_config(ctx: CreateContext) -> None:
 @create_pipeline.step(order=-200)
 async def store_options(ctx: CreateContext) -> None:
     """Store kapsule option values as ``user.kapsule.*`` config keys."""
+    assert ctx.opts is not None
     store_option_metadata(ctx.instance_config, ctx.opts)
 
 
 @create_pipeline.step(order=-100)
 async def build_devices(ctx: CreateContext) -> None:
     """Build base Incus devices (root disk, GPU, hostfs)."""
+    assert ctx.opts is not None
     ctx.devices = base_container_devices(
         host_rootfs=ctx.opts.host_rootfs,
         gpu=ctx.opts.gpu,

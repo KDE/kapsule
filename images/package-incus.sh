@@ -8,17 +8,25 @@
 #   - incus.tar.xz  (metadata archive)
 #   - rootfs.squashfs (root filesystem)
 #   - version        (YYYYMMDD datestamp)
+#
+# If a kapsule.yaml is provided as the third argument, the image
+# description and default_options are read from it and embedded into
+# the Incus metadata properties so the daemon can retrieve them from
+# any locally cached image.
 
 set -euo pipefail
 
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <rootfs-dir> <output-dir>" >&2
-    echo "Example: $0 mkosi.output/archlinux out/archlinux" >&2
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "Usage: $0 <rootfs-dir> <output-dir> [kapsule.yaml]" >&2
+    echo "Example: $0 mkosi.output/archlinux out/archlinux images/archlinux/kapsule.yaml" >&2
     exit 1
 fi
 
 ROOTFS_DIR="$1"
 OUTPUT_DIR="$2"
+KAPSULE_YAML="${3:-}"
 
 if [ ! -d "$ROOTFS_DIR" ]; then
     echo "Error: rootfs directory '$ROOTFS_DIR' not found" >&2
@@ -42,14 +50,11 @@ mkdir -p "$OUTPUT_DIR"
 METADATA_DIR=$(mktemp -d)
 trap 'rm -rf "$METADATA_DIR"' EXIT
 
-cat > "$METADATA_DIR/metadata.yaml" <<EOF
-architecture: $INCUS_ARCH
-creation_date: $CREATION_DATE
-properties:
-  os: linux
-  architecture: $INCUS_ARCH
-  description: "Kapsule container image"
-EOF
+generate_args=("$INCUS_ARCH" "$CREATION_DATE" "$METADATA_DIR/metadata.yaml")
+if [ -n "$KAPSULE_YAML" ] && [ -f "$KAPSULE_YAML" ]; then
+    generate_args+=("$KAPSULE_YAML")
+fi
+python3 "$SCRIPT_DIR/generate-metadata.py" "${generate_args[@]}"
 
 tar -cf - -C "$METADATA_DIR" metadata.yaml | xz -T0 > "$OUTPUT_DIR/incus.tar.xz"
 

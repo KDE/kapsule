@@ -38,9 +38,7 @@ from .dbus_types import (
 
 from . import __version__
 from .container_options import (
-    OptionValidationError,
     get_create_schema_json,
-    parse_options,
 )
 from .container import ContainerService
 from .host_config_sync import HostConfigSync
@@ -262,19 +260,14 @@ class KapsuleManagerInterface(ServiceInterface):
         Returns:
             D-Bus object path for tracking operation progress
         """
-        # Parse and validate options
-        try:
-            # Unwrap Variant values from dbus-fast.  Variants may be
-            # nested (e.g. when Qt's QDBusVariant is used inside an
-            # a{sv} map), so peel all layers.
-            raw_options: dict[str, object] = {}
-            for key, value in options.items():
-                while isinstance(value, Variant):
-                    value = value.value
-                raw_options[key] = value
-            opts = parse_options(raw_options)
-        except OptionValidationError as e:
-            raise Exception(str(e))
+        # Unwrap Variant values from dbus-fast.  Variants may be
+        # nested (e.g. when Qt's QDBusVariant is used inside an
+        # a{sv} map), so peel all layers.
+        raw_options: dict[str, object] = {}
+        for key, value in options.items():
+            while isinstance(value, Variant):
+                value = value.value
+            raw_options[key] = value
 
         # If no image specified, look up default from caller's config
         actual_image = image
@@ -297,7 +290,7 @@ class KapsuleManagerInterface(ServiceInterface):
         return await self._service.create_container(
             name=name,
             image=actual_image,
-            options=opts,
+            raw_options=raw_options,
         )
 
     @dbus_method()

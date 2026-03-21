@@ -28,14 +28,28 @@ class CreateContext:
 
     Steps should guard their own preconditions (e.g. check
     ``opts.session_mode`` before doing session-mode work).
+
+    Option parsing is deferred to the pipeline so that image-level
+    defaults (from the image's ``kapsule.default_options`` property)
+    can be read after the image is cached locally.  Early steps
+    populate ``image_fingerprint`` and ``image_defaults``; the
+    ``parse_create_options`` step merges them with ``raw_options``
+    and sets ``opts``.
     """
 
     name: str
     image: str
-    opts: ContainerOptions
+    raw_options: dict[str, object]
     incus: IncusClient
     progress: OperationReporter
     host_config_sync: HostConfigSync
+
+    # Populated by pipeline steps before option parsing
+    image_fingerprint: str | None = None
+    image_defaults: dict[str, object] = field(default_factory=dict)
+
+    # Set by parse_create_options step (after image defaults are known)
+    opts: ContainerOptions | None = None
 
     # Built up by pipeline steps
     instance_config: dict[str, str] = field(default_factory=lambda: dict[str, str]())

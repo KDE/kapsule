@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import load_config
-from ..container_options import ContainerOptions
 from ..incus_client import IncusClient, IncusError
 from ..models_generated import Image
 from ..operations import (
@@ -106,14 +105,14 @@ class ContainerService:
         self,
         name: str,
         image: str,
-        opts: ContainerOptions,
+        raw_options: dict[str, object],
         progress: OperationReporter,
     ) -> None:
         """Run the full container creation pipeline."""
         ctx = CreateContext(
             name=name,
             image=image,
-            opts=opts,
+            raw_options=raw_options,
             incus=self._incus,
             progress=progress,
             host_config_sync=self._host_config_sync,
@@ -159,7 +158,7 @@ class ContainerService:
         *,
         name: str,
         image: str,
-        options: ContainerOptions | None = None,
+        raw_options: dict[str, object] | None = None,
     ) -> None:
         """Create a new container.
 
@@ -167,13 +166,14 @@ class ContainerService:
             progress: Operation reporter (auto-injected)
             name: Container name
             image: Image to use (e.g., "images:archlinux")
-            options: Validated container options. If None, schema defaults
-                are used (all features enabled).
+            raw_options: Raw option dict from the D-Bus ``a{sv}`` parameter.
+                Parsed inside the pipeline after image defaults are known.
+                If None, an empty dict is used (all schema defaults apply).
         """
         await self._run_create(
             name=name,
             image=image,
-            opts=options or ContainerOptions.default(),
+            raw_options=raw_options or {},
             progress=progress,
         )
 
