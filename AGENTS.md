@@ -4,6 +4,8 @@ SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
+- Don't ammend commits unless explicitly asked to do so.
+
 # Kapsule
 
 ## Build & Deploy
