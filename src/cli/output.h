@@ -96,6 +96,12 @@ public:
     void progress(std::string_view description, int current, int total = -1);
 
     /**
+     * @brief Complete a progress bar, clearing the line.
+     * @param message Optional message to display after clearing (e.g., success/failure)
+     */
+    void progressComplete(std::string_view message = "");
+
+    /**
      * @brief Increase indentation level.
      */
     void indent(int spaces = 2);

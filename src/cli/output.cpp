@@ -134,6 +134,17 @@ void Output::progress(std::string_view description, int current, int total)
     m_stream.flush();
 }
 
+void Output::progressComplete(std::string_view message)
+{
+    // Clear the progress line (overwrite with spaces, then carriage return)
+    m_stream << "\r" << std::string(80, ' ') << "\r";
+    if (!message.empty()) {
+        printPrefix();
+        m_stream << message << '\n';
+    }
+    m_stream.flush();
+}
+
 void Output::indent(int spaces)
 {
     m_indentLevel += spaces;

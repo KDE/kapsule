@@ -214,8 +214,24 @@ async def ensure_image_cached(ctx: CreateContext) -> None:
             url=None,
         )
         try:
-            image = await ctx.incus.download_image(image_source)
-            ctx.image_fingerprint = image.fingerprint
+            from ...progress_tracker import wait_operation_with_progress
+
+            cached_image, op_id = await ctx.incus.download_image(image_source)
+            if cached_image:
+                ctx.image_fingerprint = cached_image.fingerprint
+            elif op_id:
+                operation = await wait_operation_with_progress(
+                    ctx.incus,
+                    op_id,
+                    ctx.progress,
+                    description="Downloading image...",
+                    timeout=600,
+                )
+                if operation.metadata and "fingerprint" in operation.metadata:
+                    dl_fingerprint: str = operation.metadata["fingerprint"]
+                    ctx.image_fingerprint = dl_fingerprint
+                else:
+                    raise IncusError("No fingerprint in image download result")
         except (IncusError, httpx.HTTPError) as e:
             log.warning("Failed to pre-cache image: %s", e)
             # Fall through — create_instance will still try using ctx.source

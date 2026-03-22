@@ -86,6 +86,7 @@ if(INSTALL_PYTHON_DAEMON)
         src/daemon/models_generated.py
         src/daemon/operations.py
         src/daemon/pipeline.py
+        src/daemon/progress_tracker.py
         src/daemon/service.py
         DESTINATION "${KAPSULE_PYTHON_DIR}/kapsule/daemon"
     )
@@ -134,6 +135,7 @@ if(INSTALL_PYTHON_DAEMON AND VENDOR_PYTHON_DEPS)
     # List of dependencies to vendor (from pyproject.toml)
     set(KAPSULE_PYTHON_DEPENDENCIES
         "httpx>=0.25.0"
+        "websockets>=16.0"
         "dbus-fast>=2.0.0"
         "pyyaml>=6.0"
         "pydantic>=2.0"

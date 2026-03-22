@@ -199,6 +199,20 @@ class OperationInterface(ServiceInterface):
         return (progress_id, current, rate)
 
     @dbus_signal()
+    def ProgressTextUpdate(
+        self,
+        progress_id: DBusStr,
+        text: DBusStr,
+    ) -> Annotated[tuple[str, str], DBusSignature("ss")]:
+        """Emitted to update a progress bar with raw text (e.g. download progress).
+
+        Args:
+            progress_id: Progress bar to update
+            text: Raw progress text from Incus (e.g. "rootfs: 42% (49.2MB/s)")
+        """
+        return (progress_id, text)
+
+    @dbus_signal()
     def ProgressCompleted(
         self,
         progress_id: DBusStr,
@@ -300,6 +314,14 @@ class ProgressBar:
         """
         self._operation.ProgressUpdate(self.progress_id, current, rate)
 
+    def update_text(self, text: str) -> None:
+        """Update progress bar with raw text (e.g. download progress).
+
+        Args:
+            text: Raw progress text from Incus (e.g. "rootfs: 42% (49.2MB/s)")
+        """
+        self._operation.ProgressTextUpdate(self.progress_id, text)
+
     def complete(self, success: bool = True, message: str = "") -> None:
         """Complete and remove the progress bar.
 
@@ -314,6 +336,9 @@ class NullProgressBar:
     """No-op progress bar for contexts without progress reporting."""
 
     def update(self, current: int, rate: float = 0.0) -> None:
+        pass
+
+    def update_text(self, text: str) -> None:
         pass
 
     def complete(self, success: bool = True, message: str = "") -> None:

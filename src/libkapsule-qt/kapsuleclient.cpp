@@ -31,7 +31,7 @@ public:
     void connectToDaemon();
     QCoro::Task<OperationResult> waitForOperation(
         const QString &objectPath,
-        ProgressHandler progress);
+        OperationCallbacks callbacks);
 
     void setConnected(bool value);
 
@@ -101,7 +101,7 @@ void KapsuleClientPrivate::setConnected(bool value)
 
 QCoro::Task<OperationResult> KapsuleClientPrivate::waitForOperation(
     const QString &objectPath,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     qCDebug(KAPSULE_LOG) << "Waiting for operation at" << objectPath;
     
@@ -134,26 +134,49 @@ QCoro::Task<OperationResult> KapsuleClientPrivate::waitForOperation(
 
     if (currentStatus == QLatin1String("running")) {
         // Subscribe to progress messages if handler provided
-        QMetaObject::Connection messageConn;
-        if (progress) {
-            messageConn = QObject::connect(
+        if (callbacks.onMessage) {
+            QObject::connect(
                 opProxy.get(),
                 &OrgKdeKapsuleOperationInterface::Message,
-                [progress](int type, const QString &msg, int indent) {
+                [cb = callbacks.onMessage](int type, const QString &msg, int indent) {
                     qCDebug(KAPSULE_LOG) << "Got Message signal:" << type << msg;
-                    progress(static_cast<MessageType>(type), msg, indent);
+                    cb(static_cast<MessageType>(type), msg, indent);
                 });
             qCDebug(KAPSULE_LOG) << "Subscribed to Message signal";
+        }
+
+        if (callbacks.onProgressStart) {
+            QObject::connect(
+                opProxy.get(),
+                &OrgKdeKapsuleOperationInterface::ProgressStarted,
+                callbacks.onProgressStart);
+        }
+
+        if (callbacks.onProgressUpdate) {
+            QObject::connect(
+                opProxy.get(),
+                &OrgKdeKapsuleOperationInterface::ProgressUpdate,
+                callbacks.onProgressUpdate);
+        }
+
+        if (callbacks.onProgressTextUpdate) {
+            QObject::connect(
+                opProxy.get(),
+                &OrgKdeKapsuleOperationInterface::ProgressTextUpdate,
+                callbacks.onProgressTextUpdate);
+        }
+
+        if (callbacks.onProgressComplete) {
+            QObject::connect(
+                opProxy.get(),
+                &OrgKdeKapsuleOperationInterface::ProgressCompleted,
+                callbacks.onProgressComplete);
         }
 
         qCDebug(KAPSULE_LOG) << "Waiting for Completed signal...";
         std::tie(success, error) = co_await qCoro(
             opProxy.get(),
             &OrgKdeKapsuleOperationInterface::Completed);
-
-        if (progress) {
-            QObject::disconnect(messageConn);
-        }
     } else {
         // Operation already finished — read result from properties
         success = (currentStatus == QLatin1String("completed"));
@@ -256,7 +279,7 @@ QCoro::Task<OperationResult> KapsuleClient::createContainer(
     const QString &name,
     const QString &image,
     const QVariantMap &options,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
@@ -269,13 +292,13 @@ QCoro::Task<OperationResult> KapsuleClient::createContainer(
 
     // The reply is the D-Bus object path for the operation - wait for completion
     QDBusObjectPath opPath = reply.value();
-    co_return co_await d->waitForOperation(opPath.path(), progress);
+    co_return co_await d->waitForOperation(opPath.path(), std::move(callbacks));
 }
 
 QCoro::Task<OperationResult> KapsuleClient::deleteContainer(
     const QString &name,
     bool force,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
@@ -287,12 +310,12 @@ QCoro::Task<OperationResult> KapsuleClient::deleteContainer(
     }
 
     QDBusObjectPath opPath = reply.value();
-    co_return co_await d->waitForOperation(opPath.path(), progress);
+    co_return co_await d->waitForOperation(opPath.path(), std::move(callbacks));
 }
 
 QCoro::Task<OperationResult> KapsuleClient::startContainer(
     const QString &name,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
@@ -304,13 +327,13 @@ QCoro::Task<OperationResult> KapsuleClient::startContainer(
     }
 
     QDBusObjectPath opPath = reply.value();
-    co_return co_await d->waitForOperation(opPath.path(), progress);
+    co_return co_await d->waitForOperation(opPath.path(), std::move(callbacks));
 }
 
 QCoro::Task<OperationResult> KapsuleClient::stopContainer(
     const QString &name,
     bool force,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
@@ -322,7 +345,7 @@ QCoro::Task<OperationResult> KapsuleClient::stopContainer(
     }
 
     QDBusObjectPath opPath = reply.value();
-    co_return co_await d->waitForOperation(opPath.path(), progress);
+    co_return co_await d->waitForOperation(opPath.path(), std::move(callbacks));
 }
 
 QCoro::Task<EnterResult> KapsuleClient::prepareEnter(
@@ -344,7 +367,7 @@ QCoro::Task<EnterResult> KapsuleClient::prepareEnter(
 
 QCoro::Task<OperationResult> KapsuleClient::refreshImages(
     const QString &image,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
@@ -356,13 +379,13 @@ QCoro::Task<OperationResult> KapsuleClient::refreshImages(
     }
 
     QDBusObjectPath opPath = reply.value();
-    co_return co_await d->waitForOperation(opPath.path(), progress);
+    co_return co_await d->waitForOperation(opPath.path(), std::move(callbacks));
 }
 
 QCoro::Task<OperationResult> KapsuleClient::importImage(
     const QString &path,
     const QString &alias,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
@@ -374,7 +397,7 @@ QCoro::Task<OperationResult> KapsuleClient::importImage(
     }
 
     QDBusObjectPath opPath = reply.value();
-    co_return co_await d->waitForOperation(opPath.path(), progress);
+    co_return co_await d->waitForOperation(opPath.path(), std::move(callbacks));
 }
 
 QCoro::Task<QString> KapsuleClient::listImages()
@@ -394,7 +417,7 @@ QCoro::Task<QString> KapsuleClient::listImages()
 
 QCoro::Task<OperationResult> KapsuleClient::deleteImage(
     const QString &identifier,
-    ProgressHandler progress)
+    OperationCallbacks callbacks)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon")};
@@ -406,7 +429,7 @@ QCoro::Task<OperationResult> KapsuleClient::deleteImage(
     }
 
     QDBusObjectPath opPath = reply.value();
-    co_return co_await d->waitForOperation(opPath.path(), progress);
+    co_return co_await d->waitForOperation(opPath.path(), std::move(callbacks));
 }
 
 } // namespace Kapsule

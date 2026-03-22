@@ -118,6 +118,11 @@ class IncusClient:
         self._socket_path = socket_path
         self._client: httpx.AsyncClient | None = None
 
+    @property
+    def socket_path(self) -> str:
+        """Path to the Incus Unix socket."""
+        return self._socket_path
+
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""
         if self._client is None or self._client.is_closed:
@@ -790,7 +795,7 @@ class IncusClient:
         )
         return result.root
 
-    async def refresh_image(self, fingerprint: str) -> Operation:
+    async def refresh_image(self, fingerprint: str) -> str:
         """Trigger an immediate refresh of a cached image from its upstream source.
 
         This is an async Incus operation. The image must have auto_update=True
@@ -800,7 +805,7 @@ class IncusClient:
             fingerprint: Full SHA-256 fingerprint of the image.
 
         Returns:
-            Operation with status info.
+            Operation ID for the refresh operation.
         """
         response = await self._request(
             "POST",
@@ -812,11 +817,10 @@ class IncusClient:
         if operation is None:
             raise IncusError("No operation metadata in response")
 
-        # Wait for the refresh to complete (may download a new image)
-        if operation.id:
-            operation = await self.wait_operation(operation.id, timeout=300)
+        if not operation.id:
+            raise IncusError("No operation ID in response")
 
-        return operation
+        return operation.id
 
     async def download_remote_image(
         self,
@@ -825,7 +829,7 @@ class IncusClient:
         alias: str,
         *,
         auto_update: bool = True,
-    ) -> Operation:
+    ) -> str:
         """Download an image from a remote server into the local image store.
 
         Issues ``POST /1.0/images`` with a pull-mode source so Incus
@@ -839,7 +843,7 @@ class IncusClient:
             auto_update: Whether the cached image should auto-update.
 
         Returns:
-            Completed :class:`Operation`.
+            Operation ID for the download operation.
         """
         body = ImagesPost(
             auto_update=auto_update,
@@ -878,10 +882,10 @@ class IncusClient:
         if operation is None:
             raise IncusError("No operation metadata in response")
 
-        if operation.id:
-            operation = await self.wait_operation(operation.id, timeout=300)
+        if not operation.id:
+            raise IncusError("No operation ID in response")
 
-        return operation
+        return operation.id
 
     async def import_image(
         self, meta_path: Path, rootfs_path: Path, aliases: list[str]
@@ -1033,12 +1037,14 @@ class IncusClient:
         self,
         source: ImagesPostSource,
         auto_update: bool = True,
-    ) -> Image:
+    ) -> tuple[Image | None, str | None]:
         """Download a remote image into the local store.
 
         Triggers Incus to pull the image from the given source (e.g. a
-        simplestreams server) and cache it locally.  Returns the full
-        ``Image`` object so callers can inspect properties.
+        simplestreams server) and cache it locally.  Returns a tuple of
+        ``(image, operation_id)`` — if the image is already cached, returns
+        ``(image, None)``; if a download was started, returns
+        ``(None, operation_id)`` so the caller can track progress.
 
         If the image is already cached locally (same alias from the same
         server), the existing image is returned instead of re-downloading.
@@ -1048,7 +1054,8 @@ class IncusClient:
             auto_update: Mark the image for automatic updates.
 
         Returns:
-            Image object for the locally cached image.
+            Tuple of (Image, None) if cached, or (None, operation_id) if
+            a download was started.
         """
         # Check if the image is already cached locally by matching
         # alias + server in the local image store.
@@ -1060,7 +1067,7 @@ class IncusClient:
                     and img.update_source.server == source.server
                     and img.fingerprint
                 ):
-                    return img
+                    return img, None
 
         body = ImagesPost(
             auto_update=auto_update,
@@ -1086,19 +1093,10 @@ class IncusClient:
         if operation is None:
             raise IncusError("No operation metadata in response")
 
-        if operation.id:
-            operation = await self.wait_operation(operation.id, timeout=600)
+        if not operation.id:
+            raise IncusError("No operation ID in response")
 
-        if operation.status != "Success":
-            raise IncusError(
-                f"Image download failed: {operation.err or operation.status}"
-            )
-
-        if operation.metadata is None or "fingerprint" not in operation.metadata:
-            raise IncusError("No fingerprint in image download result")
-
-        fingerprint: str = operation.metadata["fingerprint"]
-        return await self.get_image(fingerprint)
+        return None, operation.id
 
     # -------------------------------------------------------------------------
     # Server configuration

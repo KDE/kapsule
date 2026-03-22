@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 from ..config import load_config
 from ..incus_client import IncusClient, IncusError
 from ..models_generated import Image
+from ..progress_tracker import wait_operation_with_progress
 from ..operations import (
     NullOperationReporter,
     OperationError,
@@ -490,14 +491,28 @@ class ContainerService:
                         f"re-downloading {src.alias} from {effective_server}"
                     )
                     await self._incus.delete_image(img.fingerprint)
-                    op = await self._incus.download_remote_image(
+                    op_id = await self._incus.download_remote_image(
                         server=effective_server,
                         protocol=src.protocol,
                         alias=src.alias,
                     )
+                    op = await wait_operation_with_progress(
+                        self._incus,
+                        op_id,
+                        progress,
+                        description=f"Downloading {src.alias}...",
+                        timeout=300,
+                    )
                 else:
                     progress.info(f"Refreshing: {label}")
-                    op = await self._incus.refresh_image(img.fingerprint)
+                    op_id = await self._incus.refresh_image(img.fingerprint)
+                    op = await wait_operation_with_progress(
+                        self._incus,
+                        op_id,
+                        progress,
+                        description=f"Refreshing {label}...",
+                        timeout=300,
+                    )
 
                 if op.status == "Success":
                     progress.success(f"Refreshed: {label}")

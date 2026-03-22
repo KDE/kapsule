@@ -17,6 +17,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QList>
 
 #include <qcoro/qcorotask.h>
 #include <qcoro/qcorocore.h>
@@ -28,6 +29,7 @@
 #include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 
 using namespace Kapsule;
 
@@ -69,6 +71,104 @@ static void emitOsc777ContainerPop()
 
 // Forward declarations for command handlers
 QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args);
+
+/**
+ * @brief Create OperationCallbacks that display messages and progress bars.
+ */
+static OperationCallbacks makeOutputCallbacks(Output &o)
+{
+    // Shared state for active progress bars (owned by the returned callbacks via shared_ptr)
+    struct State {
+        struct ActiveBar {
+            QString progressId;
+            std::string description;
+            int total = -1;
+            int extraIndent = 0;
+            std::string lastText;  // Raw text from daemon (e.g. Incus download_progress)
+        };
+        // Keep a small ordered list rather than a map because we only expect
+        // at most one active progress bar in normal use, with rare overlap.
+        QList<ActiveBar> activeBars;
+    };
+    auto state = std::make_shared<State>();
+
+    const auto findBar = [state](const QString &id) {
+        return std::find_if(state->activeBars.begin(), state->activeBars.end(), [&id](const State::ActiveBar &bar) {
+            return bar.progressId == id;
+        });
+    };
+
+    OperationCallbacks cb;
+    cb.onMessage = [&o](MessageType type, const QString &msg, int indent) {
+        o.print(type, msg.toStdString(), indent);
+    };
+    cb.onProgressStart = [&o, state, findBar](const QString &id, const QString &desc, int total, int indent) {
+        if (auto it = findBar(id); it != state->activeBars.end()) {
+            *it = {id, desc.toStdString(), total, indent, {}};
+        } else {
+            state->activeBars.append({id, desc.toStdString(), total, indent, {}});
+        }
+        if (!state->activeBars.isEmpty() && state->activeBars.first().progressId == id) {
+            IndentGuard guard(o, indent * 2);
+            o.progress(desc.toStdString(), 0, total);
+        }
+    };
+    cb.onProgressUpdate = [&o, state, findBar](const QString &id, int current, double /*rate*/) {
+        if (state->activeBars.isEmpty() || state->activeBars.first().progressId != id) {
+            return;
+        }
+        if (auto it = findBar(id); it != state->activeBars.end()) {
+            auto &bar = *it;
+            IndentGuard guard(o, bar.extraIndent * 2);
+            // For indeterminate bars with raw text, show the text instead of description
+            if (bar.total < 0 && !bar.lastText.empty()) {
+                o.progress(bar.lastText, current, bar.total);
+            } else {
+                o.progress(bar.description, current, bar.total);
+            }
+        }
+    };
+    cb.onProgressTextUpdate = [state, findBar](const QString &id, const QString &text) {
+        if (auto it = findBar(id); it != state->activeBars.end()) {
+            it->lastText = text.toStdString();
+        }
+    };
+    cb.onProgressComplete = [&o, state, findBar](const QString &id, bool /*success*/, const QString &msg) {
+        const bool wasVisible = (!state->activeBars.isEmpty() && state->activeBars.first().progressId == id);
+        int extraIndent = 0;
+        if (auto it = findBar(id); it != state->activeBars.end()) {
+            extraIndent = it->extraIndent;
+            state->activeBars.erase(it);
+        }
+
+        if (!wasVisible) {
+            return;
+        }
+
+        if (state->activeBars.isEmpty()) {
+            IndentGuard guard(o, extraIndent * 2);
+            if (!msg.isEmpty()) {
+                o.progressComplete(msg.toStdString());
+            } else {
+                o.progressComplete();
+            }
+            return;
+        }
+
+        {
+            IndentGuard guard(o, extraIndent * 2);
+            o.progressComplete();
+        }
+        const auto &nextBar = state->activeBars.first();
+        IndentGuard nextGuard(o, nextBar.extraIndent * 2);
+        if (nextBar.total < 0 && !nextBar.lastText.empty()) {
+            o.progress(nextBar.lastText, 0, nextBar.total);
+        } else {
+            o.progress(nextBar.description, 0, nextBar.total);
+        }
+    };
+    return cb;
+}
 QCoro::Task<int> cmdEnter(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdList(KapsuleClient &client, const QStringList &args);
 QCoro::Task<int> cmdStart(KapsuleClient &client, const QStringList &args);
@@ -319,10 +419,7 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Creating container: %1").arg(name).toStdString());
 
-    auto result = co_await client.createContainer(name, image, optionsMap,
-        [&o](MessageType type, const QString &msg, int indent) {
-            o.print(type, msg.toStdString(), indent);
-        });
+    auto result = co_await client.createContainer(name, image, optionsMap, makeOutputCallbacks(o));
 
     if (!result.success) {
         o.failure(result.error.toStdString());
@@ -400,9 +497,7 @@ QCoro::Task<int> cmdEnter(KapsuleClient &client, const QStringList &args)
         if (!containerExists) {
             o.section(QStringLiteral("Creating container: %1").arg(targetContainer).toStdString());
             auto createResult = co_await client.createContainer(targetContainer, defaultImage, {},
-                [&o](MessageType type, const QString &msg, int indent) {
-                    o.print(type, msg.toStdString(), indent);
-                });
+                makeOutputCallbacks(o));
 
             if (!createResult.success
                 && !createResult.error.contains(QStringLiteral("already exists"), Qt::CaseInsensitive)) {
@@ -610,10 +705,7 @@ QCoro::Task<int> cmdStart(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Starting container: %1").arg(name).toStdString());
 
-    auto result = co_await client.startContainer(name,
-        [&o](MessageType type, const QString &msg, int indent) {
-            o.print(type, msg.toStdString(), indent);
-        });
+    auto result = co_await client.startContainer(name, makeOutputCallbacks(o));
 
     if (!result.success) {
         o.failure(result.error.toStdString());
@@ -663,10 +755,7 @@ QCoro::Task<int> cmdStop(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Stopping container: %1").arg(name).toStdString());
 
-    auto result = co_await client.stopContainer(name, force,
-        [&o](MessageType type, const QString &msg, int indent) {
-            o.print(type, msg.toStdString(), indent);
-        });
+    auto result = co_await client.stopContainer(name, force, makeOutputCallbacks(o));
 
     if (!result.success) {
         o.failure(result.error.toStdString());
@@ -716,10 +805,7 @@ QCoro::Task<int> cmdRm(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Removing container: %1").arg(name).toStdString());
 
-    auto result = co_await client.deleteContainer(name, force,
-        [&o](MessageType type, const QString &msg, int indent) {
-            o.print(type, msg.toStdString(), indent);
-        });
+    auto result = co_await client.deleteContainer(name, force, makeOutputCallbacks(o));
 
     if (!result.success) {
         o.failure(result.error.toStdString());
@@ -863,10 +949,7 @@ QCoro::Task<int> cmdImageRefresh(KapsuleClient &client, const QStringList &args)
         o.section(QStringLiteral("Refreshing image: %1").arg(imageSpec).toStdString());
     }
 
-    auto result = co_await client.refreshImages(imageSpec,
-        [&o](MessageType type, const QString &msg, int indent) {
-            o.print(type, msg.toStdString(), indent);
-        });
+    auto result = co_await client.refreshImages(imageSpec, makeOutputCallbacks(o));
 
     if (!result.success) {
         o.failure(result.error.toStdString());
@@ -921,10 +1004,7 @@ QCoro::Task<int> cmdImageImport(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Importing image: %1").arg(alias).toStdString());
 
-    auto result = co_await client.importImage(path, alias,
-        [&o](MessageType type, const QString &msg, int indent) {
-            o.print(type, msg.toStdString(), indent);
-        });
+    auto result = co_await client.importImage(path, alias, makeOutputCallbacks(o));
 
     if (!result.success) {
         o.failure(result.error.toStdString());
@@ -1062,10 +1142,7 @@ QCoro::Task<int> cmdImageDelete(KapsuleClient &client, const QStringList &args)
 
     o.section(QStringLiteral("Deleting image: %1").arg(identifier).toStdString());
 
-    auto result = co_await client.deleteImage(identifier,
-        [&o](MessageType type, const QString &msg, int indent) {
-            o.print(type, msg.toStdString(), indent);
-        });
+    auto result = co_await client.deleteImage(identifier, makeOutputCallbacks(o));
 
     if (!result.success) {
         o.failure(result.error.toStdString());

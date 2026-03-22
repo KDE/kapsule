@@ -133,48 +133,48 @@ public:
      * @param name The name for the new container.
      * @param image The base image to use (e.g., "ubuntu:24.04"), empty for default.
      * @param options Option key→value map (only non-default values).
-     * @param progress Optional callback for progress messages.
+     * @param callbacks Optional callbacks for progress messages and progress bars.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> createContainer(
         const QString &name,
         const QString &image,
         const QVariantMap &options = {},
-        ProgressHandler progress = {});
+        OperationCallbacks callbacks = {});
 
     /**
      * @brief Delete a container.
      * @param name The container name.
      * @param force Force removal even if running.
-     * @param progress Optional callback for progress messages.
+     * @param callbacks Optional callbacks for progress messages and progress bars.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> deleteContainer(
         const QString &name,
         bool force = false,
-        ProgressHandler progress = {});
+        OperationCallbacks callbacks = {});
 
     /**
      * @brief Start a stopped container.
      * @param name The container name.
-     * @param progress Optional callback for progress messages.
+     * @param callbacks Optional callbacks for progress messages and progress bars.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> startContainer(
         const QString &name,
-        ProgressHandler progress = {});
+        OperationCallbacks callbacks = {});
 
     /**
      * @brief Stop a running container.
      * @param name The container name.
      * @param force Force stop the container.
-     * @param progress Optional callback for progress messages.
+     * @param callbacks Optional callbacks for progress messages and progress bars.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> stopContainer(
         const QString &name,
         bool force = false,
-        ProgressHandler progress = {});
+        OperationCallbacks callbacks = {});
 
     /**
      * @brief Prepare to enter a container.
@@ -199,12 +199,12 @@ public:
      *
      * @param image Image filter in "server:alias" format (e.g.,
      *     "kapsule:archlinux"), or empty string to refresh all.
-     * @param progress Optional callback for progress messages.
+     * @param callbacks Optional callbacks for progress messages and progress bars.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> refreshImages(
         const QString &image = {},
-        ProgressHandler progress = {});
+        OperationCallbacks callbacks = {});
 
     /**
      * @brief Import a split image from a local directory.
@@ -215,13 +215,13 @@ public:
      *
      * @param path Path to the directory containing image files.
      * @param alias Alias name to assign to the imported image.
-     * @param progress Optional callback for progress messages.
+     * @param callbacks Optional callbacks for progress messages and progress bars.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> importImage(
         const QString &path,
         const QString &alias,
-        ProgressHandler progress = {});
+        OperationCallbacks callbacks = {});
 
     /**
      * @brief List all images known to the local Incus daemon.
@@ -240,12 +240,12 @@ public:
      * resolved to a fingerprint first.
      *
      * @param identifier Image alias or full SHA-256 fingerprint.
-     * @param progress Optional callback for progress messages.
+     * @param callbacks Optional callbacks for progress messages and progress bars.
      * @return Operation result with success/error info.
      */
     QCoro::Task<OperationResult> deleteImage(
         const QString &identifier,
-        ProgressHandler progress = {});
+        OperationCallbacks callbacks = {});
 
 Q_SIGNALS:
     /**

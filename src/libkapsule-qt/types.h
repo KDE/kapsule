@@ -127,13 +127,32 @@ struct KAPSULE_EXPORT OperationResult {
 };
 
 /**
- * @brief Progress callback for long-running operations.
+ * @brief Callbacks for long-running operation progress.
  *
- * @param type The message type
- * @param message The message text
- * @param indentLevel Indentation level for hierarchical display
+ * Message callbacks receive typed messages (info, warning, success, etc.).
+ * Progress bar callbacks track determinate/indeterminate operations.
+ *
+ * All callbacks are optional — only set the ones you need.
  */
-using ProgressHandler = std::function<void(MessageType type, const QString &message, int indentLevel)>;
+struct OperationCallbacks {
+    /// Allow default construction with no callbacks.
+    OperationCallbacks() = default;
+
+    /// Called for each status message (info, success, warning, error, dim, hint)
+    std::function<void(MessageType type, const QString &message, int indentLevel)> onMessage;
+
+    /// Called when a progress bar starts
+    std::function<void(const QString &progressId, const QString &description, int total, int indentLevel)> onProgressStart;
+
+    /// Called to update a progress bar's position
+    std::function<void(const QString &progressId, int current, double rate)> onProgressUpdate;
+
+    /// Called to update a progress bar with raw text (e.g. Incus download_progress)
+    std::function<void(const QString &progressId, const QString &text)> onProgressTextUpdate;
+
+    /// Called when a progress bar completes
+    std::function<void(const QString &progressId, bool success, const QString &message)> onProgressComplete;
+};
 
 /**
  * @brief Convert ContainerMode to string using Qt meta-enum.
