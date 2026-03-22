@@ -107,6 +107,7 @@ class ContainerService:
         name: str,
         image: str,
         raw_options: dict[str, object],
+        user_home: str,
         progress: OperationReporter,
     ) -> None:
         """Run the full container creation pipeline."""
@@ -114,6 +115,7 @@ class ContainerService:
             name=name,
             image=image,
             raw_options=raw_options,
+            user_home=user_home,
             incus=self._incus,
             progress=progress,
             host_config_sync=self._host_config_sync,
@@ -160,6 +162,7 @@ class ContainerService:
         name: str,
         image: str,
         raw_options: dict[str, object] | None = None,
+        user_home: str,
     ) -> None:
         """Create a new container.
 
@@ -170,11 +173,13 @@ class ContainerService:
             raw_options: Raw option dict from the D-Bus ``a{sv}`` parameter.
                 Parsed inside the pipeline after image defaults are known.
                 If None, an empty dict is used (all schema defaults apply).
+            user_home: Home directory of the requesting host user.
         """
         await self._run_create(
             name=name,
             image=image,
             raw_options=raw_options or {},
+            user_home=user_home,
             progress=progress,
         )
 

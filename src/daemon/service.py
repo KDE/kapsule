@@ -13,6 +13,7 @@ import contextvars
 from dataclasses import dataclass
 import json
 import logging
+import pwd
 from typing import Annotated
 
 from dbus_fast.aio import MessageBus
@@ -287,10 +288,21 @@ class KapsuleManagerInterface(ServiceInterface):
             except RuntimeError as e:
                 raise Exception(f"No image specified and failed to read config: {e}")
 
+        sender = _current_sender.get()
+        if not sender:
+            raise Exception("Could not determine caller identity")
+
+        try:
+            creds = await self._get_caller_credentials(sender)
+            pw_entry = pwd.getpwuid(creds.uid)
+        except (RuntimeError, KeyError) as e:
+            raise Exception(f"Could not determine caller home directory: {e}")
+
         return await self._service.create_container(
             name=name,
             image=actual_image,
             raw_options=raw_options,
+            user_home=pw_entry.pw_dir,
         )
 
     @dbus_method()

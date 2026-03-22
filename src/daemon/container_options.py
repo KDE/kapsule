@@ -291,6 +291,7 @@ class OptionValidationError(Exception):
 def parse_options(
     raw: dict[str, Any],
     image_defaults: dict[str, object] | None = None,
+    user_home: str | None = None,
 ) -> ContainerOptions:
     """Parse and validate an ``a{sv}`` option dict into :class:`ContainerOptions`.
 
@@ -307,6 +308,9 @@ def parse_options(
         image_defaults: Optional per-image default values read from the
             image's ``kapsule.default_options`` property.  Only known
             keys are used; unknown keys are silently ignored.
+        user_home: Host home directory for the requesting user. Used to
+            expand ``~/...`` entries in ``custom_mounts`` consistently for
+            both image defaults and explicit client-provided values.
 
     Returns:
         Validated ``ContainerOptions`` instance.
@@ -356,13 +360,21 @@ def parse_options(
                         f"got {type(mount_item).__name__}"  # type: ignore[union-attr]
                     )
 
+    # Expand ~/... in custom_mounts against the requesting user's home.
+    # Image defaults are not shell-expanded before they reach the daemon.
+    if user_home:
+        merged["custom_mounts"] = [
+            p.replace("~/", f"{user_home}/", 1) if p.startswith("~/") else p
+            for p in merged["custom_mounts"]
+        ]
+
     # Apply constraint logic
     opts = ContainerOptions(
         session_mode=bool(merged["session_mode"]),
         dbus_mux=bool(merged["dbus_mux"]),
         host_rootfs=bool(merged["host_rootfs"]),
         mount_home=bool(merged["mount_home"]),
-        custom_mounts=list(merged["custom_mounts"]),  # type: ignore[arg-type]
+        custom_mounts=merged["custom_mounts"],
         gpu=bool(merged["gpu"]),
         nvidia_drivers=bool(merged["nvidia_drivers"]),
     )

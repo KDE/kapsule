@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Test: Mount options (--no-mount-home and --custom-mounts)
+# Test: Mount options (--no-mount-home, --custom-mounts, and image defaults)
 #
 # Verifies that:
 #   - The default container mounts the user's home directory
@@ -13,11 +13,14 @@
 #   - --custom-mounts bind-mounts extra host directories into
 #     the container (tested with --no-mount-home, where custom
 #     mounts are the primary way to share host directories)
+#   - image default custom_mounts entries using ~ are expanded to the
+#     host home directory before being stored and mounted
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 CONTAINER_DEFAULT="test-mounts-default"
 CONTAINER_CUSTOM="test-mounts-custom"
+CONTAINER_IMAGE_DEFAULTS="test-mounts-image-defaults"
 
 kapsule_exec() {
     local name="$1"
@@ -31,6 +34,7 @@ kapsule_exec() {
 
 cleanup_container "$CONTAINER_DEFAULT"
 cleanup_container "$CONTAINER_CUSTOM"
+cleanup_container "$CONTAINER_IMAGE_DEFAULTS"
 
 HOST_UID=$(ssh_vm "id -u")
 HOST_USER=$(ssh_vm "whoami")
@@ -47,11 +51,16 @@ MOUNT_DIR_2=$(ssh_vm "mktemp -d '$MOUNT_BASE/mount-2-XXXXXX'")
 ssh_vm "echo 'mount1-content' > '$MOUNT_DIR_1/marker1.txt'"
 ssh_vm "echo 'mount2-content' > '$MOUNT_DIR_2/marker2.txt'"
 
+IMAGE_DEFAULT_MOUNT="$HOST_HOME/kde"
+ssh_vm "mkdir -p '$IMAGE_DEFAULT_MOUNT'"
+ssh_vm "echo 'image-default-content' > '$IMAGE_DEFAULT_MOUNT/image-default-marker.txt'"
+
 echo "Testing mount options..."
 echo "  Host user: $HOST_USER (uid=$HOST_UID)"
 echo "  Host home: $HOST_HOME"
 echo "  Custom mount 1: $MOUNT_DIR_1"
 echo "  Custom mount 2: $MOUNT_DIR_2"
+echo "  Image default mount: $IMAGE_DEFAULT_MOUNT"
 
 home_basename=$(basename "$HOST_HOME")
 container_home="/home/$home_basename"
@@ -63,7 +72,7 @@ marker="kapsule-test-marker-$$"
 
 echo ""
 echo "1. Create default container (home mounted)"
-output=$(ssh_vm "kapsule create '$CONTAINER_DEFAULT' --image images:alpine/edge" 2>&1) || {
+output=$(ssh_vm "kapsule create '$CONTAINER_DEFAULT' --image images:alpine/edge --no-host-rootfs" 2>&1) || {
     echo "Create (default) failed:"
     echo "$output"
     exit 1
@@ -74,6 +83,7 @@ assert_container_state "$CONTAINER_DEFAULT" "RUNNING"
 echo ""
 echo "2. Create container with --no-mount-home and --custom-mounts"
 output=$(ssh_vm "kapsule create '$CONTAINER_CUSTOM' --image images:alpine/edge \
+    --no-host-rootfs \
     --no-mount-home \
     --custom-mounts '$MOUNT_DIR_1' \
     --custom-mounts '$MOUNT_DIR_2'" 2>&1) || {
@@ -84,6 +94,16 @@ output=$(ssh_vm "kapsule create '$CONTAINER_CUSTOM' --image images:alpine/edge \
 assert_container_exists "$CONTAINER_CUSTOM"
 assert_container_state "$CONTAINER_CUSTOM" "RUNNING"
 
+echo ""
+echo "3. Create container using kapsule-dev image defaults"
+output=$(ssh_vm "kapsule create '$CONTAINER_IMAGE_DEFAULTS' --image kapsule:kapsule-dev --no-host-rootfs" 2>&1) || {
+    echo "Create (image defaults) failed:"
+    echo "$output"
+    exit 1
+}
+assert_container_exists "$CONTAINER_IMAGE_DEFAULTS"
+assert_container_state "$CONTAINER_IMAGE_DEFAULTS" "RUNNING"
+
 sleep 2
 
 # ============================================================================
@@ -91,7 +111,7 @@ sleep 2
 # ============================================================================
 
 echo ""
-echo "3. Verify config keys"
+echo "4. Verify config keys"
 
 default_mount_home=$(ssh_vm "incus config get '$CONTAINER_DEFAULT' user.kapsule.mount-home" 2>/dev/null)
 assert_eq "Default container has mount-home=true" "true" "$default_mount_home"
@@ -103,15 +123,22 @@ custom_mounts_raw=$(ssh_vm "incus config get '$CONTAINER_CUSTOM' user.kapsule.cu
 assert_contains "Config contains mount dir 1" "$custom_mounts_raw" "$MOUNT_DIR_1"
 assert_contains "Config contains mount dir 2" "$custom_mounts_raw" "$MOUNT_DIR_2"
 
+image_defaults_mount_home=$(ssh_vm "incus config get '$CONTAINER_IMAGE_DEFAULTS' user.kapsule.mount-home" 2>/dev/null)
+assert_eq "Image-default container has mount-home=false" "false" "$image_defaults_mount_home"
+
+image_defaults_mounts_raw=$(ssh_vm "incus config get '$CONTAINER_IMAGE_DEFAULTS' user.kapsule.custom-mounts" 2>/dev/null)
+assert_contains "Image-default config contains expanded ~/kde path" "$image_defaults_mounts_raw" "$IMAGE_DEFAULT_MOUNT"
+
 # ============================================================================
 # 3. Trigger user setup (kapsule enter)
 # ============================================================================
 
 echo ""
-echo "4. Set up user in both containers"
+echo "5. Set up user in all containers"
 
 kapsule_exec "$CONTAINER_DEFAULT" "true" 2>/dev/null || true
 kapsule_exec "$CONTAINER_CUSTOM" "true" 2>/dev/null || true
+kapsule_exec "$CONTAINER_IMAGE_DEFAULTS" "true" 2>/dev/null || true
 
 sleep 1
 
@@ -120,7 +147,7 @@ sleep 1
 # ============================================================================
 
 echo ""
-echo "5. Verify default container has home directory mounted"
+echo "6. Verify default container has home directory mounted"
 
 default_devices=$(ssh_vm "incus config device list '$CONTAINER_DEFAULT'" 2>/dev/null)
 assert_contains "Default container has home device" "$default_devices" "kapsule-home-${HOST_USER}"
@@ -137,7 +164,7 @@ ssh_vm "rm -f '$HOST_HOME/$marker'"
 # ============================================================================
 
 echo ""
-echo "6. Verify custom container does not have home device"
+echo "7. Verify custom container does not have home device"
 
 custom_devices=$(ssh_vm "incus config device list '$CONTAINER_CUSTOM'" 2>/dev/null)
 
@@ -172,7 +199,7 @@ assert_success "Custom container: can read written file" \
 # ============================================================================
 
 echo ""
-echo "7. Verify custom mount devices"
+echo "8. Verify custom mount devices"
 
 safe_name_1=$(echo "$MOUNT_DIR_1" | sed 's|^/||; s|/|-|g; s|\.|-|g')
 safe_name_2=$(echo "$MOUNT_DIR_2" | sed 's|^/||; s|/|-|g; s|\.|-|g')
@@ -185,7 +212,7 @@ assert_contains "Custom container has device for mount 2" "$custom_devices" "kap
 # ============================================================================
 
 echo ""
-echo "8. Verify custom mount contents are accessible"
+echo "9. Verify custom mount contents are accessible"
 
 assert_success "Mount dir 1 exists in container" \
     ssh_vm "incus exec '$CONTAINER_CUSTOM' -- test -d '$MOUNT_DIR_1'"
@@ -204,7 +231,7 @@ assert_eq "Marker file 2 has correct content" "mount2-content" "$marker2_content
 # ============================================================================
 
 echo ""
-echo "9. Verify bidirectional I/O through custom mounts"
+echo "10. Verify bidirectional I/O through custom mounts"
 
 # Host → container
 ssh_vm "echo 'updated-content' > '$MOUNT_DIR_1/live-test.txt'"
@@ -217,14 +244,40 @@ host_content=$(ssh_vm "cat '$MOUNT_DIR_2/container-write.txt'" 2>/dev/null)
 assert_eq "Container write visible on host" "from-container" "$host_content"
 
 # ============================================================================
+# 9. Image-default container: ~/kde mount is expanded and accessible
+# ============================================================================
+
+echo ""
+echo "11. Verify image-default custom mount from ~/kde"
+
+image_default_devices=$(ssh_vm "incus config device list '$CONTAINER_IMAGE_DEFAULTS'" 2>/dev/null)
+image_default_safe_name=$(echo "$IMAGE_DEFAULT_MOUNT" | sed 's|^/||; s|/|-|g; s|\.|-|g')
+
+if [[ "$image_default_devices" == *"kapsule-home-${HOST_USER}"* ]]; then
+    echo -e "  ${RED}✗${NC} Image-default container should not have kapsule-home device"
+    exit 1
+else
+    echo -e "  ${GREEN}✓${NC} Image-default container does not have kapsule-home device"
+fi
+
+assert_contains "Image-default container has expanded custom mount device" "$image_default_devices" "kapsule-mount-${image_default_safe_name}"
+
+assert_success "Image-default mount exists in container" \
+    ssh_vm "incus exec '$CONTAINER_IMAGE_DEFAULTS' -- test -d '$IMAGE_DEFAULT_MOUNT'"
+
+image_default_content=$(ssh_vm "incus exec '$CONTAINER_IMAGE_DEFAULTS' -- cat '$IMAGE_DEFAULT_MOUNT/image-default-marker.txt'" 2>/dev/null)
+assert_eq "Image-default marker file has correct content" "image-default-content" "$image_default_content"
+
+# ============================================================================
 # Cleanup
 # ============================================================================
 
 echo ""
-echo "10. Cleanup"
+echo "12. Cleanup"
 cleanup_container "$CONTAINER_DEFAULT"
 cleanup_container "$CONTAINER_CUSTOM"
-ssh_vm "rm -rf '$MOUNT_DIR_1' '$MOUNT_DIR_2'"
+cleanup_container "$CONTAINER_IMAGE_DEFAULTS"
+ssh_vm "rm -rf '$MOUNT_DIR_1' '$MOUNT_DIR_2' '$IMAGE_DEFAULT_MOUNT'"
 
 echo ""
 echo "All mount option tests passed!"

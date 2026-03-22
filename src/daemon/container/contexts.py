@@ -40,6 +40,7 @@ class CreateContext:
     name: str
     image: str
     raw_options: dict[str, object]
+    user_home: str
     incus: IncusClient
     progress: OperationReporter
     host_config_sync: HostConfigSync
