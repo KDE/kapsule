@@ -284,7 +284,7 @@ tilde_owner=$(ssh_vm "stat -c '%u:%g' '$TILDE_MOUNT_DIR'" 2>/dev/null)
 assert_eq "Tilde mount dir owned by user" "$HOST_UID:$HOST_UID" "$tilde_owner"
 
 tilde_devices=$(ssh_vm "incus config device list '$CONTAINER_TILDE'" 2>/dev/null)
-tilde_safe_name=$(echo "$TILDE_MOUNT_DIR" | sed 's|^/||; s|/|-|g; s|\.-|-|g')
+tilde_safe_name=$(echo "$TILDE_MOUNT_DIR" | sed 's|^/||; s|/|-|g; s|\.|-|g')
 assert_contains "Tilde container has mount device" "$tilde_devices" "kapsule-mount-${tilde_safe_name}"
 
 assert_success "Tilde mount dir exists in container" \
@@ -304,7 +304,7 @@ echo ""
 echo "13. Verify image-default custom mount from ~/kde"
 
 image_default_devices=$(ssh_vm "incus config device list '$CONTAINER_IMAGE_DEFAULTS'" 2>/dev/null)
-image_default_safe_name=$(echo "$IMAGE_DEFAULT_MOUNT" | sed 's|^/||; s|/|-|g; s|\.-|-|g')
+image_default_safe_name=$(echo "$IMAGE_DEFAULT_MOUNT" | sed 's|^/||; s|/|-|g; s|\.|-|g')
 assert_contains "Image-default container has ~/kde mount device" "$image_default_devices" "kapsule-mount-${image_default_safe_name}"
 
 assert_success "Image-default mount dir exists in container" \

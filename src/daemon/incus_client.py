@@ -626,39 +626,20 @@ class IncusClient:
     ) -> None:
         """Patch instance configuration (merge with existing config).
 
+        Uses HTTP PATCH so only the ``config`` field is sent, avoiding
+        accidental overwrites of ``devices`` or other fields that may
+        have been changed by preceding pipeline steps.
+
         Args:
             name: Instance name.
             config: Config keys to add/update.
         """
-        # Get current instance to preserve all fields
-        instance = await self.get_instance(name)
-        current_config = instance.config or {}
-
-        # Merge new config into existing
-        merged_config = {**current_config, **config}
-
-        # Use PUT with merged config, preserving other fields
-        put_data = InstancePut(
-            architecture=instance.architecture,
-            config=merged_config,
-            description=instance.description,
-            devices=instance.devices,
-            ephemeral=instance.ephemeral,
-            profiles=instance.profiles,
-            restore=None,
-            stateful=instance.stateful,
-        )
-
-        response = await self._request(
-            "PUT",
+        await self._request(
+            "PATCH",
             f"/1.0/instances/{name}",
-            response_type=AsyncOperationResponse,
-            json=put_data.model_dump(exclude_none=True),
+            response_type=EmptyResponse,
+            json={"config": config},
         )
-
-        # Wait for the operation to complete so subsequent reads see the update
-        if response.metadata and response.metadata.id:
-            await self.wait_operation(response.metadata.id)
 
     async def add_instance_device(
         self,
