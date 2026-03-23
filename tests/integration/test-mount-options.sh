@@ -285,7 +285,12 @@ assert_eq "Tilde mount dir owned by user" "$HOST_UID:$HOST_UID" "$tilde_owner"
 
 tilde_devices=$(ssh_vm "incus config device list '$CONTAINER_TILDE'" 2>/dev/null)
 tilde_safe_name=$(echo "$TILDE_MOUNT_DIR" | sed 's|^/||; s|/|-|g; s|\.|-|g')
-assert_contains "Tilde container has mount device" "$tilde_devices" "kapsule-mount-${tilde_safe_name}"
+tilde_device_name="kapsule-mount-${tilde_safe_name}"
+if [ ${#tilde_device_name} -gt 64 ]; then
+    tilde_hash=$(echo -n "$TILDE_MOUNT_DIR" | sha256sum | cut -c1-12)
+    tilde_device_name="kapsule-mount-${tilde_hash}"
+fi
+assert_contains "Tilde container has mount device" "$tilde_devices" "$tilde_device_name"
 
 assert_success "Tilde mount dir exists in container" \
     ssh_vm "incus exec '$CONTAINER_TILDE' -- test -d '$TILDE_MOUNT_DIR'"

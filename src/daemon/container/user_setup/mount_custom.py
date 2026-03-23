@@ -4,6 +4,7 @@
 
 """User setup step: mount custom directories specified at creation."""
 
+import hashlib
 import json
 import subprocess
 
@@ -47,9 +48,14 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
         else:
             mount_path = raw_path
 
-        # Sanitise the expanded path for use as an Incus device name
+        # Sanitise the expanded path for use as an Incus device name.
+        # Incus limits device names to 64 characters, so use a hash
+        # suffix for long paths.
         safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
         device_name = f"kapsule-mount-{safe_name}"
+        if len(device_name) > 64:
+            path_hash = hashlib.sha256(mount_path.encode()).hexdigest()[:12]
+            device_name = f"kapsule-mount-{path_hash}"
         container_path = mount_path  # Same path inside container
 
         # For ~/... paths, ensure the directory exists on the host.
