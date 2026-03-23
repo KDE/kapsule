@@ -292,11 +292,7 @@ async def parse_create_options(ctx: CreateContext) -> None:
     Raises ``OperationError`` if user-supplied options fail validation.
     """
     try:
-        ctx.opts = parse_options(
-            ctx.raw_options,
-            image_defaults=ctx.image_defaults,
-            user_home=ctx.user_home,
-        )
+        ctx.opts = parse_options(ctx.raw_options, image_defaults=ctx.image_defaults)
     except OptionValidationError as e:
         raise OperationError(str(e))
 
