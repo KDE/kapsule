@@ -25,7 +25,6 @@ from .models_generated import (
     ImagesPost,
     ImagesPostSource,
     Instance,
-    InstancePut,
     InstancesPost,
     InstanceState,
     InstanceStatePut,
@@ -181,6 +180,7 @@ class IncusClient:
             kwargs["json"] = json
         if timeout is not None:
             kwargs["timeout"] = timeout
+
         response = await client.request(method, path, **kwargs)
 
         # Handle HTTP errors and convert to IncusError
@@ -649,40 +649,21 @@ class IncusClient:
     ) -> None:
         """Add a device to an instance.
 
+        Uses HTTP PATCH so only the ``devices`` field is sent, avoiding
+        accidental overwrites of ``config`` or other fields that may
+        have been changed by preceding pipeline steps.
+
         Args:
             name: Instance name.
             device_name: Name for the device.
             device_config: Device configuration (type, source, path, etc.).
         """
-        # Get current instance to preserve all fields
-        instance = await self.get_instance(name)
-        current_devices = instance.devices or {}
-
-        # Add/update the device
-        merged_devices = {**current_devices, device_name: device_config}
-
-        # Use PUT with merged devices, preserving other fields
-        put_data = InstancePut(
-            architecture=instance.architecture,
-            config=instance.config,
-            description=instance.description,
-            devices=merged_devices,
-            ephemeral=instance.ephemeral,
-            profiles=instance.profiles,
-            restore=None,
-            stateful=instance.stateful,
-        )
-
-        response = await self._request(
-            "PUT",
+        await self._request(
+            "PATCH",
             f"/1.0/instances/{name}",
-            response_type=AsyncOperationResponse,
-            json=put_data.model_dump(exclude_none=True),
+            response_type=EmptyResponse,
+            json={"devices": {device_name: device_config}},
         )
-
-        # Wait for the operation to complete so subsequent reads see the update
-        if response.metadata and response.metadata.id:
-            await self.wait_operation(response.metadata.id)
 
     # -------------------------------------------------------------------------
     # Storage pool operations
