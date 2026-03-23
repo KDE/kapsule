@@ -8,6 +8,7 @@ import json
 import subprocess
 
 from ...incus_client import IncusError
+from ...operations import OperationError
 from ..constants import KAPSULE_CUSTOM_MOUNTS_KEY
 from ..contexts import UserSetupContext
 from . import user_setup_pipeline
@@ -82,4 +83,4 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
                 },
             )
         except IncusError as e:
-            ctx.progress.warning(f"Failed to mount {mount_path}: {e}")
+            raise OperationError(f"Failed to mount {mount_path}: {e}")
