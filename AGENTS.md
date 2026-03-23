@@ -5,6 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
 - Don't ammend commits unless explicitly asked to do so.
+- all working branches should start with `work/`
 
 # Kapsule
 

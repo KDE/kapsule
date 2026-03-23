@@ -2,4 +2,4 @@
 applyTo: '**'
 ---
 
-There is a file called `deploy-to-lasaths-test-vm.sh` that will build and deploy a sysext to a VM that you can connect to by running `ssh fernie@192.168.100.129`. If you need sudo, instead do `ssh root@192.168.100.129`.
+read and follow the instructions in AGENTS.md at the root of the repository
