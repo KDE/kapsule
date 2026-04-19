@@ -350,13 +350,15 @@ QCoro::Task<OperationResult> KapsuleClient::stopContainer(
 
 QCoro::Task<EnterResult> KapsuleClient::prepareEnter(
     const QString &containerName,
-    const QStringList &command)
+    const QStringList &command,
+    const QString &workingDirectory)
 {
     if (!d->connected) {
         co_return {false, QStringLiteral("Not connected to daemon"), {}};
     }
 
-    auto reply = co_await d->interface->PrepareEnter(containerName, command);
+    auto reply = co_await d->interface->PrepareEnter(containerName, command,
+                                                    workingDirectory);
     if (reply.isError()) {
         co_return {false, reply.error().message(), {}};
     }

@@ -10,6 +10,7 @@
 #include <Kapsule/Container>
 #include <Kapsule/Types>
 
+#include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDir>
@@ -443,6 +444,10 @@ QCoro::Task<int> cmdEnter(KapsuleClient &client, const QStringList &args)
     parser.addHelpOption();
     parser.addPositionalArgument(QStringLiteral("name"), QStringLiteral("Container name (optional, uses default)"));
     parser.addPositionalArgument(QStringLiteral("command"), QStringLiteral("Command to run (optional)"));
+    parser.addOption(
+        {QStringLiteral("cwd"),
+         QStringLiteral("Working directory for the container (optional)"),
+         QStringLiteral("path")});
 
     QStringList fullArgs = QStringList{programName + QStringLiteral(" enter")} + args;
     if (!parser.parse(fullArgs)) {
@@ -507,7 +512,20 @@ QCoro::Task<int> cmdEnter(KapsuleClient &client, const QStringList &args)
         }
     }
 
-    auto result = co_await client.prepareEnter(containerName, command);
+    QString workingDir = QDir::currentPath();
+    if (parser.isSet(QStringLiteral("cwd"))) {
+      QString path = parser.value(QStringLiteral("cwd"));
+      QDir dir(path);
+      if (dir.exists()) {
+        workingDir = path;
+      } else {
+        qWarning() << "Working directory '" << path
+                   << "' does not exist, using the current working directory.";
+      }
+    }
+
+    auto result =
+        co_await client.prepareEnter(containerName, command, workingDir);
 
     if (!result.success) {
         o.error(result.error.toStdString());

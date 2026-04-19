@@ -184,11 +184,13 @@ public:
      *
      * @param containerName Container to enter (empty for default).
      * @param command Command to run inside (empty for shell).
+     * @param workingDirectory Where to run the command in (empty for /).
      * @return Enter result with success/error and exec args.
      */
     QCoro::Task<EnterResult> prepareEnter(
         const QString &containerName = {},
-        const QStringList &command = {});
+        const QStringList &command = {},
+        const QString &workingDirectory = {});
 
     /**
      * @brief Refresh cached images from their upstream sources.

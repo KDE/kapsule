@@ -496,6 +496,7 @@ class KapsuleManagerInterface(ServiceInterface):
         self,
         container_name: DBusStr,
         command: DBusStrArray,
+        working_directory: DBusStr
     ) -> DBusEnterResult:
         """Prepare to enter a container.
 
@@ -536,6 +537,7 @@ class KapsuleManagerInterface(ServiceInterface):
             container_name=container_name if container_name else None,
             command=list(command),
             env=env,
+            working_directory=working_directory
         )
         return (success, message, cmd)
 

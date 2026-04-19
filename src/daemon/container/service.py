@@ -734,6 +734,7 @@ class ContainerService:
         container_name: str | None,
         command: list[str],
         env: dict[str, str],
+        working_directory: str
     ) -> tuple[bool, str, list[str]]:
         """Prepare everything needed to enter a container.
 
@@ -830,6 +831,8 @@ class ContainerService:
         # Host PATH may not include directories expected by the guest
         # (for example, NixOS host with an Arch guest).
         env_args.extend(["--env", "PATH=/usr/bin:/bin"])
+        env_args.extend(["--env", f"KAPSULE_START_DIR={working_directory}"])
+        whitelist_keys.append("KAPSULE_START_DIR")
 
         # Build the command to run inside the container.
         #
@@ -860,6 +863,9 @@ class ContainerService:
         exec_args = [
             "incus",
             "exec",
+            "--force-interactive",
+            "--cwd",
+            working_directory,
             container_name,
             *env_args,
             "--",
