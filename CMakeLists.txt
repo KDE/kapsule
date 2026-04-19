@@ -244,6 +244,7 @@ if(INSTALL_PYTHON_DAEMON)
 
     # Systemd unit directory (relative to CMAKE_INSTALL_PREFIX)
     set(KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR "${KDE_INSTALL_LIBDIR}/systemd/system")
+    set(KAPSULE_SYSTEMD_USER_UNIT_DIR "${KDE_INSTALL_LIBDIR}/systemd/user")
     set(KAPSULE_SYSTEMD_PRESET_DIR "${KDE_INSTALL_LIBDIR}/systemd/system-preset")
 
     # D-Bus directories
@@ -283,6 +284,12 @@ if(INSTALL_PYTHON_DAEMON)
     install(FILES
         data/systemd/system-preset/50-kapsule.preset
         DESTINATION "${KAPSULE_SYSTEMD_PRESET_DIR}"
+    )
+
+    # Install drop-in for flatpak-session-helper to enable HostCommand routing
+    install(FILES
+        data/systemd/user/flatpak-session-helper.service.d/kapsule-host-command.conf
+        DESTINATION "${KAPSULE_SYSTEMD_USER_UNIT_DIR}/flatpak-session-helper.service.d"
     )
 
     # Install modules-load.d config for nested container support (Docker/Podman inside containers)
@@ -332,6 +339,14 @@ if(INSTALL_PYTHON_DAEMON)
         data/kapsule-uninstall-branch.sh
         DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
         RENAME kapsule-uninstall-branch
+    )
+
+    # Flatpak HostCommand wrapper: routes HostCommand calls into the
+    # user's default kapsule container via `kapsule enter`
+    install(PROGRAMS
+        data/kapsule-flatpak-wrapper.sh
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/kapsule"
+        RENAME kapsule-flatpak-wrapper
     )
 
 endif()
