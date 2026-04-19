@@ -17,3 +17,5 @@ images/mkosi.output/
 sysext/mkosi.output/
 
 .opencode/index
+
+/.clang-format
