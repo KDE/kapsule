@@ -615,6 +615,46 @@ class IncusClient:
                 response.status_code,
             )
 
+    async def list_directory(
+        self,
+        instance: str,
+        path: str,
+    ) -> list[str]:
+        """List entries in a directory inside an instance.
+
+        Args:
+            instance: Instance name.
+            path: Absolute directory path inside the instance.
+
+        Returns:
+            Sorted list of entry names in the directory.
+
+        Raises:
+            IncusError: If the path does not exist or is not a directory.
+        """
+        client = await self._get_client()
+        response = await client.get(
+            f"/1.0/instances/{instance}/files",
+            params={"path": path},
+        )
+
+        if response.status_code == 404:
+            raise IncusError(f"Path not found: {path}", 404)
+
+        if response.status_code >= 400:
+            raise IncusError(
+                f"Failed to list directory {path}: {response.text}",
+                response.status_code,
+            )
+
+        file_type = response.headers.get("X-Incus-type", "")
+        if file_type != "directory":
+            raise IncusError(f"Path is not a directory: {path} (type={file_type})")
+
+        data = response.json()
+        entries: list[str] = data.get("metadata", []) or []
+        return sorted(entries)
+
     # -------------------------------------------------------------------------
     # Instance configuration
     # -------------------------------------------------------------------------

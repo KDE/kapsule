@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Initialize the pacman GnuPG keyring for this container.
+#
+# mkosi builds images using its own sandbox keyring which is NOT copied
+# into the image rootfs (unlike distrobuilder which baked it in).
+# Running pacman-key --init here generates a unique local master key
+# per container, avoiding the security issue of shipping a shared
+# private key in the image (see archlinux-docker documentation).
+
+set -eux
+
+pacman-key --init
+pacman-key --populate archlinux
