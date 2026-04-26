@@ -30,7 +30,7 @@ if [ -z "${MINIO_OIDC:-}" ]; then
 fi
 
 echo "Redeeming OIDC token for S3 credentials ..."
-CREDS=$(curl -sf -X POST -d "token=${MINIO_OIDC}" "${TOKEN_URL}")
+CREDS=$(curl -sfL -X POST -d "token=${MINIO_OIDC}" "${TOKEN_URL}")
 
 AWS_ACCESS_KEY_ID=$(echo "${CREDS}" | jq -r '.AccessKeyId')
 AWS_SECRET_ACCESS_KEY=$(echo "${CREDS}" | jq -r '.SecretAccessKey')
@@ -47,9 +47,13 @@ if ! command -v mc &>/dev/null; then
     echo "Installing MinIO mc client ..."
     MC_DIR="${HOME}/.local/bin"
     mkdir -p "${MC_DIR}"
-    curl -sf -o "${MC_DIR}/mc" "https://dl.min.io/client/mc/release/linux-amd64/mc"
+    curl -sfL -o "${MC_DIR}/mc" "https://dl.min.io/client/mc/release/linux-amd64/mc"
     chmod +x "${MC_DIR}/mc"
     export PATH="${MC_DIR}:${PATH}"
+    if ! mc --version &>/dev/null; then
+        echo "Error: Downloaded mc binary is not functional" >&2
+        exit 1
+    fi
 fi
 
 # --- Configure mc ---
@@ -97,7 +101,7 @@ done
 # --- Upload ---
 
 echo "Uploading to kde/${S3_TARGET}/ ..."
-mc mirror --overwrite upload-tree/ "kde/${S3_TARGET}/"
+mc mirror --overwrite --retry upload-tree/ "kde/${S3_TARGET}/"
 
 echo "Upload complete."
 echo "Simplestreams index: https://${S3_HOST}/${S3_TARGET}/streams/v1/index.json"

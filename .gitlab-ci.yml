@@ -47,7 +47,7 @@ build-images:
         - .gitlab-ci.yml
       when: always
   after_script:
-    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}" || true
+    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}"
 
 build-images+publish:
   <<: *build_common
@@ -57,8 +57,12 @@ build-images+publish:
         - images/**/*
         - .gitlab-ci.yml
       when: always
-  after_script:
-    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}" || true
+  script:
+    - sudo pacman -Sy --noconfirm python-yaml jq squashfs-tools mkosi
+    - mkdir -p out streams
+    - sudo images/build-image.sh out/
+    - python3 images/generate-simplestreams.py images/ out/ streams/
+    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}"
 
 build-sysext:
   stage: build
