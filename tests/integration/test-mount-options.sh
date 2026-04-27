@@ -80,7 +80,7 @@ marker="kapsule-test-marker-$$"
 
 echo ""
 echo "1. Create default container (home mounted)"
-output=$(ssh_vm "kapsule create '$CONTAINER_DEFAULT' --image images:alpine/edge" 2>&1) || {
+output=$(ssh_vm "kapsule create '$CONTAINER_DEFAULT' --image images:archlinux" 2>&1) || {
     echo "Create (default) failed:"
     echo "$output"
     exit 1
@@ -90,7 +90,7 @@ assert_container_state "$CONTAINER_DEFAULT" "RUNNING"
 
 echo ""
 echo "2. Create container with --no-mount-home and --custom-mounts"
-output=$(ssh_vm "kapsule create '$CONTAINER_CUSTOM' --image images:alpine/edge \
+output=$(ssh_vm "kapsule create '$CONTAINER_CUSTOM' --image images:archlinux \
     --no-mount-home \
     --custom-mounts '$MOUNT_DIR_1' \
     --custom-mounts '$MOUNT_DIR_2'" 2>&1) || {
@@ -103,7 +103,7 @@ assert_container_state "$CONTAINER_CUSTOM" "RUNNING"
 
 echo ""
 echo "3. Create container with ~/... custom mount (path does not exist yet)"
-output=$(ssh_vm "kapsule create '$CONTAINER_TILDE' --image images:alpine/edge \
+output=$(ssh_vm "kapsule create '$CONTAINER_TILDE' --image images:archlinux \
     --no-host-rootfs \
     --no-mount-home \
     --custom-mounts '~/$TILDE_SUBDIR'" 2>&1) || {
@@ -286,7 +286,7 @@ assert_eq "Tilde mount dir owned by user" "$HOST_UID:$HOST_UID" "$tilde_owner"
 tilde_devices=$(ssh_vm "incus config device list '$CONTAINER_TILDE'" 2>/dev/null)
 tilde_safe_name=$(echo "$TILDE_MOUNT_DIR" | sed 's|^/||; s|/|-|g; s|\.|-|g')
 tilde_device_name="kapsule-mount-${tilde_safe_name}"
-if [ ${#tilde_device_name} -gt 64 ]; then
+if [ ${#tilde_device_name} -gt 63 ]; then
     tilde_hash=$(echo -n "$TILDE_MOUNT_DIR" | sha256sum | cut -c1-12)
     tilde_device_name="kapsule-mount-${tilde_hash}"
 fi

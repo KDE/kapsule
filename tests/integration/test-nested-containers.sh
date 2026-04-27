@@ -56,7 +56,7 @@ kapsule_exec "$CONTAINER_NAME" "true" 2>/dev/null
 
 echo ""
 echo "2. Install Docker and Podman inside container"
-kapsule_exec "$CONTAINER_NAME" "sudo pacman -Sy --noconfirm podman docker" || {
+kapsule_exec "$CONTAINER_NAME" "sudo pacman -Syu --noconfirm podman docker" || {
     echo "Docker/Podman installation failed"
     cleanup_container "$CONTAINER_NAME"
     exit 1

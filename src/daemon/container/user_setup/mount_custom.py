@@ -46,11 +46,11 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
         mount_path = ctx.home_dir + raw_path[1:] if is_home_relative else raw_path
 
         # Sanitise the expanded path for use as an Incus device name.
-        # Incus limits device names to 64 characters, so use a hash
+        # Incus limits device names to 63 characters, so use a hash
         # suffix for long paths.
         safe_name = mount_path.strip("/").replace("/", "-").replace(".", "-")
         device_name = f"kapsule-mount-{safe_name}"
-        if len(device_name) > 64:
+        if len(device_name) > 63:
             path_hash = hashlib.sha256(mount_path.encode()).hexdigest()[:12]
             device_name = f"kapsule-mount-{path_hash}"
         container_path = mount_path  # Same path inside container
