@@ -134,7 +134,7 @@ async def wait_operation_with_progress(
                     progress_queue.get(),
                     timeout=poll_interval,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Tick the spinner even when no new text arrives
                 tick += 1
                 bar.update(tick)

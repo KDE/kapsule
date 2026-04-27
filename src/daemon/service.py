@@ -10,37 +10,36 @@ Provides the org.kde.kapsule.Manager interface for container management.
 from __future__ import annotations
 
 import contextvars
-from dataclasses import dataclass
 import json
 import logging
+from dataclasses import dataclass
 from typing import Annotated
 
+from dbus_fast import BusType, Message, MessageType, Variant
 from dbus_fast.aio import MessageBus
-from dbus_fast.service import ServiceInterface, dbus_property, dbus_method, dbus_signal
-from dbus_fast.constants import PropertyAccess
 from dbus_fast.annotations import (
-    DBusStr,
     DBusBool,
     DBusObjectPath,
     DBusSignature,
+    DBusStr,
     DBusUInt32,
 )
-from dbus_fast import BusType, Message, MessageType, Variant
-
-from .dbus_types import (
-    DBusStrArray,
-    DBusStrDict,
-    DBusVariantDict,
-    DBusContainer,
-    DBusContainerList,
-    DBusEnterResult,
-)
+from dbus_fast.constants import PropertyAccess
+from dbus_fast.service import ServiceInterface, dbus_method, dbus_property, dbus_signal
 
 from . import __version__
+from .container import ContainerService
 from .container_options import (
     get_create_schema_json,
 )
-from .container import ContainerService
+from .dbus_types import (
+    DBusContainer,
+    DBusContainerList,
+    DBusEnterResult,
+    DBusStrArray,
+    DBusStrDict,
+    DBusVariantDict,
+)
 from .host_config_sync import HostConfigSync
 
 # Re-export IncusClient for use in __main__ and CLI
@@ -83,7 +82,7 @@ class KapsuleManagerInterface(ServiceInterface):
         self._bus = bus
 
     @classmethod
-    def create_deferred(cls, bus: MessageBus) -> "KapsuleManagerInterface":
+    def create_deferred(cls, bus: MessageBus) -> KapsuleManagerInterface:
         """Create an interface with deferred service initialization.
 
         Used when the container service needs a reference to this interface.
@@ -154,7 +153,7 @@ class KapsuleManagerInterface(ServiceInterface):
 
         # Read GID from /proc/<pid>/status
         try:
-            with open(f"/proc/{pid}/status", "r") as f:
+            with open(f"/proc/{pid}/status") as f:
                 for line in f:
                     if line.startswith("Gid:"):
                         # Format: "Gid:\treal\teffective\tsaved\tfs"
@@ -285,7 +284,7 @@ class KapsuleManagerInterface(ServiceInterface):
                 if not actual_image:
                     raise Exception("No image specified and no default_image in config")
             except RuntimeError as e:
-                raise Exception(f"No image specified and failed to read config: {e}")
+                raise Exception(f"No image specified and failed to read config: {e}") from e
 
         return await self._service.create_container(
             name=name,

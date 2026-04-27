@@ -11,6 +11,18 @@ stages:
   - validate
   - build
 
+lint-python:
+  stage: validate
+  image: python:3.12
+  tags:
+    - Linux
+  rules:
+    - !reference [.default_rules, rules]
+  script:
+    - pip install ruff pyright pydantic httpx dbus-fast websockets typer rich pyyaml
+    - ruff check src/daemon/
+    - pyright src/daemon/
+
 .build_common: &build_common
   stage: build
   image: storage.kde.org/vm-images/kde-linux-builder

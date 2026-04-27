@@ -43,10 +43,7 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
     for raw_path in custom_mounts:
         # Expand ~/... against the entering user's home directory.
         is_home_relative = raw_path.startswith("~/")
-        if is_home_relative:
-            mount_path = ctx.home_dir + raw_path[1:]
-        else:
-            mount_path = raw_path
+        mount_path = ctx.home_dir + raw_path[1:] if is_home_relative else raw_path
 
         # Sanitise the expanded path for use as an Incus device name.
         # Incus limits device names to 64 characters, so use a hash
@@ -89,4 +86,4 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
                 },
             )
         except IncusError as e:
-            raise OperationError(f"Failed to mount {mount_path}: {e}")
+            raise OperationError(f"Failed to mount {mount_path}: {e}") from e

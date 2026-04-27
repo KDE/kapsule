@@ -41,7 +41,7 @@ async def mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
             },
         )
     except IncusError as e:
-        raise OperationError(f"Failed to mount host runtime dir: {e}")
+        raise OperationError(f"Failed to mount host runtime dir: {e}") from e
 
     # Mount /tmp/.X11-unix at /.kapsule/host/tmp/.X11-unix for X11
     try:
@@ -58,4 +58,4 @@ async def mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
             },
         )
     except IncusError as e:
-        raise OperationError(f"Failed to mount host X11 dir: {e}")
+        raise OperationError(f"Failed to mount host X11 dir: {e}") from e

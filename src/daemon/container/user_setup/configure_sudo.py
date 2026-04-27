@@ -33,4 +33,4 @@ async def configure_sudo(ctx: UserSetupContext) -> None:
             mode="0440",
         )
     except IncusError as e:
-        raise OperationError(f"Failed to configure sudo: {e}")
+        raise OperationError(f"Failed to configure sudo: {e}") from e

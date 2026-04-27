@@ -12,8 +12,9 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import argparse
+import asyncio
+import contextlib
 import logging
 import signal
 
@@ -91,10 +92,8 @@ def run() -> None:
     # Determine bus type
     bus_type = "session" if args.session else "system"
 
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(run_daemon(bus_type))
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

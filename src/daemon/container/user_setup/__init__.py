@@ -13,10 +13,10 @@ from ..contexts import UserSetupContext
 user_setup_pipeline = Pipeline[UserSetupContext]("user_setup")
 
 # Import step modules so their decorators register with the pipeline.
-from . import mount_home as _  # noqa: F401, E402
-from . import mount_custom as _  # noqa: F401, E402
-from . import mount_host_dirs as _  # noqa: F401, E402
-from . import create_account as _  # noqa: F401, E402
 from . import configure_sudo as _  # noqa: F401, E402
+from . import create_account as _  # noqa: F401, E402
 from . import enable_linger as _  # noqa: F401, E402
 from . import mark_mapped as _  # noqa: F401, E402
+from . import mount_custom as _  # noqa: F401, E402
+from . import mount_home as _  # noqa: F401, E402
+from . import mount_host_dirs as _  # noqa: F401, E402

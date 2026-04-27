@@ -46,7 +46,7 @@ class CreateContext:
 
     # Populated by pipeline steps before option parsing
     image_fingerprint: str | None = None
-    image_defaults: dict[str, object] = field(default_factory=dict)
+    image_defaults: dict[str, object] = field(default_factory=lambda: dict[str, object]())
 
     # Set by parse_create_options step (after image defaults are known)
     opts: ContainerOptions | None = None

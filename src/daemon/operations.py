@@ -20,16 +20,13 @@ import asyncio
 import functools
 import itertools
 import logging
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import (
     Annotated,
     Any,
-    AsyncContextManager,
-    AsyncIterator,
-    Awaitable,
-    Callable,
     Concatenate,
     ParamSpec,
     Protocol,
@@ -37,11 +34,10 @@ from typing import (
     runtime_checkable,
 )
 
-from dbus_fast.service import ServiceInterface, dbus_property, dbus_method, dbus_signal
-from dbus_fast.constants import PropertyAccess
-from dbus_fast.annotations import DBusStr, DBusBool, DBusSignature
 from dbus_fast.aio import MessageBus
-
+from dbus_fast.annotations import DBusBool, DBusSignature, DBusStr
+from dbus_fast.constants import PropertyAccess
+from dbus_fast.service import ServiceInterface, dbus_method, dbus_property, dbus_signal
 
 logger = logging.getLogger(__name__)
 
@@ -384,7 +380,7 @@ class OperationReporter(Protocol):
         total: int = -1,
         indent: int | None = None,
         success_message: str = "",
-    ) -> AsyncContextManager[ProgressBar | NullProgressBar]: ...
+    ) -> AbstractAsyncContextManager[ProgressBar | NullProgressBar]: ...
 
     def indented(self, levels: int = 1) -> OperationReporter: ...
 
@@ -436,7 +432,7 @@ class NullOperationReporter:
         total: int = -1,
         indent: int | None = None,
         success_message: str = "",
-    ) -> AsyncIterator[NullProgressBar]:
+    ) -> AsyncGenerator[NullProgressBar, None]:
         yield NullProgressBar()
 
     def indented(self, levels: int = 1) -> NullOperationReporter:
@@ -566,7 +562,7 @@ class DBusOperationReporter:
         total: int = -1,
         indent: int | None = None,
         success_message: str = "",
-    ) -> AsyncIterator[ProgressBar]:
+    ) -> AsyncGenerator[ProgressBar, None]:
         """Context manager for progress tracking.
 
         Usage:

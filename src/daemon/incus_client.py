@@ -16,8 +16,6 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, RootModel
 
-T = TypeVar("T", bound=BaseModel)
-
 from .models_generated import (
     Image,
     ImageAliasesEntry,
@@ -34,6 +32,8 @@ from .models_generated import (
     StoragePool,
     StoragePoolsPost,
 )
+
+T = TypeVar("T", bound=BaseModel)
 
 
 # List wrapper models for typed API responses
@@ -99,10 +99,10 @@ class ContainerInfo(BaseModel):
 
 
 # Module-level singleton instance
-_client: "IncusClient | None" = None
+_client: IncusClient | None = None
 
 
-def get_client() -> "IncusClient":
+def get_client() -> IncusClient:
     """Get the shared IncusClient instance."""
     global _client
     if _client is None:

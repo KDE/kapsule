@@ -74,4 +74,4 @@ async def create_instance(ctx: CreateContext) -> None:
         if op.status != "Success":
             raise OperationError(f"Creation failed: {op.err or op.status}")
     except IncusError as e:
-        raise OperationError(f"Failed to create container: {e}")
+        raise OperationError(f"Failed to create container: {e}") from e

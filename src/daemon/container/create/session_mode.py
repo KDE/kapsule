@@ -22,6 +22,7 @@ from . import create_pipeline
 @create_pipeline.step(order=300)
 async def session_mode(ctx: CreateContext) -> None:
     """Set up session mode if enabled, otherwise configure rootless Podman."""
+    assert ctx.opts is not None, "opts must be set before session_mode step"
     if ctx.opts.session_mode:
         await _setup_session_mode_impl(
             ctx.name,
@@ -91,7 +92,7 @@ ListenStream={systemd_socket_path}
             name, dropin_file, dropin_content, uid=0, gid=0, mode="0644"
         )
     except IncusError as e:
-        raise OperationError(f"Failed to configure D-Bus socket: {e}")
+        raise OperationError(f"Failed to configure D-Bus socket: {e}") from e
 
     # Install D-Bus multiplexer service
     await _setup_dbus_mux_impl(name, incus, progress)
@@ -158,7 +159,7 @@ WantedBy=default.target
             name, service_file, service_content, uid=0, gid=0, mode="0644"
         )
     except IncusError as e:
-        raise OperationError(f"Failed to install dbus-mux service: {e}")
+        raise OperationError(f"Failed to install dbus-mux service: {e}") from e
 
     progress.info("Enabling kapsule-dbus-mux.service globally")
     subprocess.run(

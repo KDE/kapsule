@@ -20,4 +20,4 @@ async def mark_mapped(ctx: UserSetupContext) -> None:
             {user_mapped_key: "true"},
         )
     except IncusError as e:
-        raise OperationError(f"Failed to update container config: {e}")
+        raise OperationError(f"Failed to update container config: {e}") from e

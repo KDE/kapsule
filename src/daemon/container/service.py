@@ -16,6 +16,7 @@ a function with the pipeline's ``step`` decorator to register it.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pwd
@@ -26,7 +27,6 @@ from typing import TYPE_CHECKING
 from ..config import load_config
 from ..incus_client import IncusClient, IncusError
 from ..models_generated import Image
-from ..progress_tracker import wait_operation_with_progress
 from ..operations import (
     NullOperationReporter,
     OperationError,
@@ -34,6 +34,7 @@ from ..operations import (
     OperationTracker,
     operation,
 )
+from ..progress_tracker import wait_operation_with_progress
 from .constants import (
     ENTER_ENV_SKIP,
     KAPSULE_DBUS_MUX_KEY,
@@ -43,13 +44,14 @@ from .constants import (
 )
 from .contexts import CreateContext, UserSetupContext
 from .create import create_pipeline
-from .create.build_config import SERVER_MAP, is_kapsule_server, resolve_server
+from .create.build_config import is_kapsule_server, resolve_server
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
+    from dbus_fast.aio import MessageBus
+
     from ..host_config_sync import HostConfigSync
     from ..service import KapsuleManagerInterface
-    from dbus_fast.aio import MessageBus
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +66,9 @@ class ContainerService:
 
     def __init__(
         self,
-        interface: "KapsuleManagerInterface",
+        interface: KapsuleManagerInterface,
         incus: IncusClient,
-        host_config_sync: "HostConfigSync",
+        host_config_sync: HostConfigSync,
     ):
         """Initialize the container service.
 
@@ -219,7 +221,7 @@ class ContainerService:
                 if op.status != "Success":
                     raise OperationError(f"Failed to stop: {op.err or op.status}")
             except IncusError as e:
-                raise OperationError(f"Failed to stop container: {e}")
+                raise OperationError(f"Failed to stop container: {e}") from e
             progress.success("Container stopped")
 
         progress.info("Deleting container...")
@@ -228,7 +230,7 @@ class ContainerService:
             if op.status != "Success":
                 raise OperationError(f"Deletion failed: {op.err or op.status}")
         except IncusError as e:
-            raise OperationError(f"Failed to delete container: {e}")
+            raise OperationError(f"Failed to delete container: {e}") from e
 
         progress.success(f"Container '{name}' removed successfully")
         self._interface.ContainersChanged()
@@ -268,7 +270,7 @@ class ContainerService:
             if op.status != "Success":
                 raise OperationError(f"Start failed: {op.err or op.status}")
         except IncusError as e:
-            raise OperationError(f"Failed to start container: {e}")
+            raise OperationError(f"Failed to start container: {e}") from e
 
         progress.success(f"Container '{name}' started successfully")
         self._interface.ContainersChanged()
@@ -306,7 +308,7 @@ class ContainerService:
             if op.status != "Success":
                 raise OperationError(f"Stop failed: {op.err or op.status}")
         except IncusError as e:
-            raise OperationError(f"Failed to stop container: {e}")
+            raise OperationError(f"Failed to stop container: {e}") from e
 
         progress.success(f"Container '{name}' stopped successfully")
         self._interface.ContainersChanged()
@@ -567,7 +569,7 @@ class ContainerService:
             try:
                 await self._incus.delete_image(old_fingerprint)
             except IncusError as e:
-                raise OperationError(f"Failed to delete old image: {e}")
+                raise OperationError(f"Failed to delete old image: {e}") from e
 
         progress.info("Uploading image...")
         try:
@@ -575,7 +577,7 @@ class ContainerService:
                 meta_path, rootfs_path, [alias]
             )
         except IncusError as e:
-            raise OperationError(f"Failed to import image: {e}")
+            raise OperationError(f"Failed to import image: {e}") from e
 
         progress.success(f"Image imported: {fingerprint}")
 
@@ -619,7 +621,7 @@ class ContainerService:
         try:
             await self._incus.delete_image(fingerprint)
         except IncusError as e:
-            raise OperationError(f"Failed to delete image: {e}")
+            raise OperationError(f"Failed to delete image: {e}") from e
 
         progress.success("Image deleted")
 
@@ -664,7 +666,7 @@ class ContainerService:
         try:
             instance = await self._incus.get_instance(name)
         except IncusError as e:
-            raise OperationError(f"Container '{name}' not found: {e}")
+            raise OperationError(f"Container '{name}' not found: {e}") from e
 
         config = instance.config or {}
 
@@ -937,18 +939,14 @@ class ContainerService:
         host_runtime_dir = f"/.kapsule/host/run/user/{uid}"
 
         # Ensure container runtime dirs exist
-        try:
+        with contextlib.suppress(IncusError):
             await self._incus.mkdir(
                 container_name, "/run/user", uid=0, gid=0, mode="0255"
             )
-        except IncusError:
-            pass
-        try:
+        with contextlib.suppress(IncusError):
             await self._incus.mkdir(
                 container_name, runtime_dir, uid=uid, gid=gid, mode="0700"
             )
-        except IncusError:
-            pass
 
         # Collect all mount descriptors.
         mounts: list[BindMount] = []
@@ -987,7 +985,7 @@ class ContainerService:
             x11_socket = f"X{display_num}"
             host_x11 = f"/.kapsule/host/tmp/.X11-unix/{x11_socket}"
             container_x11_dir = "/tmp/.X11-unix"
-            try:
+            with contextlib.suppress(IncusError):
                 await self._incus.mkdir(
                     container_name,
                     container_x11_dir,
@@ -995,8 +993,6 @@ class ContainerService:
                     gid=0,
                     mode="1777",
                 )
-            except IncusError:
-                pass
             mounts.append(
                 BindMount(
                     source=host_x11,
@@ -1010,12 +1006,10 @@ class ContainerService:
         # PulseAudio refuses to use pulse/ if it's itself a symlink (security check).
         pulse_dir = f"{runtime_dir}/pulse"
         host_pulse_native = f"{host_runtime_dir}/pulse/native"
-        try:
+        with contextlib.suppress(IncusError):
             await self._incus.mkdir(
                 container_name, pulse_dir, uid=uid, gid=gid, mode="0700"
             )
-        except IncusError:
-            pass
         mounts.append(
             BindMount(
                 source=host_pulse_native,

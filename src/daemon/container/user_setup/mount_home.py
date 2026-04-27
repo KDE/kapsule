@@ -32,7 +32,7 @@ async def mount_home(ctx: UserSetupContext) -> None:
                 },
             )
         except IncusError as e:
-            raise OperationError(f"Failed to mount home directory: {e}")
+            raise OperationError(f"Failed to mount home directory: {e}") from e
     else:
         ctx.progress.info("Home directory mount: skipped (disabled)")
         # Don't create the home directory here -- useradd -m (in the

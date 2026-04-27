@@ -294,7 +294,7 @@ async def parse_create_options(ctx: CreateContext) -> None:
     try:
         ctx.opts = parse_options(ctx.raw_options, image_defaults=ctx.image_defaults)
     except OptionValidationError as e:
-        raise OperationError(str(e))
+        raise OperationError(str(e)) from e
 
 
 @create_pipeline.step(order=-300)
