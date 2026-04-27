@@ -32,6 +32,7 @@ from ..operations import (
     OperationError,
     OperationReporter,
     OperationTracker,
+    incus_context,
     operation,
 )
 from ..progress_tracker import wait_operation_with_progress
@@ -216,21 +217,17 @@ class ContainerService:
 
         if is_running:
             progress.info("Stopping container...")
-            try:
+            async with incus_context("stop container"):
                 op = await self._incus.stop_instance(name, force=True, wait=True)
                 if op.status != "Success":
                     raise OperationError(f"Failed to stop: {op.err or op.status}")
-            except IncusError as e:
-                raise OperationError(f"Failed to stop container: {e}") from e
             progress.success("Container stopped")
 
         progress.info("Deleting container...")
-        try:
+        async with incus_context("delete container"):
             op = await self._incus.delete_instance(name, wait=True)
             if op.status != "Success":
                 raise OperationError(f"Deletion failed: {op.err or op.status}")
-        except IncusError as e:
-            raise OperationError(f"Failed to delete container: {e}") from e
 
         progress.success(f"Container '{name}' removed successfully")
         self._interface.ContainersChanged()
@@ -265,12 +262,10 @@ class ContainerService:
             progress.dim("NVIDIA userspace drivers will be injected on start")
 
         progress.info("Starting container...")
-        try:
+        async with incus_context("start container"):
             op = await self._incus.start_instance(name, wait=True)
             if op.status != "Success":
                 raise OperationError(f"Start failed: {op.err or op.status}")
-        except IncusError as e:
-            raise OperationError(f"Failed to start container: {e}") from e
 
         progress.success(f"Container '{name}' started successfully")
         self._interface.ContainersChanged()
@@ -303,12 +298,10 @@ class ContainerService:
             return
 
         progress.info("Stopping container...")
-        try:
+        async with incus_context("stop container"):
             op = await self._incus.stop_instance(name, force=force, wait=True)
             if op.status != "Success":
                 raise OperationError(f"Stop failed: {op.err or op.status}")
-        except IncusError as e:
-            raise OperationError(f"Failed to stop container: {e}") from e
 
         progress.success(f"Container '{name}' stopped successfully")
         self._interface.ContainersChanged()
@@ -566,18 +559,14 @@ class ContainerService:
         old_fingerprint = await self._incus.get_image_fingerprint_by_alias(alias)
         if old_fingerprint:
             progress.info(f"Replacing existing image with alias '{alias}'")
-            try:
+            async with incus_context("delete old image"):
                 await self._incus.delete_image(old_fingerprint)
-            except IncusError as e:
-                raise OperationError(f"Failed to delete old image: {e}") from e
 
         progress.info("Uploading image...")
-        try:
+        async with incus_context("import image"):
             fingerprint = await self._incus.import_image(
                 meta_path, rootfs_path, [alias]
             )
-        except IncusError as e:
-            raise OperationError(f"Failed to import image: {e}") from e
 
         progress.success(f"Image imported: {fingerprint}")
 
@@ -618,10 +607,8 @@ class ContainerService:
             fingerprint = identifier
 
         progress.info(f"Deleting image {fingerprint[:12]}...")
-        try:
+        async with incus_context("delete image"):
             await self._incus.delete_image(fingerprint)
-        except IncusError as e:
-            raise OperationError(f"Failed to delete image: {e}") from e
 
         progress.success("Image deleted")
 
@@ -663,10 +650,8 @@ class ContainerService:
         Returns:
             Tuple of (name, status, image, created, mode)
         """
-        try:
+        async with incus_context(f"look up container '{name}'"):
             instance = await self._incus.get_instance(name)
-        except IncusError as e:
-            raise OperationError(f"Container '{name}' not found: {e}") from e
 
         config = instance.config or {}
 

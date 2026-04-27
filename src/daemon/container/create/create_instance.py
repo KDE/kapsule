@@ -6,9 +6,8 @@
 
 from __future__ import annotations
 
-from ...incus_client import IncusError
 from ...models_generated import InstanceSource, InstancesPost
-from ...operations import OperationError
+from ...operations import OperationError, incus_context
 from ..contexts import CreateContext
 from . import create_pipeline
 
@@ -69,9 +68,7 @@ async def create_instance(ctx: CreateContext) -> None:
         type=None,
     )
 
-    try:
+    async with incus_context("create container"):
         op = await ctx.incus.create_instance(instance_config, wait=True)
         if op.status != "Success":
             raise OperationError(f"Creation failed: {op.err or op.status}")
-    except IncusError as e:
-        raise OperationError(f"Failed to create container: {e}") from e

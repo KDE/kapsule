@@ -4,8 +4,7 @@
 
 """User setup step: mount or create the user's home directory."""
 
-from ...incus_client import IncusError
-from ...operations import OperationError
+from ...operations import incus_context
 from ..constants import KAPSULE_MOUNT_HOME_KEY
 from ..contexts import UserSetupContext
 from . import user_setup_pipeline
@@ -21,7 +20,7 @@ async def mount_home(ctx: UserSetupContext) -> None:
             f"Mounting home directory: {ctx.home_dir} -> {ctx.container_home}"
         )
         device_name = f"kapsule-home-{ctx.username}"
-        try:
+        async with incus_context("mount home directory"):
             await ctx.incus.add_instance_device(
                 ctx.container_name,
                 device_name,
@@ -31,8 +30,6 @@ async def mount_home(ctx: UserSetupContext) -> None:
                     "path": ctx.container_home,
                 },
             )
-        except IncusError as e:
-            raise OperationError(f"Failed to mount home directory: {e}") from e
     else:
         ctx.progress.info("Home directory mount: skipped (disabled)")
         # Don't create the home directory here -- useradd -m (in the

@@ -8,8 +8,7 @@ import hashlib
 import json
 import subprocess
 
-from ...incus_client import IncusError
-from ...operations import OperationError
+from ...operations import incus_context
 from ..constants import KAPSULE_CUSTOM_MOUNTS_KEY
 from ..contexts import UserSetupContext
 from . import user_setup_pipeline
@@ -75,7 +74,7 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
                 continue
 
         ctx.progress.info(f"Custom mount: {mount_path} -> {container_path}")
-        try:
+        async with incus_context(f"mount {mount_path}"):
             await ctx.incus.add_instance_device(
                 ctx.container_name,
                 device_name,
@@ -85,5 +84,3 @@ async def mount_custom_dirs(ctx: UserSetupContext) -> None:
                     "path": container_path,
                 },
             )
-        except IncusError as e:
-            raise OperationError(f"Failed to mount {mount_path}: {e}") from e

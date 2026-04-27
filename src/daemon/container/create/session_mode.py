@@ -6,11 +6,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 
 from ...incus_client import IncusClient, IncusError
-from ...operations import OperationError, OperationReporter
+from ...operations import OperationReporter, incus_context
 from ..constants import (
     KAPSULE_DBUS_MUX_BIN,
     KAPSULE_DBUS_SOCKET_SYSTEMD,
@@ -72,10 +73,8 @@ async def _setup_session_mode_impl(
 
     # Create systemd user drop-in directory
     dropin_dir = "/etc/systemd/user/dbus.socket.d"
-    try:
+    with contextlib.suppress(IncusError):
         await incus.mkdir(name, dropin_dir, uid=0, gid=0, mode="0755")
-    except IncusError:
-        pass  # Directory might already exist
 
     # Create the drop-in file
     systemd_socket_path = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
@@ -87,12 +86,10 @@ ListenStream=
 ListenStream={systemd_socket_path}
 """
     dropin_file = f"{dropin_dir}/kapsule.conf"
-    try:
+    async with incus_context("configure D-Bus socket"):
         await incus.push_file(
             name, dropin_file, dropin_content, uid=0, gid=0, mode="0644"
         )
-    except IncusError as e:
-        raise OperationError(f"Failed to configure D-Bus socket: {e}") from e
 
     # Install D-Bus multiplexer service
     await _setup_dbus_mux_impl(name, incus, progress)
@@ -123,10 +120,8 @@ async def _setup_dbus_mux_impl(
     progress.info("Installing kapsule-dbus-mux.service for D-Bus multiplexing")
 
     service_dir = "/etc/systemd/user"
-    try:
+    with contextlib.suppress(IncusError):
         await incus.mkdir(name, service_dir, uid=0, gid=0, mode="0755")
-    except IncusError:
-        pass  # Directory might already exist
 
     container_dbus_socket = KAPSULE_DBUS_SOCKET_SYSTEMD.format(container=name)
     host_dbus_socket = "unix:path=/.kapsule/host%t/bus"
@@ -154,12 +149,10 @@ WantedBy=default.target
 """
 
     service_file = f"{service_dir}/kapsule-dbus-mux.service"
-    try:
+    async with incus_context("install dbus-mux service"):
         await incus.push_file(
             name, service_file, service_content, uid=0, gid=0, mode="0644"
         )
-    except IncusError as e:
-        raise OperationError(f"Failed to install dbus-mux service: {e}") from e
 
     progress.info("Enabling kapsule-dbus-mux.service globally")
     subprocess.run(
@@ -208,10 +201,8 @@ async def _configure_rootless_podman_impl(
     # Create the full directory hierarchy – most images don't ship
     # with Podman so /etc/containers/ won't exist yet.
     for d in (parent_dir, dropin_dir):
-        try:
+        with contextlib.suppress(IncusError):
             await incus.mkdir(name, d, uid=0, gid=0, mode="0755")
-        except IncusError:
-            pass  # Directory might already exist
 
     try:
         await incus.push_file(

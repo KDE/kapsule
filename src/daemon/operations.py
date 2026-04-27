@@ -24,6 +24,8 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from enum import IntEnum
+
+from .incus_client import IncusError
 from typing import (
     Annotated,
     Any,
@@ -67,6 +69,28 @@ class OperationError(Exception):
     """
 
     pass
+
+
+def incus_context(action: str) -> AbstractAsyncContextManager[None]:
+    """Async context manager that converts IncusError to OperationError.
+
+    Usage::
+
+        async with incus_context("mount home directory"):
+            await incus.add_instance_device(...)
+
+    If the body raises ``IncusError``, it is re-raised as
+    ``OperationError(f"Failed to {action}: {e}")``.
+    """
+
+    @asynccontextmanager
+    async def _ctx() -> AsyncGenerator[None]:
+        try:
+            yield
+        except IncusError as e:
+            raise OperationError(f"Failed to {action}: {e}") from e
+
+    return _ctx()
 
 
 # =============================================================================
