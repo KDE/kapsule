@@ -36,7 +36,7 @@ echo "Testing nested containers (Docker-in-Kapsule)..."
 
 echo ""
 echo "1. Create container"
-output=$(create_container "$CONTAINER_NAME" "images:archlinux" 2>&1) || {
+output=$(create_container "$CONTAINER_NAME" "kapsule:archlinux" 2>&1) || {
     echo "Create failed with output:"
     echo "$output"
     exit 1
@@ -56,6 +56,9 @@ kapsule_exec "$CONTAINER_NAME" "true" 2>/dev/null
 
 echo ""
 echo "2. Install Docker and Podman inside container"
+# erofs-utils is shipped in the kapsule:archlinux image (containerd >= 2.3
+# fails to start without mkfs.erofs available). If this test is ever
+# pointed at images:archlinux again, add erofs-utils back here.
 kapsule_exec "$CONTAINER_NAME" "sudo pacman -Syu --noconfirm podman docker" || {
     echo "Docker/Podman installation failed"
     cleanup_container "$CONTAINER_NAME"
