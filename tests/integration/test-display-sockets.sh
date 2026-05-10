@@ -66,7 +66,7 @@ echo "Testing display socket passthrough..."
 # Test: Create container
 echo ""
 echo "1. Create container"
-output=$(create_container "$CONTAINER_NAME" "images:archlinux" 2>&1) || {
+output=$(create_container "$CONTAINER_NAME" "kapsule:archlinux" 2>&1) || {
     echo "Create failed with output:"
     echo "$output"
     exit 1

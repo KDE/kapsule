@@ -80,7 +80,7 @@ marker="kapsule-test-marker-$$"
 
 echo ""
 echo "1. Create default container (home mounted)"
-output=$(ssh_vm "kapsule create '$CONTAINER_DEFAULT' --image images:archlinux" 2>&1) || {
+output=$(ssh_vm "kapsule create '$CONTAINER_DEFAULT' --image kapsule:archlinux" 2>&1) || {
     echo "Create (default) failed:"
     echo "$output"
     exit 1
@@ -90,7 +90,7 @@ assert_container_state "$CONTAINER_DEFAULT" "RUNNING"
 
 echo ""
 echo "2. Create container with --no-mount-home and --custom-mounts"
-output=$(ssh_vm "kapsule create '$CONTAINER_CUSTOM' --image images:archlinux \
+output=$(ssh_vm "kapsule create '$CONTAINER_CUSTOM' --image kapsule:archlinux \
     --no-mount-home \
     --custom-mounts '$MOUNT_DIR_1' \
     --custom-mounts '$MOUNT_DIR_2'" 2>&1) || {
@@ -103,7 +103,7 @@ assert_container_state "$CONTAINER_CUSTOM" "RUNNING"
 
 echo ""
 echo "3. Create container with ~/... custom mount (path does not exist yet)"
-output=$(ssh_vm "kapsule create '$CONTAINER_TILDE' --image images:archlinux \
+output=$(ssh_vm "kapsule create '$CONTAINER_TILDE' --image kapsule:archlinux \
     --no-host-rootfs \
     --no-mount-home \
     --custom-mounts '~/$TILDE_SUBDIR'" 2>&1) || {

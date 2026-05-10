@@ -42,7 +42,7 @@ echo "Testing D-Bus socket passthrough..."
 
 echo ""
 echo "1. Create default-mode container"
-output=$(create_container "$CONTAINER_DEFAULT" "images:archlinux" 2>&1) || {
+output=$(create_container "$CONTAINER_DEFAULT" "kapsule:archlinux" 2>&1) || {
     echo "Create (default) failed:"
     echo "$output"
     exit 1
@@ -52,7 +52,7 @@ assert_container_state "$CONTAINER_DEFAULT" "RUNNING"
 
 echo ""
 echo "2. Create session-mode container"
-output=$(ssh_vm "kapsule create '$CONTAINER_SESSION' --image images:archlinux --session-mode ${KAPSULE_CREATE_FLAGS:-}" 2>&1) || {
+output=$(ssh_vm "kapsule create '$CONTAINER_SESSION' --image kapsule:archlinux --session-mode ${KAPSULE_CREATE_FLAGS:-}" 2>&1) || {
     echo "Create (session) failed:"
     echo "$output"
     exit 1

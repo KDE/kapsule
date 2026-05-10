@@ -58,7 +58,8 @@ echo ""
 echo "2. Install Docker and Podman inside container"
 # erofs-utils is shipped in the kapsule:archlinux image (containerd >= 2.3
 # fails to start without mkfs.erofs available). If this test is ever
-# pointed at images:archlinux again, add erofs-utils back here.
+# pointed at a stock LCI image like images:archlinux, add erofs-utils
+# back here.
 kapsule_exec "$CONTAINER_NAME" "sudo pacman -Syu --noconfirm podman docker" || {
     echo "Docker/Podman installation failed"
     cleanup_container "$CONTAINER_NAME"

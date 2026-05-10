@@ -100,6 +100,18 @@ cleanup_test_containers() {
     ssh_vm 'for c in $(incus list -c n -f csv | grep "^test-"); do incus delete "$c" --force 2>/dev/null || true; done' || true
 }
 
+# Refresh kapsule:archlinux to ensure tests run against the latest published
+# image, not whatever the daemon happens to have cached. Failures here are
+# non-fatal (network blips, CI lag) — the cached image will be used as fallback.
+refresh_kapsule_image() {
+    log_info "Refreshing kapsule:archlinux on test VM..."
+    if ssh_vm "kapsule image refresh kapsule:archlinux" 2>&1; then
+        log_info "Image refresh complete"
+    else
+        echo -e "${YELLOW}WARNING: Image refresh failed; tests will use cached image${NC}"
+    fi
+}
+
 # ============================================================================
 # Test runners
 # ============================================================================
@@ -328,6 +340,7 @@ if [[ "$DEPLOY" == "true" ]]; then
 fi
 
 cleanup_test_containers
+refresh_kapsule_image
 
 if [[ "$PYTHON_ONLY" != "true" ]]; then
     run_shell_tests
