@@ -17,3 +17,14 @@ sed -i 's|^SHELL=.*|SHELL=/bin/zsh|' "$BUILDROOT/etc/default/useradd"
 # the full upstream list remains available for users who want to customise.
 sed -i '1i Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' \
     "$BUILDROOT/etc/pacman.d/mirrorlist"
+
+# Mask systemd-firstboot.service. In a container, locale/timezone/root
+# are populated by the host (kapsule's sync_host_config pipeline step),
+# but firstboot doesn't see them in time and blocks sysinit.target
+# waiting for interactive prompts on a console that doesn't exist. The
+# net effect is that dbus.service never starts, which kills the whole
+# session-mode user-bus story (no /run/user/$uid/bus, no busctl, no
+# logind, no linger). Mask it outright — it has no useful role here.
+# Tracking: https://invent.kde.org/kde-linux/kapsule/-/work_items/25
+mkdir -p "$BUILDROOT/etc/systemd/system"
+ln -sf /dev/null "$BUILDROOT/etc/systemd/system/systemd-firstboot.service"
