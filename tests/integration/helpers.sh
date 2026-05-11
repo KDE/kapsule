@@ -103,6 +103,57 @@ cleanup_container() {
 }
 
 # ============================================================================
+# Synthetic Image Helpers
+# ============================================================================
+
+# Create a local incus image alias from an upstream image and inject
+# kapsule.default_options into its properties. Used by tests that need
+# to exercise the image-defaults code path without depending on the
+# real kapsule:kapsule-dev image (whose ~/kde default mount path
+# collides with developer source trees).
+#
+# Usage: setup_synthetic_image_with_defaults ALIAS SOURCE_IMAGE DEFAULTS_JSON
+# Example:
+#   setup_synthetic_image_with_defaults \
+#       my-test-img images:alpine/edge \
+#       '{"custom_mounts": ["~/.cache/kapsule-test-mount"]}'
+setup_synthetic_image_with_defaults() {
+    local alias="$1"
+    local source_image="$2"
+    local defaults_json="$3"
+
+    # Best-effort cleanup of any prior alias from a failed test run.
+    ssh_vm "incus image delete '$alias' 2>/dev/null" || true
+
+    ssh_vm "incus image copy '$source_image' local: --alias '$alias' --auto-update=false" >/dev/null
+
+    # Build a YAML document and pipe to `incus image edit`. The minimal
+    # set of properties below is enough for incus to keep the image
+    # usable; we deliberately only inject what the daemon's image-
+    # defaults reader looks for.
+    local yaml="auto_update: false
+properties:
+  description: Synthetic test image based on ${source_image}
+  os: TestImage
+  variant: default
+  type: squashfs
+  kapsule.default_options: '${defaults_json}'
+public: false
+expires_at: 1970-01-01T00:00:00Z
+profiles:
+  - default
+"
+    ssh_vm "incus image edit '$alias'" <<<"$yaml"
+}
+
+# Tear down an alias created by setup_synthetic_image_with_defaults.
+# Usage: teardown_synthetic_image ALIAS
+teardown_synthetic_image() {
+    local alias="$1"
+    ssh_vm "incus image delete '$alias' 2>/dev/null" || true
+}
+
+# ============================================================================
 # D-Bus Helpers
 # ============================================================================
 

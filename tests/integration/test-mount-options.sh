@@ -4,7 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# Test: Mount options (--no-mount-home, --custom-mounts, and image defaults)
+# Test: Mount options (--no-mount-home, --custom-mounts, ~/... expansion)
 #
 # Verifies that:
 #   - The default container mounts the user's home directory
@@ -14,15 +14,17 @@
 #     the container (tested with --no-mount-home, where custom
 #     mounts are the primary way to share host directories)
 #   - ~/... custom mount paths are expanded per-user and auto-created
-#   - image default custom_mounts entries using ~ are expanded to the
-#     entering user's home directory
+#
+# Image-default custom_mounts (the kapsule.default_options
+# mechanism) are tested separately:
+#   - test-image-default-mounts.sh    -- smoke test against kapsule:kapsule-dev
+#   - test-image-default-expansion.sh -- mechanic test on a synthetic image
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 CONTAINER_DEFAULT="test-mounts-default"
 CONTAINER_CUSTOM="test-mounts-custom"
 CONTAINER_TILDE="test-mounts-tilde"
-CONTAINER_IMAGE_DEFAULTS="test-mounts-image-defaults"
 
 kapsule_exec() {
     local name="$1"
@@ -57,18 +59,12 @@ TILDE_SUBDIR=".cache/kapsule-test/tilde-mount-$$"
 TILDE_MOUNT_DIR="$HOST_HOME/$TILDE_SUBDIR"
 ssh_vm "rm -rf '$TILDE_MOUNT_DIR'"  # ensure it doesn't exist
 
-# The kapsule-dev image ships default_options.custom_mounts: ["~/kde"]
-IMAGE_DEFAULT_MOUNT="$HOST_HOME/kde"
-ssh_vm "mkdir -p '$IMAGE_DEFAULT_MOUNT'"
-ssh_vm "echo 'image-default-content' > '$IMAGE_DEFAULT_MOUNT/image-default-marker.txt'"
-
 echo "Testing mount options..."
 echo "  Host user: $HOST_USER (uid=$HOST_UID)"
 echo "  Host home: $HOST_HOME"
 echo "  Custom mount 1: $MOUNT_DIR_1"
 echo "  Custom mount 2: $MOUNT_DIR_2"
 echo "  Tilde mount (will be created): ~/$TILDE_SUBDIR"
-echo "  Image default mount: $IMAGE_DEFAULT_MOUNT"
 
 home_basename=$(basename "$HOST_HOME")
 container_home="/home/$home_basename"
@@ -114,16 +110,6 @@ output=$(ssh_vm "kapsule create '$CONTAINER_TILDE' --image kapsule:archlinux \
 assert_container_exists "$CONTAINER_TILDE"
 assert_container_state "$CONTAINER_TILDE" "RUNNING"
 
-echo ""
-echo "4. Create container using kapsule-dev image defaults"
-output=$(ssh_vm "kapsule create '$CONTAINER_IMAGE_DEFAULTS' --image kapsule:kapsule-dev --no-host-rootfs" 2>&1) || {
-    echo "Create (image defaults) failed:"
-    echo "$output"
-    exit 1
-}
-assert_container_exists "$CONTAINER_IMAGE_DEFAULTS"
-assert_container_state "$CONTAINER_IMAGE_DEFAULTS" "RUNNING"
-
 sleep 2
 
 # ============================================================================
@@ -147,13 +133,6 @@ assert_contains "Config contains mount dir 2" "$custom_mounts_raw" "$MOUNT_DIR_2
 tilde_mounts_raw=$(ssh_vm "incus config get '$CONTAINER_TILDE' user.kapsule.custom-mounts" 2>/dev/null)
 assert_contains "Tilde mount config contains raw ~/... path" "$tilde_mounts_raw" "~/$TILDE_SUBDIR"
 
-# Image-default container: config should store the raw ~/kde path
-image_defaults_mount_home=$(ssh_vm "incus config get '$CONTAINER_IMAGE_DEFAULTS' user.kapsule.mount-home" 2>/dev/null)
-assert_eq "Image-default container has mount-home=false" "false" "$image_defaults_mount_home"
-
-image_defaults_mounts_raw=$(ssh_vm "incus config get '$CONTAINER_IMAGE_DEFAULTS' user.kapsule.custom-mounts" 2>/dev/null)
-assert_contains "Image-default config contains raw ~/kde path" "$image_defaults_mounts_raw" "~/kde"
-
 # ============================================================================
 # 3. Trigger user setup (kapsule enter)
 # ============================================================================
@@ -164,7 +143,6 @@ echo "6. Set up user in all containers"
 kapsule_exec "$CONTAINER_DEFAULT" "true" 2>/dev/null || true
 kapsule_exec "$CONTAINER_CUSTOM" "true" 2>/dev/null || true
 kapsule_exec "$CONTAINER_TILDE" "true" 2>/dev/null || true
-kapsule_exec "$CONTAINER_IMAGE_DEFAULTS" "true" 2>/dev/null || true
 
 sleep 1
 
@@ -302,33 +280,15 @@ tilde_content=$(ssh_vm "cat '$TILDE_MOUNT_DIR/tilde.txt'" 2>/dev/null)
 assert_eq "Tilde mount write visible on host" "tilde-content" "$tilde_content"
 
 # ============================================================================
-# 10. Image-default container: ~/kde mount is expanded and accessible
-# ============================================================================
-
-echo ""
-echo "13. Verify image-default custom mount from ~/kde"
-
-image_default_devices=$(ssh_vm "incus config device list '$CONTAINER_IMAGE_DEFAULTS'" 2>/dev/null)
-image_default_safe_name=$(echo "$IMAGE_DEFAULT_MOUNT" | sed 's|^/||; s|/|-|g; s|\.|-|g')
-assert_contains "Image-default container has ~/kde mount device" "$image_default_devices" "kapsule-mount-${image_default_safe_name}"
-
-assert_success "Image-default mount dir exists in container" \
-    ssh_vm "incus exec '$CONTAINER_IMAGE_DEFAULTS' -- test -d '$IMAGE_DEFAULT_MOUNT'"
-
-image_marker=$(ssh_vm "incus exec '$CONTAINER_IMAGE_DEFAULTS' -- cat '$IMAGE_DEFAULT_MOUNT/image-default-marker.txt'" 2>/dev/null)
-assert_eq "Image-default marker file has correct content" "image-default-content" "$image_marker"
-
-# ============================================================================
 # Cleanup
 # ============================================================================
 
 echo ""
-echo "14. Cleanup"
+echo "13. Cleanup"
 cleanup_container "$CONTAINER_DEFAULT"
 cleanup_container "$CONTAINER_CUSTOM"
 cleanup_container "$CONTAINER_TILDE"
-cleanup_container "$CONTAINER_IMAGE_DEFAULTS"
-ssh_vm "rm -rf '$MOUNT_DIR_1' '$MOUNT_DIR_2' '$TILDE_MOUNT_DIR' '$IMAGE_DEFAULT_MOUNT'"
+ssh_vm "rm -rf '$MOUNT_DIR_1' '$MOUNT_DIR_2' '$TILDE_MOUNT_DIR'"
 
 echo ""
 echo "All mount option tests passed!"
