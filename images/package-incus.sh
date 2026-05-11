@@ -7,7 +7,20 @@
 # Package a mkosi output directory into Incus-compatible artifacts:
 #   - incus.tar.xz  (metadata archive)
 #   - rootfs.squashfs (root filesystem)
-#   - version        (YYYYMMDD datestamp)
+#   - version        (YYYYMMDD-HHMMSS timestamp; see note below)
+#
+# Version key note: simplestreams uses this string as the per-build
+# identity in images.json. `incus image refresh` compares the cached
+# image's stored version against the highest version in the latest
+# images.json and only re-downloads when they differ. We therefore
+# need a strictly monotonic, per-build-unique value.
+#
+# An earlier revision used just `date +%Y%m%d` -- which collides for
+# every build on the same UTC day, making `incus image refresh` a
+# silent no-op for everything CI publishes between midnights. The
+# `-HHMMSS` suffix gives us seconds-resolution monotonicity (sortable
+# lexicographically) without depending on CI environment variables,
+# so local builds and CI builds use the same scheme.
 #
 # If a kapsule.yaml is provided as the third argument, the image
 # description and default_options are read from it and embedded into
@@ -33,7 +46,7 @@ if [ ! -d "$ROOTFS_DIR" ]; then
     exit 1
 fi
 
-VERSION=$(date +%Y%m%d)
+VERSION=$(date +%Y%m%d-%H%M%S)
 ARCH=$(uname -m)
 CREATION_DATE=$(date +%s)
 

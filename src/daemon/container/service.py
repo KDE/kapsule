@@ -391,15 +391,22 @@ class ContainerService:
         # List all cached images
         all_images = await self._incus.list_images()
 
-        # Filter to auto-update cached images
+        # Filter to auto-update images that have an upstream we can fetch
+        # from. We deliberately do NOT require img.cached here: that flag is
+        # only set on images implicitly cached by `incus launch images:foo`,
+        # not on images copied via `incus image copy --auto-update remote:
+        # local:` -- which is how kapsule production images get into the
+        # local store. Filtering on `cached` made this whole code path a
+        # silent no-op for every kapsule install, so refresh has never
+        # actually done anything in production.
         candidates = [
             img
             for img in all_images
-            if img.auto_update and img.cached and img.update_source
+            if img.auto_update and img.update_source
         ]
 
         if not candidates:
-            progress.warning("No cached auto-update images found")
+            progress.warning("No auto-update images found")
             return
 
         # Apply server:alias filter.
@@ -450,6 +457,7 @@ class ContainerService:
                 )
 
         refreshed = 0
+        unchanged = 0
         for img in matched:
             src = img.update_source
             assert src is not None
@@ -498,6 +506,10 @@ class ContainerService:
                         description=f"Downloading {src.alias}...",
                         timeout=300,
                     )
+                    # download_remote_image always fetches fresh content,
+                    # so a Success here unambiguously means the image was
+                    # replaced.
+                    op_refreshed: bool = True
                 else:
                     progress.info(f"Refreshing: {label}")
                     op_id = await self._incus.refresh_image(img.fingerprint)
@@ -508,10 +520,26 @@ class ContainerService:
                         description=f"Refreshing {label}...",
                         timeout=300,
                     )
+                    # Incus' refresh op signals whether anything actually
+                    # changed via metadata["refreshed"]: True means it
+                    # downloaded a new fingerprint, False means the cached
+                    # simplestreams index reported the same version as the
+                    # locally stored image (or the cache TTL hadn't
+                    # expired and it never re-checked the upstream).
+                    # Default to False on missing/malformed metadata --
+                    # we'd rather under-report a successful refresh than
+                    # claim one that didn't happen.
+                    op_refreshed = bool(
+                        (op.metadata or {}).get("refreshed", False)
+                    )
 
                 if op.status == "Success":
-                    progress.success(f"Refreshed: {label}")
-                    refreshed += 1
+                    if op_refreshed:
+                        progress.success(f"Refreshed: {label}")
+                        refreshed += 1
+                    else:
+                        progress.info(f"Already up to date: {label}")
+                        unchanged += 1
                 else:
                     progress.warning(
                         f"Refresh returned status '{op.status}' for {label}"
@@ -519,7 +547,22 @@ class ContainerService:
             except IncusError as e:
                 progress.error(f"Failed to refresh {label}: {e}")
 
-        progress.success(f"Refreshed {refreshed}/{len(matched)} image(s)")
+        # Distinguish between the three outcomes so users can tell
+        # whether 'image refresh' actually did anything. Failures are
+        # implicit: matched - refreshed - unchanged.
+        total = len(matched)
+        failed = total - refreshed - unchanged
+        if refreshed == 0 and failed == 0:
+            progress.success(f"All {total} image(s) already up to date")
+        elif unchanged == 0 and failed == 0:
+            progress.success(f"Refreshed {refreshed}/{total} image(s)")
+        else:
+            parts: list[str] = [f"refreshed {refreshed}"]
+            if unchanged:
+                parts.append(f"{unchanged} already up to date")
+            if failed:
+                parts.append(f"{failed} failed")
+            progress.success(f"Of {total} image(s): {', '.join(parts)}")
 
     @operation(
         "import_image",

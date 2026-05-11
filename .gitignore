@@ -16,6 +16,12 @@ streams/
 images/mkosi.output/
 sysext/mkosi.output/
 
+# Integration-test fixture build output. Built locally by the
+# refresh-investigation probe under tests/integration/probes/, never
+# checked in (see tests/integration/fixtures/test-image/mkosi.conf).
+tests/integration/fixtures/test-image/mkosi.output/
+tests/integration/fixtures/test-image/mkosi.cache/
+
 .opencode/index
 
 /.clang-format

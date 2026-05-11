@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Lasath Fernando <devel@lasath.org>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Image metadata read by images/generate-simplestreams.py and
+# images/package-incus.sh when packaging this rootfs.
+
+description: "Kapsule integration-test fixture (DO NOT USE IN PRODUCTION)"
+aliases:
+  - kapsule-test-fixture
+default_options: {}
