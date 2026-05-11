@@ -4,8 +4,7 @@
 
 """User setup step: mount host runtime and X11 dirs (minimal rootfs mode)."""
 
-from ...incus_client import IncusError
-from ...operations import OperationError
+from ...operations import incus_context
 from ..constants import KAPSULE_HOST_ROOTFS_KEY
 from ..contexts import UserSetupContext
 from . import user_setup_pipeline
@@ -27,7 +26,7 @@ async def mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
 
     # Mount /run/user/<uid> at /.kapsule/host/run/user/<uid>
     hostrun_device = f"kapsule-hostrun-{ctx.uid}"
-    try:
+    async with incus_context("mount host runtime dir"):
         await ctx.incus.add_instance_device(
             ctx.container_name,
             hostrun_device,
@@ -40,11 +39,9 @@ async def mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
                 "propagation": "rslave",
             },
         )
-    except IncusError as e:
-        raise OperationError(f"Failed to mount host runtime dir: {e}") from e
 
     # Mount /tmp/.X11-unix at /.kapsule/host/tmp/.X11-unix for X11
-    try:
+    async with incus_context("mount host X11 dir"):
         await ctx.incus.add_instance_device(
             ctx.container_name,
             "kapsule-x11",
@@ -57,5 +54,3 @@ async def mount_minimal_host_dirs(ctx: UserSetupContext) -> None:
                 "propagation": "rslave",
             },
         )
-    except IncusError as e:
-        raise OperationError(f"Failed to mount host X11 dir: {e}") from e

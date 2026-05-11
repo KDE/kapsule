@@ -15,8 +15,9 @@ stdin.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 
 from dbus_fast import Message, MessageType, Variant
@@ -25,6 +26,16 @@ from dbus_fast.aio import MessageBus
 from .incus_client import IncusClient
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.asynccontextmanager
+async def _log_on_failure(msg: str, *args: object) -> AsyncGenerator[None]:
+    """Suppress any exception, logging it as a warning."""
+    try:
+        yield
+    except Exception:
+        logger.warning(msg, *args, exc_info=True)
+
 
 # D-Bus service definitions for the three host-config sources.
 _TIMEDATE_BUS = "org.freedesktop.timedate1"
@@ -150,7 +161,9 @@ class HostConfigSync:
     # ------------------------------------------------------------------
 
     async def _subscribe_timedate(self) -> None:
-        try:
+        async with _log_on_failure(
+            "Could not subscribe to %s — timezone sync disabled", _TIMEDATE_BUS
+        ):
             await _subscribe_properties_changed(
                 self._bus,
                 _TIMEDATE_BUS,
@@ -158,15 +171,11 @@ class HostConfigSync:
                 self._on_timedate_changed,
             )
             logger.info("Subscribed to timezone changes on %s", _TIMEDATE_BUS)
-        except Exception:
-            logger.warning(
-                "Could not subscribe to %s — timezone sync disabled",
-                _TIMEDATE_BUS,
-                exc_info=True,
-            )
 
     async def _subscribe_locale(self) -> None:
-        try:
+        async with _log_on_failure(
+            "Could not subscribe to %s — locale sync disabled", _LOCALE_BUS
+        ):
             await _subscribe_properties_changed(
                 self._bus,
                 _LOCALE_BUS,
@@ -174,15 +183,11 @@ class HostConfigSync:
                 self._on_locale_changed,
             )
             logger.info("Subscribed to locale changes on %s", _LOCALE_BUS)
-        except Exception:
-            logger.warning(
-                "Could not subscribe to %s — locale sync disabled",
-                _LOCALE_BUS,
-                exc_info=True,
-            )
 
     async def _subscribe_resolve(self) -> None:
-        try:
+        async with _log_on_failure(
+            "Could not subscribe to %s — DNS sync disabled", _RESOLVE_BUS
+        ):
             await _subscribe_properties_changed(
                 self._bus,
                 _RESOLVE_BUS,
@@ -190,12 +195,6 @@ class HostConfigSync:
                 self._on_resolve_changed,
             )
             logger.info("Subscribed to DNS changes on %s", _RESOLVE_BUS)
-        except Exception:
-            logger.warning(
-                "Could not subscribe to %s — DNS sync disabled",
-                _RESOLVE_BUS,
-                exc_info=True,
-            )
 
     # ------------------------------------------------------------------
     # Signal callbacks
@@ -265,15 +264,10 @@ class HostConfigSync:
         for container in containers:
             if container.status != "Running":
                 continue
-            try:
+            async with _log_on_failure(
+                "Failed to sync %s into container %s", sync_type, container.name
+            ):
                 await self._exec_sync_script(container.name, sync_type, data)
-            except Exception:
-                logger.warning(
-                    "Failed to sync %s into container %s",
-                    sync_type,
-                    container.name,
-                    exc_info=True,
-                )
 
     async def _exec_sync_script(self, name: str, sync_type: str, data: str) -> None:
         """Run the sync script in a single container if it exists."""
@@ -323,41 +317,29 @@ class HostConfigSync:
     # ------------------------------------------------------------------
 
     async def _sync_timezone_to(self, container_name: str) -> None:
-        try:
+        async with _log_on_failure(
+            "Could not sync timezone into container %s", container_name
+        ):
             variant = await _get_dbus_property(
                 self._bus, _TIMEDATE_BUS, _TIMEDATE_PATH, _TIMEDATE_BUS, "Timezone"
             )
             timezone: str = variant.value
             await self._exec_sync_script(container_name, "timezone", timezone)
-        except Exception:
-            logger.warning(
-                "Could not sync timezone into container %s",
-                container_name,
-                exc_info=True,
-            )
 
     async def _sync_locale_to(self, container_name: str) -> None:
-        try:
+        async with _log_on_failure(
+            "Could not sync locale into container %s", container_name
+        ):
             variant = await _get_dbus_property(
                 self._bus, _LOCALE_BUS, _LOCALE_PATH, _LOCALE_BUS, "Locale"
             )
             locale_array: list[str] = variant.value
             joined = "\n".join(locale_array)
             await self._exec_sync_script(container_name, "locale", joined)
-        except Exception:
-            logger.warning(
-                "Could not sync locale into container %s",
-                container_name,
-                exc_info=True,
-            )
 
     async def _sync_dns_to(self, container_name: str) -> None:
-        try:
+        async with _log_on_failure(
+            "Could not sync DNS into container %s", container_name
+        ):
             resolv_content = Path("/etc/resolv.conf").read_text()
             await self._exec_sync_script(container_name, "dns", resolv_content)
-        except Exception:
-            logger.warning(
-                "Could not sync DNS into container %s",
-                container_name,
-                exc_info=True,
-            )

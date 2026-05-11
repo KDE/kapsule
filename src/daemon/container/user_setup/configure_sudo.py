@@ -6,8 +6,7 @@
 
 import subprocess
 
-from ...incus_client import IncusError
-from ...operations import OperationError
+from ...operations import incus_context
 from ..contexts import UserSetupContext
 from . import user_setup_pipeline
 
@@ -23,7 +22,7 @@ async def configure_sudo(ctx: UserSetupContext) -> None:
     )
     sudoers_content = f"{ctx.username} ALL=(ALL) NOPASSWD:ALL\n"
     sudoers_file = f"/etc/sudoers.d/{ctx.username}"
-    try:
+    async with incus_context("configure sudo"):
         await ctx.incus.push_file(
             ctx.container_name,
             sudoers_file,
@@ -32,5 +31,3 @@ async def configure_sudo(ctx: UserSetupContext) -> None:
             gid=0,
             mode="0440",
         )
-    except IncusError as e:
-        raise OperationError(f"Failed to configure sudo: {e}") from e
