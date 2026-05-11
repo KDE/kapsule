@@ -57,6 +57,7 @@ dev = [
     "black>=23.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
+    "pyright>=1.1.350",
     "types-PyYAML",
 ]
 
@@ -115,6 +116,19 @@ ignore = [
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 include = ["src/daemon"]
+exclude = ["src/daemon/models_generated.py"]
+venvPath = "."
+venv = ".venv"
+
+# Don't let untyped libraries (dbus_fast) cascade Unknown through everything.
+# Strict mode still enforces reportMissingParameterType / reportMissingTypeArgument
+# on our own code, so we lose nothing meaningful.
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownParameterType = "none"
+reportUntypedFunctionDecorator = "none"
+reportUntypedBaseClass = "none"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

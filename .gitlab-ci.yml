@@ -19,9 +19,11 @@ lint-python:
   rules:
     - !reference [.default_rules, rules]
   script:
-    - pip install ruff pyright pydantic httpx dbus-fast websockets typer rich pyyaml
-    - ruff check src/daemon/
-    - pyright src/daemon/
+    - python -m venv .venv
+    - .venv/bin/pip install --upgrade pip
+    - .venv/bin/pip install -e ".[dev]"
+    - .venv/bin/ruff check src/daemon/
+    - .venv/bin/pyright src/daemon/
 
 .build_common: &build_common
   stage: build
