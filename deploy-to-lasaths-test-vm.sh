@@ -59,7 +59,7 @@ sudo tar -cf ${serve_dir}/kapsule.tar -C "$install_dir" usr
 python -m http.server --directory "$serve_dir" 8080 &
 trap "kill $!" EXIT
 
-ssh root@192.168.100.129 \
+ssh root@192.168.100.185 \
     "importctl pull-tar --class=sysext --verify=no --force http://192.168.100.1:8080/kapsule.tar && \
      systemd-sysext refresh && \
      systemctl daemon-reload && \

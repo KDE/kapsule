@@ -15,7 +15,7 @@ import pytest
 # VM configuration
 # ---------------------------------------------------------------------------
 
-TEST_VM = os.environ.get("KAPSULE_TEST_VM", "192.168.100.129")
+TEST_VM = os.environ.get("KAPSULE_TEST_VM", "192.168.100.185")
 SSH_OPTS = [
     "-o",
     "ConnectTimeout=5",

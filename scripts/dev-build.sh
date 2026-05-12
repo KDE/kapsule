@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-REMOTE="${KAPSULE_VM:-192.168.100.129}"
+REMOTE="${KAPSULE_VM:-192.168.100.185}"
 IMAGE="${1:-archlinux}"
 IMAGE_DIR="images/$IMAGE"
 
