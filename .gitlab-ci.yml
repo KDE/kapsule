@@ -34,8 +34,6 @@ lint-python:
   id_tokens:
     MINIO_OIDC:
       aud: https://tokens.kde.org
-  variables:
-    RUNNER_AFTER_SCRIPT_TIMEOUT: 1h
   artifacts:
     expire_in: 7 days
     when: always
@@ -47,9 +45,12 @@ lint-python:
     - mkdir -p out streams
     - sudo images/build-image.sh out/
     - python3 images/generate-simplestreams.py images/ out/ streams/
+    - images/upload-images.sh "${UPLOAD_REMOTE:?UPLOAD_REMOTE must be set by the per-job variables block}"
 
 build-images:
   <<: *build_common
+  variables:
+    UPLOAD_REMOTE: "storage.kde.org/ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}/"
   rules:
     - if: $CI_MERGE_REQUEST_DRAFT == "true"
       when: manual
@@ -60,23 +61,17 @@ build-images:
         - images/**/*
         - .gitlab-ci.yml
       when: always
-  after_script:
-    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}"
 
 build-images+publish:
   <<: *build_common
+  variables:
+    UPLOAD_REMOTE: "storage.kde.org/kapsule-images/"
   rules:
     - if: $CI_COMMIT_REF_PROTECTED == 'true' && $CI_DEFAULT_BRANCH == $CI_COMMIT_REF_NAME && $CI_PROJECT_PATH == 'kde-linux/kapsule'
       changes:
         - images/**/*
         - .gitlab-ci.yml
       when: always
-  script:
-    - sudo pacman -Sy --noconfirm python-yaml jq squashfs-tools mkosi
-    - mkdir -p out streams
-    - sudo images/build-image.sh out/
-    - python3 images/generate-simplestreams.py images/ out/ streams/
-    - images/upload-images.sh "ci-artifacts/${CI_PROJECT_PATH}/j/${CI_JOB_ID}"
 
 build-sysext:
   stage: build

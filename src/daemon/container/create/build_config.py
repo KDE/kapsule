@@ -28,89 +28,28 @@ from . import create_pipeline
 
 log = logging.getLogger(__name__)
 
-# Map common server aliases to URLs
+# Map common server aliases to URLs.
+#
+# `kapsule` points at the stable simplestreams bucket published by the
+# build-images+publish CI job on every master build. The URL is stable:
+# refresh on a cached kapsule image just re-checks this index, no
+# GitLab-API job-ID lookup required.
 SERVER_MAP = {
     "images": "https://images.linuxcontainers.org",
     "ubuntu": "https://cloud-images.ubuntu.com/releases",
+    "kapsule": "https://storage.kde.org/kapsule-images",
 }
 
-_KAPSULE_PROJECT_ID = 24978
-_KAPSULE_GITLAB_API = "https://invent.kde.org/api/v4"
-_KAPSULE_S3_BASE = "https://storage.kde.org/ci-artifacts/kde-linux/kapsule/j"
 
-
-def is_kapsule_server(url: str) -> bool:
-    """Return ``True`` if *url* points to the kapsule S3 artifact store.
-
-    Kapsule server URLs contain a per-build job ID suffix
-    (e.g. ``.../j/4177006``), so two URLs from different builds will never
-    be equal even though they reference the same logical image server.
-    This helper lets callers match on the stable prefix instead.
-    """
-    return url.startswith(_KAPSULE_S3_BASE + "/")
-
-
-async def resolve_server(alias: str) -> str:
-    """Resolve a server alias to a URL.
-
-    Static aliases are looked up in SERVER_MAP. The ``kapsule`` alias is
-    resolved dynamically by querying the GitLab API for the latest
-    successful build job and constructing the S3 URL for that job's
-    artifacts.
-    """
-    if alias == "kapsule":
-        return await _resolve_kapsule_server()
+def resolve_server(alias: str) -> str:
+    """Resolve a server alias to a URL via SERVER_MAP."""
     url = SERVER_MAP.get(alias)
     if not url:
         raise OperationError(
             f"Unknown server alias: '{alias}'. "
-            f"Known aliases: {', '.join([*SERVER_MAP, 'kapsule'])}"
+            f"Known aliases: {', '.join(SERVER_MAP)}"
         )
     return url
-
-
-async def _resolve_kapsule_server() -> str:
-    """Query GitLab for the latest successful kapsule image build job.
-
-    Uses the pipelines API (public) followed by the pipeline-jobs API
-    (also public), because the top-level ``/jobs`` endpoint on
-    invent.kde.org requires authentication even for public projects.
-    """
-    pipelines_url = (
-        f"{_KAPSULE_GITLAB_API}/projects/{_KAPSULE_PROJECT_ID}"
-        f"/pipelines?status=success&ref=master&per_page=20"
-    )
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(pipelines_url)
-        resp.raise_for_status()
-        pipelines = resp.json()
-
-        # Walk pipelines newest-first, looking for an image-build job.
-        for pipeline in pipelines:
-            jobs_url = (
-                f"{_KAPSULE_GITLAB_API}/projects/{_KAPSULE_PROJECT_ID}"
-                f"/pipelines/{pipeline['id']}/jobs"
-            )
-            resp = await client.get(jobs_url)
-            resp.raise_for_status()
-            jobs = resp.json()
-
-            for preferred in ("build-images+publish", "build-images"):
-                for job in jobs:
-                    if job["name"] == preferred and job["status"] == "success":
-                        job_id = job["id"]
-                        server_url = f"{_KAPSULE_S3_BASE}/{job_id}"
-                        log.info(
-                            "Resolved kapsule server to %s (pipeline %s)",
-                            server_url,
-                            pipeline["id"],
-                        )
-                        return server_url
-
-    raise OperationError(
-        "Could not find a successful kapsule image build. "
-        "Check https://invent.kde.org/kde-linux/kapsule/-/pipelines"
-    )
 
 
 @create_pipeline.step(order=-500)
@@ -155,7 +94,7 @@ async def parse_image_source(ctx: CreateContext) -> None:
             )
             return
 
-        server_url = await resolve_server(server_alias)
+        server_url = resolve_server(server_alias)
     else:
         server_url = "https://images.linuxcontainers.org"
         image_alias = image

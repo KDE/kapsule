@@ -45,7 +45,7 @@ from .constants import (
 )
 from .contexts import CreateContext, UserSetupContext
 from .create import create_pipeline
-from .create.build_config import is_kapsule_server, resolve_server
+from .create.build_config import resolve_server
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
@@ -383,7 +383,7 @@ class ContainerService:
         if image_spec:
             if ":" in image_spec:
                 server_alias, filter_alias = image_spec.split(":", 1)
-                filter_server = await resolve_server(server_alias)
+                filter_server = resolve_server(server_alias)
             else:
                 # Bare alias — match any server with this alias
                 filter_alias = image_spec
@@ -409,22 +409,15 @@ class ContainerService:
             progress.warning("No auto-update images found")
             return
 
-        # Apply server:alias filter.
-        # Kapsule server URLs embed a per-build job ID, so a straight
-        # equality check would never match once a new build is published.
-        # Use a prefix match for kapsule URLs instead.
+        # Apply server:alias filter. Server URLs are stable now (kapsule
+        # included), so a straight equality check is sufficient.
         matched: list[Image] = []
         for img in candidates:
             src = img.update_source
             assert src is not None  # guarded by filter above
 
-            if filter_server and src.server:
-                if filter_server == src.server:
-                    pass  # exact match — always OK
-                elif is_kapsule_server(filter_server) and is_kapsule_server(src.server):
-                    pass  # both are kapsule URLs — match on prefix
-                else:
-                    continue
+            if filter_server and src.server != filter_server:
+                continue
             if filter_alias and src.alias != filter_alias:
                 continue
             matched.append(img)
@@ -437,25 +430,6 @@ class ContainerService:
 
         progress.info(f"Found {len(matched)} image(s) to refresh")
 
-        # When refreshing all images (no explicit filter), we still need
-        # to know the current kapsule server URL so that stale kapsule
-        # images can be re-downloaded from the latest build.
-        kapsule_server: str | None = filter_server
-        if kapsule_server is None and any(
-            img.update_source
-            and img.update_source.server
-            and is_kapsule_server(img.update_source.server)
-            for img in matched
-        ):
-            try:
-                kapsule_server = await resolve_server("kapsule")
-            except Exception:
-                logger.warning(
-                    "Could not resolve latest kapsule server; "
-                    "kapsule images will attempt in-place refresh",
-                    exc_info=True,
-                )
-
         refreshed = 0
         unchanged = 0
         for img in matched:
@@ -466,72 +440,27 @@ class ContainerService:
             try:
                 assert img.fingerprint is not None
 
-                # Kapsule images: if the resolved server URL differs from
-                # the one baked into the cached image we must delete and
-                # re-download, because Incus refresh_image always pulls
-                # from the original update_source URL which may no longer
-                # exist on the CDN.
-                effective_server = (
-                    kapsule_server
-                    if (src.server and is_kapsule_server(src.server))
-                    else filter_server
+                progress.info(f"Refreshing: {label}")
+                op_id = await self._incus.refresh_image(img.fingerprint)
+                op = await wait_operation_with_progress(
+                    self._incus,
+                    op_id,
+                    progress,
+                    description=f"Refreshing {label}...",
+                    timeout=300,
                 )
-
-                needs_redownload = (
-                    effective_server
-                    and src.server
-                    and effective_server != src.server
-                    and is_kapsule_server(src.server)
+                # Incus' refresh op signals whether anything actually
+                # changed via metadata["refreshed"]: True means it
+                # downloaded a new fingerprint, False means the cached
+                # simplestreams index reported the same version as the
+                # locally stored image (or the cache TTL hadn't
+                # expired and it never re-checked the upstream).
+                # Default to False on missing/malformed metadata --
+                # we'd rather under-report a successful refresh than
+                # claim one that didn't happen.
+                op_refreshed = bool(
+                    (op.metadata or {}).get("refreshed", False)
                 )
-
-                if needs_redownload:
-                    assert src.alias is not None
-                    assert src.protocol is not None
-                    assert effective_server is not None
-
-                    progress.info(
-                        f"New kapsule build detected, "
-                        f"re-downloading {src.alias} from {effective_server}"
-                    )
-                    await self._incus.delete_image(img.fingerprint)
-                    op_id = await self._incus.download_remote_image(
-                        server=effective_server,
-                        protocol=src.protocol,
-                        alias=src.alias,
-                    )
-                    op = await wait_operation_with_progress(
-                        self._incus,
-                        op_id,
-                        progress,
-                        description=f"Downloading {src.alias}...",
-                        timeout=300,
-                    )
-                    # download_remote_image always fetches fresh content,
-                    # so a Success here unambiguously means the image was
-                    # replaced.
-                    op_refreshed: bool = True
-                else:
-                    progress.info(f"Refreshing: {label}")
-                    op_id = await self._incus.refresh_image(img.fingerprint)
-                    op = await wait_operation_with_progress(
-                        self._incus,
-                        op_id,
-                        progress,
-                        description=f"Refreshing {label}...",
-                        timeout=300,
-                    )
-                    # Incus' refresh op signals whether anything actually
-                    # changed via metadata["refreshed"]: True means it
-                    # downloaded a new fingerprint, False means the cached
-                    # simplestreams index reported the same version as the
-                    # locally stored image (or the cache TTL hadn't
-                    # expired and it never re-checked the upstream).
-                    # Default to False on missing/malformed metadata --
-                    # we'd rather under-report a successful refresh than
-                    # claim one that didn't happen.
-                    op_refreshed = bool(
-                        (op.metadata or {}).get("refreshed", False)
-                    )
 
                 if op.status == "Success":
                     if op_refreshed:

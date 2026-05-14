@@ -16,6 +16,11 @@ streams/
 images/mkosi.output/
 sysext/mkosi.output/
 
+# Cloned by images/upload-images.sh when invoked locally; in CI it
+# lives under CI_PROJECT_DIR (which the runner cleans between jobs)
+# so this only matters for local-dev invocations.
+.ci-utilities/
+
 # Integration-test fixture build output. Built locally by the
 # refresh-investigation probe under tests/integration/probes/, never
 # checked in (see tests/integration/fixtures/test-image/mkosi.conf).

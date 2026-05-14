@@ -5,90 +5,82 @@
 
 # Upload built kapsule images + simplestreams metadata to KDE S3 storage.
 #
-# Usage: ./scripts/upload-images.sh <s3-target-path>
+# Usage: ./images/upload-images.sh <s3-host-and-path>
 #
 # Examples:
-#   ./scripts/upload-images.sh ci-artifacts/kde-linux/kapsule/images          # production
-#   ./scripts/upload-images.sh ci-artifacts/kde-linux/kapsule/j/12345          # CI preview
+#   ./images/upload-images.sh storage.kde.org/kapsule-images/                            # production
+#   ./images/upload-images.sh storage.kde.org/ci-artifacts/kde-linux/kapsule/j/12345/    # CI preview
 #
 # Requires:
-#   - MINIO_OIDC environment variable (GitLab OIDC JWT)
+#   - MINIO_OIDC environment variable (GitLab OIDC JWT, audience
+#     https://tokens.kde.org)
 #   - Built images in out/ and simplestreams metadata in streams/
-#   - curl, jq
+#   - python3, git, pip
+#
+# This delegates the actual upload to sysadmin/ci-utilities/sync-s3-folder.py
+# rather than calling the S3 API directly. The KDE Tokens service that
+# redeems MINIO_OIDC issues credentials whose policy is keyed on the
+# S3 client + request shape produced by that script (kde-linux-packages
+# uses the same recipe), so going through it is the path that's
+# guaranteed to be authorised against buckets like kapsule-images/.
 
 set -euo pipefail
 
-S3_TARGET="${1:?Usage: $0 <s3-target-path>}"
-S3_HOST="storage.kde.org"
-TOKEN_URL="https://tokens.kde.org/minio/gitlab"
-
-# --- Token redemption ---
+S3_REMOTE="${1:?Usage: $0 <s3-host-and-path>}"
 
 if [ -z "${MINIO_OIDC:-}" ]; then
     echo "Error: MINIO_OIDC environment variable is not set" >&2
     exit 1
 fi
 
-echo "Redeeming OIDC token for S3 credentials ..."
-CREDS=$(curl -sfL -X POST -d "token=${MINIO_OIDC}" "${TOKEN_URL}")
+# --- Fetch ci-utilities and its dependencies ---
+#
+# Cloned fresh each run rather than baked into the CI image so the
+# upload always uses whatever the sysadmin team has on master. Cheap
+# enough -- the repo is small and the clone is shallow.
+#
+# Path convention follows ci-utilities's own README: "Clone the
+# ci-utilities repository in your checkout of your project." In CI,
+# CI_PROJECT_DIR is the runner-managed project checkout (cleaned
+# between jobs); locally it's unset and we fall back to $PWD, which
+# the script's working-directory expectations (out/, streams/) already
+# require to be the project root. The .ci-utilities prefix marks the
+# directory as build scaffolding rather than a real project subtree.
 
-AWS_ACCESS_KEY_ID=$(echo "${CREDS}" | jq -r '.AccessKeyId')
-AWS_SECRET_ACCESS_KEY=$(echo "${CREDS}" | jq -r '.SecretAccessKey')
-AWS_SESSION_TOKEN=$(echo "${CREDS}" | jq -r '.SessionToken')
-
-if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ "${AWS_ACCESS_KEY_ID}" = "null" ]; then
-    echo "Error: Failed to obtain S3 credentials from token endpoint" >&2
-    exit 1
+CI_UTILITIES_DIR="${CI_PROJECT_DIR:-$PWD}/.ci-utilities"
+if [ ! -d "${CI_UTILITIES_DIR}" ]; then
+    echo "Cloning sysadmin/ci-utilities into ${CI_UTILITIES_DIR} ..."
+    git clone --depth=1 https://invent.kde.org/sysadmin/ci-utilities.git "${CI_UTILITIES_DIR}"
 fi
 
-# --- Install mc (MinIO CLI) if not available ---
-
-if ! command -v mc &>/dev/null; then
-    echo "Installing MinIO mc client ..."
-    MC_DIR="${HOME}/.local/bin"
-    mkdir -p "${MC_DIR}"
-    curl -sfL -o "${MC_DIR}/mc" "https://dl.min.io/client/mc/release/linux-amd64/mc"
-    chmod +x "${MC_DIR}/mc"
-    export PATH="${MC_DIR}:${PATH}"
-    if ! mc --version &>/dev/null; then
-        echo "Error: Downloaded mc binary is not functional" >&2
-        exit 1
+# sync-s3-folder.py uses the minio python client; install it if missing.
+# python-pip itself isn't shipped on every CI image (kde-linux-builder
+# doesn't have it preinstalled), so install that first via pacman if
+# needed. --break-system-packages is required on PEP 668 distros (Arch,
+# recent Debian) where pip refuses to touch the system site-packages
+# otherwise.
+if ! python3 -c 'import minio' 2>/dev/null; then
+    if ! command -v pip >/dev/null 2>&1 && ! python3 -m pip --version >/dev/null 2>&1; then
+        echo "Installing python-pip ..."
+        sudo pacman -Sy --noconfirm python-pip
     fi
+    echo "Installing minio python client ..."
+    python3 -m pip install minio --break-system-packages
 fi
-
-# --- Configure mc ---
-
-# mc alias set doesn't support session tokens, so write the config directly.
-MC_CONFIG_DIR="${HOME}/.mc"
-mkdir -p "${MC_CONFIG_DIR}"
-cat > "${MC_CONFIG_DIR}/config.json" <<EOF
-{
-  "version": "10",
-  "aliases": {
-    "kde": {
-      "url": "https://${S3_HOST}",
-      "accessKey": "${AWS_ACCESS_KEY_ID}",
-      "secretKey": "${AWS_SECRET_ACCESS_KEY}",
-      "sessionToken": "${AWS_SESSION_TOKEN}",
-      "api": "S3v4",
-      "path": "auto"
-    }
-  }
-}
-EOF
-chmod 600 "${MC_CONFIG_DIR}/config.json"
 
 # --- Prepare upload tree ---
+#
+# generate-simplestreams.py writes its index under streams/v1/ and
+# expects image files at images/<name>/<arch>/<version>/<file>.
+# Mirror that layout into upload-tree/ so the sync uploads exactly the
+# paths the simplestreams index references.
 
 echo "Preparing upload tree ..."
 rm -rf upload-tree
 mkdir -p upload-tree/streams/v1
 
-# Copy simplestreams metadata
 cp streams/v1/index.json streams/v1/images.json upload-tree/streams/v1/
 
-# Copy image artifacts into paths matching what generate-simplestreams.py produced.
-# The generator uses: images/<name>/<arch>/<version>/<file>
 for image_out in out/*/; do
     image_name=$(basename "${image_out}")
     version=$(cat "${image_out}/version" 2>/dev/null || date +%Y%m%d)
@@ -100,8 +92,12 @@ done
 
 # --- Upload ---
 
-echo "Uploading to kde/${S3_TARGET}/ ..."
-mc mirror --overwrite --retry upload-tree/ "kde/${S3_TARGET}/"
+echo "Uploading to ${S3_REMOTE} ..."
+"${CI_UTILITIES_DIR}/sync-s3-folder.py" \
+    --mode upload \
+    --local upload-tree/ \
+    --remote "${S3_REMOTE}" \
+    --verbose
 
 echo "Upload complete."
-echo "Simplestreams index: https://${S3_HOST}/${S3_TARGET}/streams/v1/index.json"
+echo "Simplestreams index: https://${S3_REMOTE%/}/streams/v1/index.json"
