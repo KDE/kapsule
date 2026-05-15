@@ -34,10 +34,16 @@ log = logging.getLogger(__name__)
 # build-images+publish CI job on every master build. The URL is stable:
 # refresh on a cached kapsule image just re-checks this index, no
 # GitLab-API job-ID lookup required.
+#
+# The `simplestreams/` segment is a workaround for sync-s3-folder.py's
+# URL regex, which requires a non-empty prefix after the bucket name --
+# we can't upload to the bucket root. The bucket itself is reserved for
+# future use (other artifact layouts), so naming the simplestreams tree
+# explicitly inside it leaves room for siblings.
 SERVER_MAP = {
     "images": "https://images.linuxcontainers.org",
     "ubuntu": "https://cloud-images.ubuntu.com/releases",
-    "kapsule": "https://storage.kde.org/kapsule-images",
+    "kapsule": "https://storage.kde.org/kapsule-images/simplestreams",
 }
 
 

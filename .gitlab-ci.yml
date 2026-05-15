@@ -65,7 +65,7 @@ build-images:
 build-images+publish:
   <<: *build_common
   variables:
-    UPLOAD_REMOTE: "storage.kde.org/kapsule-images/"
+    UPLOAD_REMOTE: "storage.kde.org/kapsule-images/simplestreams/"
   rules:
     - if: $CI_COMMIT_REF_PROTECTED == 'true' && $CI_DEFAULT_BRANCH == $CI_COMMIT_REF_NAME && $CI_PROJECT_PATH == 'kde-linux/kapsule'
       changes:
