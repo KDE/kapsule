@@ -387,6 +387,19 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
                       QStringLiteral("Base image to use (e.g., images:ubuntu/24.04)"),
                       QStringLiteral("image")});
 
+    // ``--mr`` is sugar for the ``kapsule-mr:`` image-source prefix the
+    // daemon resolves. We translate flag form to alias form before
+    // sending so the daemon only has one input grammar to deal with.
+    // Accepts:
+    //   --mr 42                   -> kapsule-mr:42:<image>
+    //   --mr alice/kapsule!7      -> kapsule-mr:alice/kapsule!7:<image>
+    parser.addOption({QStringLiteral("mr"),
+                      QStringLiteral("Pull image from an MR's CI build "
+                                     "(e.g., '42' or 'alice/kapsule!7'). "
+                                     "Requires --image to name a built image "
+                                     "(e.g., archlinux)."),
+                      QStringLiteral("mr-ref")});
+
     // Add schema-driven flags
     const auto schemaOptions = schemaToCliOptions(schema);
     for (const auto &cliOpt : schemaOptions) {
@@ -414,6 +427,24 @@ QCoro::Task<int> cmdCreate(KapsuleClient &client, const QStringList &args)
 
     QString name = positional.at(0);
     QString image = parser.value(QStringLiteral("image"));
+
+    // Translate --mr to the kapsule-mr: image-source prefix. We do this
+    // here (rather than in the daemon) so the daemon's input grammar
+    // stays uniform: one image string in, one image source out.
+    if (parser.isSet(QStringLiteral("mr"))) {
+        QString mrRef = parser.value(QStringLiteral("mr"));
+        if (image.isEmpty()) {
+            o.error("--mr requires --image to name a built image (e.g., archlinux)");
+            co_return 1;
+        }
+        if (image.contains(QStringLiteral(":"))) {
+            o.error(
+                "--image must be a plain alias (e.g., 'archlinux') when --mr is set, "
+                "not a server-prefixed reference like 'images:alpine/edge'");
+            co_return 1;
+        }
+        image = QStringLiteral("kapsule-mr:%1:%2").arg(mrRef, image);
+    }
 
     // Build variant map from user-specified flags only
     QVariantMap optionsMap = cliToVariantMap(parser, schema);

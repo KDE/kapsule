@@ -46,6 +46,32 @@ SERVER_MAP = {
     "kapsule": "https://storage.kde.org/kapsule-images/simplestreams",
 }
 
+# `kapsule-mr:` resolves a merge-request reference on invent.kde.org to
+# the simplestreams URL where that MR's `build-images` CI job uploaded
+# its artifacts. Lets contributors test in-flight image changes with a
+# single command, no mkosi setup required.
+#
+# Format:
+#   kapsule-mr:<iid>:<image>                       -- canonical project
+#   kapsule-mr:<namespace>/<project>!<iid>:<image> -- fork (! is GitLab's
+#                                                     own MR-ref syntax)
+#
+# Examples:
+#   kapsule-mr:42:archlinux
+#   kapsule-mr:alice/kapsule!7:archlinux
+#
+# Resolution makes three anonymous GitLab API calls (project lookup, MR
+# lookup, jobs list). The project must be public; private projects would
+# need an access token plumbed through the daemon, which we don't do.
+KAPSULE_MR_PREFIX = "kapsule-mr:"
+GITLAB_HOST = "https://invent.kde.org"
+GITLAB_API = f"{GITLAB_HOST}/api/v4"
+KAPSULE_MR_DEFAULT_PROJECT = "kde-linux/kapsule"
+# The CI artifact bucket layout mirrors the GitLab project path so that
+# fork pipelines and the canonical project don't collide. See
+# `.gitlab-ci.yml` ``UPLOAD_REMOTE`` and ``images/upload-images.sh``.
+KAPSULE_MR_ARTIFACT_BASE = "https://storage.kde.org/ci-artifacts"
+
 
 def resolve_server(alias: str) -> str:
     """Resolve a server alias to a URL via SERVER_MAP."""
@@ -56,6 +82,144 @@ def resolve_server(alias: str) -> str:
             f"Known aliases: {', '.join(SERVER_MAP)}"
         )
     return url
+
+
+def parse_kapsule_mr_image(image: str) -> tuple[str, str, int]:
+    """Parse a ``kapsule-mr:...`` reference into (project_path, image_alias, iid).
+
+    Accepts:
+
+    * ``kapsule-mr:<iid>:<image>``                     -- canonical project
+    * ``kapsule-mr:<ns>/<project>!<iid>:<image>``      -- fork
+
+    Raises ``OperationError`` on malformed input. Does no network I/O;
+    network resolution happens in :func:`resolve_kapsule_mr_server`.
+    """
+    assert image.startswith(KAPSULE_MR_PREFIX)
+    rest = image[len(KAPSULE_MR_PREFIX) :]
+
+    # ``rpartition`` on ``:`` so the image alias is everything after the
+    # last colon. This is unambiguous because image aliases never
+    # contain ``:`` (they may contain ``/``, e.g. ``alpine/edge``, which
+    # is why we don't ``split(':')`` and take ``[-1]`` on the whole
+    # form -- we want to allow ``:`` in the ref-part if anyone ever
+    # invents one).
+    ref_part, sep, image_alias = rest.rpartition(":")
+    if not sep or not ref_part or not image_alias:
+        raise OperationError(
+            f"Invalid kapsule-mr reference '{image}'. "
+            f"Expected 'kapsule-mr:<iid>:<image>' "
+            f"(e.g. 'kapsule-mr:42:archlinux') or "
+            f"'kapsule-mr:<namespace>/<project>!<iid>:<image>' "
+            f"(e.g. 'kapsule-mr:alice/kapsule!7:archlinux')."
+        )
+
+    if "!" in ref_part:
+        project_path, _, iid_str = ref_part.rpartition("!")
+        if not project_path or not iid_str:
+            raise OperationError(
+                f"Invalid kapsule-mr reference '{image}': "
+                f"fork form must be '<namespace>/<project>!<iid>'."
+            )
+    else:
+        project_path = KAPSULE_MR_DEFAULT_PROJECT
+        iid_str = ref_part
+
+    if not iid_str.isdigit():
+        raise OperationError(
+            f"Invalid kapsule-mr reference '{image}': "
+            f"MR iid '{iid_str}' must be a positive integer."
+        )
+
+    return project_path, image_alias, int(iid_str)
+
+
+async def resolve_kapsule_mr_server(project_path: str, iid: int) -> str:
+    """Look up the most recent successful ``build-images`` job for an MR.
+
+    Returns the simplestreams server URL for its uploaded artifacts.
+
+    Makes three anonymous GitLab API calls (project lookup, MR lookup,
+    jobs list). Raises ``OperationError`` with a user-actionable message
+    on any failure -- the resolver is the one place that knows enough
+    context to suggest "click play on the pipeline" or "the build
+    expired, re-run it".
+    """
+    import urllib.parse
+
+    encoded_path = urllib.parse.quote(project_path, safe="")
+    pipeline_url = f"{GITLAB_HOST}/{project_path}"
+    timeout = httpx.Timeout(10.0)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            # 1. Project path -> numeric id. We could skip this for the
+            # canonical project (hardcode 24978) but the extra call is
+            # cheap and avoids special-casing.
+            proj_resp = await client.get(f"{GITLAB_API}/projects/{encoded_path}")
+            if proj_resp.status_code == 404:
+                raise OperationError(
+                    f"GitLab project '{project_path}' not found on invent.kde.org. "
+                    f"Check the namespace/path is correct and the project is public."
+                )
+            proj_resp.raise_for_status()
+            project_id = proj_resp.json()["id"]
+
+            # 2. MR -> head_pipeline. ``head_pipeline`` is the latest
+            # pipeline for the MR's source branch; that's the one we
+            # want, not whatever was running when the MR was opened.
+            mr_resp = await client.get(
+                f"{GITLAB_API}/projects/{project_id}/merge_requests/{iid}"
+            )
+            if mr_resp.status_code == 404:
+                raise OperationError(
+                    f"Merge request !{iid} not found in {project_path}."
+                )
+            mr_resp.raise_for_status()
+            mr = mr_resp.json()
+            head_pipeline = mr.get("head_pipeline")
+            if not head_pipeline:
+                raise OperationError(
+                    f"MR !{iid} in {project_path} has no pipeline yet. "
+                    f"Push a commit to its source branch to trigger one."
+                )
+            pipeline_id = head_pipeline["id"]
+            pipeline_url = head_pipeline.get("web_url") or pipeline_url
+
+            # 3. Jobs in the pipeline -> the build-images one. We look
+            # for status==success specifically; pending/manual/failed
+            # all mean "no artifacts to fetch yet" and the user needs
+            # to act in the GitLab UI.
+            jobs_resp = await client.get(
+                f"{GITLAB_API}/projects/{project_id}/pipelines/{pipeline_id}/jobs"
+            )
+            jobs_resp.raise_for_status()
+            jobs = jobs_resp.json()
+    except httpx.HTTPError as e:
+        raise OperationError(
+            f"Failed to query invent.kde.org for MR !{iid} in {project_path}: {e}"
+        ) from e
+
+    build_jobs = [j for j in jobs if j.get("name") == "build-images"]
+    if not build_jobs:
+        raise OperationError(
+            f"MR !{iid} in {project_path} has no 'build-images' job. "
+            f"Did its pipeline include image changes?"
+        )
+
+    success_jobs = [j for j in build_jobs if j.get("status") == "success"]
+    if not success_jobs:
+        statuses = ", ".join(sorted({j.get("status", "?") for j in build_jobs}))
+        raise OperationError(
+            f"No successful 'build-images' job for MR !{iid} in {project_path} "
+            f"(status: {statuses}). On MR pipelines build-images is manual -- "
+            f"click play at {pipeline_url}."
+        )
+
+    # If multiple successes (e.g. retries), the highest job id is the
+    # most recent.
+    job_id = max(j["id"] for j in success_jobs)
+    return f"{KAPSULE_MR_ARTIFACT_BASE}/{project_path}/j/{job_id}"
 
 
 @create_pipeline.step(order=-500)
@@ -70,7 +234,16 @@ async def parse_image_source(ctx: CreateContext) -> None:
     """Parse the image string into an InstanceSource."""
     image = ctx.image
 
-    if ":" in image:
+    # ``kapsule-mr:`` has its own multi-segment grammar (and resolution
+    # requires async HTTP), so it's handled before the generic
+    # ``server:alias`` split.
+    if image.startswith(KAPSULE_MR_PREFIX):
+        project_path, image_alias, iid = parse_kapsule_mr_image(image)
+        ctx.progress.info(
+            f"Resolving MR !{iid} in {project_path} on invent.kde.org..."
+        )
+        server_url = await resolve_kapsule_mr_server(project_path, iid)
+    elif ":" in image:
         server_alias, image_alias = image.split(":", 1)
 
         # "local:" references images already present in the Incus local image
