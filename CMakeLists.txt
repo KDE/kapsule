@@ -240,14 +240,17 @@ endif()
 # ============================================================================
 
 if(INSTALL_PYTHON_DAEMON)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SYSTEMD REQUIRED systemd)
+
+    pkg_get_variable(SYSTEMD_SYSTEM_UNIT_DIR systemd systemdsystemunitdir)
+    pkg_get_variable(SYSTEMD_SYSTEM_PRESET_DIR systemd systemdsystempresetdir)
+    pkg_get_variable(SYSTEMD_MODULES_LOAD_DIR systemd modulesloaddir)
+
     # Full paths for service file variable substitution
     set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
     set(KAPSULE_PYTHON_DIR "${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/python")
     set(KAPSULE_VENDOR_DIR "${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/vendor")
-
-    # Systemd unit directory (relative to CMAKE_INSTALL_PREFIX)
-    set(KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR "${KDE_INSTALL_LIBDIR}/systemd/system")
-    set(KAPSULE_SYSTEMD_PRESET_DIR "${KDE_INSTALL_LIBDIR}/systemd/system-preset")
 
     # D-Bus directories
     set(KAPSULE_DBUS_SYSTEM_SERVICE_DIR "share/dbus-1/system-services")
@@ -261,37 +264,37 @@ if(INSTALL_PYTHON_DAEMON)
     )
     install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/systemd/system/kapsule-daemon.service"
-        DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}"
+        DESTINATION "${SYSTEMD_SYSTEM_UNIT_DIR}"
     )
 
     # Install drop-in for incus-user.socket to allow all users access
     install(FILES
         data/systemd/system/incus-user.socket.d/kapsule-socket-mode.conf
-        DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}/incus-user.socket.d"
+        DESTINATION "${SYSTEMD_SYSTEM_UNIT_DIR}/incus-user.socket.d"
     )
 
     # Install drop-in for incus.socket to use wheel group
     install(FILES
         data/systemd/system/incus.socket.d/kapsule-socket-group.conf
-        DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}/incus.socket.d"
+        DESTINATION "${SYSTEMD_SYSTEM_UNIT_DIR}/incus.socket.d"
     )
 
     # Install drop-in for incus.service (log dir + wheel group)
     install(FILES
         data/systemd/system/incus.service.d/kapsule-log-dir.conf
-        DESTINATION "${KAPSULE_SYSTEMD_SYSTEM_UNIT_DIR}/incus.service.d"
+        DESTINATION "${SYSTEMD_SYSTEM_UNIT_DIR}/incus.service.d"
     )
 
     # Install systemd preset to enable incus sockets by default
     install(FILES
         data/systemd/system-preset/50-kapsule.preset
-        DESTINATION "${KAPSULE_SYSTEMD_PRESET_DIR}"
+        DESTINATION "${SYSTEMD_SYSTEM_PRESET_DIR}"
     )
 
     # Install modules-load.d config for nested container support (Docker/Podman inside containers)
     install(FILES
         data/modules-load.d/kapsule.conf
-        DESTINATION "${KDE_INSTALL_LIBDIR}/modules-load.d"
+        DESTINATION "${SYSTEMD_MODULES_LOAD_DIR}"
     )
 
     # Configure D-Bus system service (auto-activation)
@@ -410,7 +413,7 @@ if(INSTALL_PYTHON_DAEMON)
     message(STATUS "    Vendor deps:     ${VENDOR_PYTHON_DEPS}")
     message(STATUS "    Install path:    ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/python")
     message(STATUS "    Vendor path:     ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_DATADIR}/kapsule/vendor")
-    message(STATUS "    Systemd service: ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_LIBDIR}/systemd/system/")
+    message(STATUS "    Systemd service: ${SYSTEMD_SYSTEM_UNIT_DIR}/")
 endif()
 message(STATUS "  KDE components:    ${BUILD_KDE_COMPONENTS}")
 message(STATUS "")
