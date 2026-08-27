@@ -279,12 +279,6 @@ if(INSTALL_PYTHON_DAEMON)
         DESTINATION "${SYSTEMD_SYSTEM_UNIT_DIR}/incus.socket.d"
     )
 
-    # Install drop-in for incus.service (log dir + wheel group)
-    install(FILES
-        data/systemd/system/incus.service.d/kapsule-log-dir.conf
-        DESTINATION "${SYSTEMD_SYSTEM_UNIT_DIR}/incus.service.d"
-    )
-
     # Install systemd preset to enable incus sockets by default
     install(FILES
         data/systemd/system-preset/50-kapsule.preset
