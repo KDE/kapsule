@@ -13,8 +13,10 @@ import contextvars
 import json
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated
 
+import psutil
 from dbus_fast import BusType, Message, MessageType, Variant
 from dbus_fast.aio import MessageBus
 from dbus_fast.annotations import (
@@ -633,12 +635,23 @@ class KapsuleService:
             self._bus.disconnect()
             self._bus = None
 
+    async def _get_filesystem_type(self, path: Path) -> str | None:
+        for part in psutil.disk_partitions(all=False):
+            if Path(part.mountpoint) == path:
+                return part.fstype
+
+        # For non-mountpoints
+        for part in psutil.disk_partitions(all=False):
+            if path.is_relative_to(Path(part.mountpoint)):
+                return part.fstype
+
+        return None
+
     async def _ensure_storage_pool(self) -> None:
         """Ensure the 'default' btrfs storage pool exists.
 
-        KDE Linux uses btrfs for container storage.  If Incus has not
-        been initialised yet (first boot, sysext update, etc.) the pool
-        will be missing.  We create it here so that every subsequent
+        If Incus has not been initialised yet (first boot, sysext update, etc.)
+        the pool will be missing. We create it here so that every subsequent
         operation can assume it exists.
 
         This is fatal — without a storage pool nothing will work.
@@ -648,11 +661,16 @@ class KapsuleService:
             logger.info("Storage pool 'default' already exists")
             return
 
-        logger.info("Creating btrfs storage pool 'default'...")
+        filesystem_type = await self._get_filesystem_type(Path("/var/lib/incus"))
+        storage_driver = "dir"
+        if filesystem_type == "btrfs":
+            storage_driver = "btrfs"
+
+        logger.info("Creating %s storage pool 'default'...", storage_driver)
         try:
             await self._incus.create_storage_pool(
                 name="default",
-                driver="btrfs",
+                driver=storage_driver,
                 config={"source": "/var/lib/incus/storage-pools/default"},
             )
         except IncusError as e:

@@ -142,6 +142,7 @@ if(INSTALL_PYTHON_DAEMON AND VENDOR_PYTHON_DEPS)
         "dbus-fast>=2.0.0"
         "pyyaml>=6.0"
         "pydantic>=2.0"
+        "psutil>=7.2.0"
         # Transitive dependencies that need to be included
         "httpcore"
         "anyio"
