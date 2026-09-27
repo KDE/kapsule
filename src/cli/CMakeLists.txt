@@ -24,6 +24,10 @@ target_link_libraries(kapsule
         QCoro6::Core
 )
 
+target_compile_definitions(kapsule
+    PRIVATE KAPSULE_INCUS_CONFIG_DIR="${KDE_INSTALL_FULL_DATADIR}/kapsule/incus"
+)
+
 # Install kapsule executable
 install(TARGETS kapsule
     DESTINATION ${KDE_INSTALL_BINDIR}

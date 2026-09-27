@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 KDE Community
+# SPDX-License-Identifier: CC0-1.0
+
+remotes:
+  kapsule:
+    addr: https://storage.kde.org/kapsule-images/simplestreams
+    protocol: simplestreams
+    public: true

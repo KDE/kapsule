@@ -192,63 +192,6 @@ public:
         const QStringList &command = {},
         const QString &workingDirectory = {});
 
-    /**
-     * @brief Refresh cached images from their upstream sources.
-     *
-     * Triggers an immediate re-download of cached images that have
-     * auto_update enabled. Use this after rebuilding images upstream
-     * to ensure newly created containers get the latest version.
-     *
-     * @param image Image filter in "server:alias" format (e.g.,
-     *     "kapsule:archlinux"), or empty string to refresh all.
-     * @param callbacks Optional callbacks for progress messages and progress bars.
-     * @return Operation result with success/error info.
-     */
-    QCoro::Task<OperationResult> refreshImages(
-        const QString &image = {},
-        OperationCallbacks callbacks = {});
-
-    /**
-     * @brief Import a split image from a local directory.
-     *
-     * The directory must contain incus.tar.xz (metadata) and
-     * rootfs.squashfs (root filesystem). If an image with the
-     * given alias already exists it is replaced.
-     *
-     * @param path Path to the directory containing image files.
-     * @param alias Alias name to assign to the imported image.
-     * @param callbacks Optional callbacks for progress messages and progress bars.
-     * @return Operation result with success/error info.
-     */
-    QCoro::Task<OperationResult> importImage(
-        const QString &path,
-        const QString &alias,
-        OperationCallbacks callbacks = {});
-
-    /**
-     * @brief List all images known to the local Incus daemon.
-     *
-     * Returns a JSON string with an array of image objects.
-     * The caller is responsible for parsing the JSON.
-     *
-     * @return JSON string with the image list, or empty string on error.
-     */
-    QCoro::Task<QString> listImages();
-
-    /**
-     * @brief Delete an image by alias or fingerprint.
-     *
-     * Short identifiers (< 64 chars) are treated as aliases and
-     * resolved to a fingerprint first.
-     *
-     * @param identifier Image alias or full SHA-256 fingerprint.
-     * @param callbacks Optional callbacks for progress messages and progress bars.
-     * @return Operation result with success/error info.
-     */
-    QCoro::Task<OperationResult> deleteImage(
-        const QString &identifier,
-        OperationCallbacks callbacks = {});
-
 Q_SIGNALS:
     /**
      * @brief Emitted when the connection state changes.

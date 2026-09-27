@@ -118,6 +118,15 @@ kapsule create arch-dev --image images:archlinux
 
 See available images at: https://images.linuxcontainers.org
 
+The local image store is managed by Incus. `kapsule image` passes all arguments
+directly to `incus image`, so the full native Incus interface is available:
+
+```bash
+kapsule image list
+kapsule image import ./image --alias my-image --reuse
+kapsule image delete my-image
+```
+
 ## How It Works
 
 Kapsule creates Incus containers with a special profile that enables:

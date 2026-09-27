@@ -39,6 +39,10 @@ include(ECMQtDeclareLoggingCategory)
 include(ECMGeneratePkgConfigFile)
 include(FeatureSummary)
 
+install(FILES data/incus/config.yml
+    DESTINATION "${KDE_INSTALL_DATADIR}/kapsule/incus"
+)
+
 # ============================================================================
 # Version
 # ============================================================================

@@ -21,12 +21,10 @@ import logging
 import os
 import pwd
 import subprocess
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..config import load_config
 from ..incus_client import IncusClient, IncusError
-from ..models_generated import Image
 from ..operations import (
     NullOperationReporter,
     OperationError,
@@ -35,7 +33,6 @@ from ..operations import (
     incus_context,
     operation,
 )
-from ..progress_tracker import wait_operation_with_progress
 from .constants import (
     ENTER_ENV_SKIP,
     KAPSULE_DBUS_MUX_KEY,
@@ -45,7 +42,6 @@ from .constants import (
 )
 from .contexts import CreateContext, UserSetupContext
 from .create import create_pipeline
-from .create.build_config import resolve_server
 from .user_setup import user_setup_pipeline
 
 if TYPE_CHECKING:
@@ -347,242 +343,6 @@ class ContainerService:
             progress,
         )
         progress.success(f"User '{username}' configured")
-
-    # -------------------------------------------------------------------------
-    # Image Operations
-    # -------------------------------------------------------------------------
-
-    @operation(
-        "refresh_images",
-        description="Refreshing cached images",
-    )
-    async def refresh_images(
-        self,
-        progress: OperationReporter,
-        *,
-        image_spec: str,
-    ) -> None:
-        """Refresh cached images from their upstream sources.
-
-        For most image servers the upstream URL is stable and Incus can
-        refresh in-place.  Kapsule images are special: the server URL
-        contains a CI job ID that changes with every build, so the URL
-        stored in the cached image's ``update_source`` will eventually
-        go stale.  When that happens we delete the old cached image and
-        re-download from the latest server URL.
-
-        Args:
-            progress: Operation reporter (auto-injected)
-            image_spec: Image filter in "server:alias" format, or empty
-                string to refresh all auto-update images.
-        """
-        # Parse the image_spec filter
-        filter_server: str | None = None
-        filter_alias: str | None = None
-
-        if image_spec:
-            if ":" in image_spec:
-                server_alias, filter_alias = image_spec.split(":", 1)
-                filter_server = resolve_server(server_alias)
-            else:
-                # Bare alias — match any server with this alias
-                filter_alias = image_spec
-
-        # List all cached images
-        all_images = await self._incus.list_images()
-
-        # Filter to auto-update images that have an upstream we can fetch
-        # from. We deliberately do NOT require img.cached here: that flag is
-        # only set on images implicitly cached by `incus launch images:foo`,
-        # not on images copied via `incus image copy --auto-update remote:
-        # local:` -- which is how kapsule production images get into the
-        # local store. Filtering on `cached` made this whole code path a
-        # silent no-op for every kapsule install, so refresh has never
-        # actually done anything in production.
-        candidates = [
-            img
-            for img in all_images
-            if img.auto_update and img.update_source
-        ]
-
-        if not candidates:
-            progress.warning("No auto-update images found")
-            return
-
-        # Apply server:alias filter. Server URLs are stable now (kapsule
-        # included), so a straight equality check is sufficient.
-        matched: list[Image] = []
-        for img in candidates:
-            src = img.update_source
-            assert src is not None  # guarded by filter above
-
-            if filter_server and src.server != filter_server:
-                continue
-            if filter_alias and src.alias != filter_alias:
-                continue
-            matched.append(img)
-
-        if not matched:
-            if image_spec:
-                raise OperationError(f"No cached images match '{image_spec}'")
-            progress.warning("No images matched the filter")
-            return
-
-        progress.info(f"Found {len(matched)} image(s) to refresh")
-
-        refreshed = 0
-        unchanged = 0
-        for img in matched:
-            src = img.update_source
-            assert src is not None
-            label = f"{src.alias} from {src.server}"
-
-            try:
-                assert img.fingerprint is not None
-
-                progress.info(f"Refreshing: {label}")
-                op_id = await self._incus.refresh_image(img.fingerprint)
-                op = await wait_operation_with_progress(
-                    self._incus,
-                    op_id,
-                    progress,
-                    description=f"Refreshing {label}...",
-                    timeout=300,
-                )
-                # Incus' refresh op signals whether anything actually
-                # changed via metadata["refreshed"]: True means it
-                # downloaded a new fingerprint, False means the cached
-                # simplestreams index reported the same version as the
-                # locally stored image (or the cache TTL hadn't
-                # expired and it never re-checked the upstream).
-                # Default to False on missing/malformed metadata --
-                # we'd rather under-report a successful refresh than
-                # claim one that didn't happen.
-                op_refreshed = bool(
-                    (op.metadata or {}).get("refreshed", False)
-                )
-
-                if op.status == "Success":
-                    if op_refreshed:
-                        progress.success(f"Refreshed: {label}")
-                        refreshed += 1
-                    else:
-                        progress.info(f"Already up to date: {label}")
-                        unchanged += 1
-                else:
-                    progress.warning(
-                        f"Refresh returned status '{op.status}' for {label}"
-                    )
-            except IncusError as e:
-                progress.error(f"Failed to refresh {label}: {e}")
-
-        # Distinguish between the three outcomes so users can tell
-        # whether 'image refresh' actually did anything. Failures are
-        # implicit: matched - refreshed - unchanged.
-        total = len(matched)
-        failed = total - refreshed - unchanged
-        if refreshed == 0 and failed == 0:
-            progress.success(f"All {total} image(s) already up to date")
-        elif unchanged == 0 and failed == 0:
-            progress.success(f"Refreshed {refreshed}/{total} image(s)")
-        else:
-            parts: list[str] = [f"refreshed {refreshed}"]
-            if unchanged:
-                parts.append(f"{unchanged} already up to date")
-            if failed:
-                parts.append(f"{failed} failed")
-            progress.success(f"Of {total} image(s): {', '.join(parts)}")
-
-    @operation(
-        "import_image",
-        description="Importing image: {alias}",
-        target_param="alias",
-    )
-    async def import_image(
-        self,
-        progress: OperationReporter,
-        *,
-        path: str,
-        alias: str,
-    ) -> None:
-        """Import a split image from a local directory.
-
-        Expects the directory to contain ``incus.tar.xz`` (metadata)
-        and ``rootfs.squashfs`` (root filesystem).  If an image with
-        the given alias already exists it is replaced.
-
-        Args:
-            progress: Operation reporter (auto-injected)
-            path: Path to a directory containing the image files
-            alias: Alias name to assign to the imported image
-        """
-        image_dir = Path(path)
-        meta_path = image_dir / "incus.tar.xz"
-        rootfs_path = image_dir / "rootfs.squashfs"
-
-        if not image_dir.is_dir():
-            raise OperationError(f"Image directory does not exist: {path}")
-        if not meta_path.is_file():
-            raise OperationError(f"Missing metadata file: {meta_path}")
-        if not rootfs_path.is_file():
-            raise OperationError(f"Missing rootfs file: {rootfs_path}")
-
-        # Replace existing image with the same alias
-        old_fingerprint = await self._incus.get_image_fingerprint_by_alias(alias)
-        if old_fingerprint:
-            progress.info(f"Replacing existing image with alias '{alias}'")
-            async with incus_context("delete old image"):
-                await self._incus.delete_image(old_fingerprint)
-
-        progress.info("Uploading image...")
-        async with incus_context("import image"):
-            fingerprint = await self._incus.import_image(
-                meta_path, rootfs_path, [alias]
-            )
-
-        progress.success(f"Image imported: {fingerprint}")
-
-    async def list_images(self) -> list[Image]:
-        """List all images.
-
-        Returns:
-            List of Image objects from the Incus API
-        """
-        return await self._incus.list_images()
-
-    @operation(
-        "delete_image",
-        description="Deleting image: {identifier}",
-        target_param="identifier",
-    )
-    async def delete_image(
-        self,
-        progress: OperationReporter,
-        *,
-        identifier: str,
-    ) -> None:
-        """Delete an image by alias or fingerprint.
-
-        If *identifier* is shorter than 64 characters it is treated as
-        an alias and resolved to a fingerprint first.
-
-        Args:
-            progress: Operation reporter (auto-injected)
-            identifier: Image alias or full SHA-256 fingerprint
-        """
-        if len(identifier) < 64:
-            # Treat as alias
-            fingerprint = await self._incus.get_image_fingerprint_by_alias(identifier)
-            if not fingerprint:
-                raise OperationError(f"No image found with alias '{identifier}'")
-        else:
-            fingerprint = identifier
-
-        progress.info(f"Deleting image {fingerprint[:12]}...")
-        async with incus_context("delete image"):
-            await self._incus.delete_image(fingerprint)
-
-        progress.success("Image deleted")
 
     # -------------------------------------------------------------------------
     # Query Methods (non-operation, synchronous response)

@@ -100,7 +100,16 @@ cleanup_test_containers() {
 # non-fatal (network blips, CI lag) — the cached image will be used as fallback.
 refresh_kapsule_image() {
     log_info "Refreshing kapsule:archlinux on the test target..."
-    if ssh_vm "kapsule image refresh kapsule:archlinux" 2>&1; then
+    local fingerprint
+    fingerprint=$(ssh_vm "kapsule image list --format=json" \
+        | jq -r 'map(select(
+            .update_source.alias == "archlinux"
+            and .update_source.server == "https://storage.kde.org/kapsule-images/simplestreams"
+        )) | first | .fingerprint // empty')
+
+    if [[ -z "$fingerprint" ]]; then
+        log_info "No cached kapsule:archlinux image to refresh"
+    elif ssh_vm "kapsule image refresh '$fingerprint'" 2>&1; then
         log_info "Image refresh complete"
     else
         echo -e "${YELLOW}WARNING: Image refresh failed; tests will use cached image${NC}"

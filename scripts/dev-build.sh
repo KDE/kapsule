@@ -26,14 +26,13 @@ if ! sudo images/build-image.sh "$IMAGE_DIR/" "$OUTPUT_DIR/"; then
 fi
 
 echo "Deploying $IMAGE to $REMOTE ..."
-# Stage under /var/lib/kapsule/imports/ which the daemon can access
-# (the systemd unit has ProtectSystem=strict + PrivateTmp=true)
+# Stage under /var/lib/kapsule/imports/ so the image is accessible remotely.
 REMOTE_DIR="/var/lib/kapsule/imports/$IMAGE"
 ssh "root@$REMOTE" "mkdir -p $REMOTE_DIR"
 scp "$OUTPUT_DIR/incus.tar.xz" "$OUTPUT_DIR/rootfs.squashfs" "root@$REMOTE:$REMOTE_DIR/"
 
 echo "Importing $IMAGE on $REMOTE ..."
-ssh "fernie@$REMOTE" "kapsule image import $REMOTE_DIR/ --alias $IMAGE"
+ssh "fernie@$REMOTE" "kapsule image import '$REMOTE_DIR/' --alias '$IMAGE' --reuse"
 ssh "root@$REMOTE" "rm -rf $REMOTE_DIR"
 
 echo "Image ready. Use: kapsule create <name> -i local:$IMAGE"

@@ -74,7 +74,7 @@ async def parse_image_source(ctx: CreateContext) -> None:
         server_alias, image_alias = image.split(":", 1)
 
         # "local:" references images already present in the Incus local image
-        # store (imported via `kapsule image import`).  No remote server or
+        # store (for example, imported via `incus image import`). No remote server or
         # simplestreams metadata is involved.
         if server_alias == "local":
             ctx.source = InstanceSource(
