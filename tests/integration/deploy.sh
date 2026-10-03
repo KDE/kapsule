@@ -24,7 +24,7 @@ case $KAPSULE_TEST_TARGET in
         ;;
     ssh|kde-linux-vm)
         echo "Building Kapsule system extension..."
-        sudo mkosi --directory="$project_root/sysext" build
+        sudo mkosi --directory="$project_root/sysext" build --force
         [[ -f $image ]] || {
             echo "Built system extension not found: $image" >&2
             exit 1

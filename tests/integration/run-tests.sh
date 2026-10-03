@@ -105,7 +105,7 @@ prepare_kapsule_image() {
     if ssh_vm "kapsule image info kapsule-archlinux" &>/dev/null; then
         image_command="kapsule image refresh kapsule-archlinux"
     else
-        image_command="kapsule image copy kapsule:archlinux local: --alias kapsule-archlinux --auto-update --reuse"
+        image_command="kapsule image copy kapsule:archlinux local: --alias kapsule-archlinux --auto-update"
     fi
 
     if ssh_vm "$image_command" 2>&1; then
