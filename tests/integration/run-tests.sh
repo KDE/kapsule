@@ -95,24 +95,23 @@ cleanup_test_containers() {
     ssh_vm 'for c in $(incus list -c n -f csv | grep "^test-"); do incus delete "$c" --force 2>/dev/null || true; done' || true
 }
 
-# Refresh kapsule:archlinux to ensure tests run against the latest published
-# image, not whatever the daemon happens to have cached. Failures here are
-# non-fatal (network blips, CI lag) — the cached image will be used as fallback.
-refresh_kapsule_image() {
-    log_info "Refreshing kapsule:archlinux on the test target..."
-    local fingerprint
-    fingerprint=$(ssh_vm "kapsule image list --format=json" \
-        | jq -r 'map(select(
-            .update_source.alias == "archlinux"
-            and .update_source.server == "https://storage.kde.org/kapsule-images/simplestreams"
-        )) | first | .fingerprint // empty')
-
-    if [[ -z "$fingerprint" ]]; then
-        log_info "No cached kapsule:archlinux image to refresh"
-    elif ssh_vm "kapsule image refresh '$fingerprint'" 2>&1; then
-        log_info "Image refresh complete"
+# Keep kapsule:archlinux in the local store under a stable alias. This ensures
+# tests use the latest published image and gives native Incus commands a local
+# name for managing it. Failures are non-fatal so an existing cached image can
+# still be used during a transient network or publishing failure.
+prepare_kapsule_image() {
+    log_info "Preparing kapsule:archlinux on the test target..."
+    local image_command
+    if ssh_vm "kapsule image info kapsule-archlinux" &>/dev/null; then
+        image_command="kapsule image refresh kapsule-archlinux"
     else
-        echo -e "${YELLOW}WARNING: Image refresh failed; tests will use cached image${NC}"
+        image_command="kapsule image copy kapsule:archlinux local: --alias kapsule-archlinux --auto-update --reuse"
+    fi
+
+    if ssh_vm "$image_command" 2>&1; then
+        log_info "Image is ready"
+    else
+        echo -e "${YELLOW}WARNING: Image preparation failed; tests will use a cached image if available${NC}"
     fi
 }
 
@@ -394,7 +393,7 @@ if [[ "$DEPLOY" == "true" ]]; then
 fi
 
 cleanup_test_containers
-refresh_kapsule_image
+prepare_kapsule_image
 
 if [[ "$PYTHON_ONLY" != "true" ]]; then
     run_shell_tests
