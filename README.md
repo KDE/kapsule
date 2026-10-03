@@ -34,38 +34,51 @@ kapsule enter my-dev
 # - Docker/Podman capability
 ```
 
-## Installation
+## Development
 
-### For Development
+Kapsule includes a purpose-built `kapsule:kapsule-dev` image containing the
+Arch Linux build toolchain, Qt, KDE Frameworks, QCoro, Python development
+tools, and a configured `kde-builder`. This is the supported development
+environment and avoids requiring the same dependency versions on the host.
 
-```bash
-# Install with pip (editable mode)
-pip install -e .
-```
-
-### Using kde-builder
-
-Add to your `~/.config/kde-builder.yaml`:
-
-```yaml
-project kapsule:
-  repository: kde:fernando/kapsule
-  branch: master
-  cmake-options: -DBUILD_KDE_COMPONENTS=ON -DINSTALL_PYTHON_CLI=ON -DVENDOR_PYTHON_DEPS=ON
-```
-
-Then run:
+A working Kapsule installation is required to bootstrap the development
+container. Create it from a terminal whose home contains a KDE source tree at
+`~/kde`:
 
 ```bash
-kde-builder kapsule
+kapsule create kapsule-dev --image kapsule:kapsule-dev
+kapsule enter kapsule-dev
 ```
 
-#### CMake Options
+The image does not mount the complete host home directory. It mounts `~/kde`
+at the same path so source, build output, and logs persist when the development
+container is recreated. Clone the repository at `~/kde/src/kapsule` if it is
+not already there.
+
+Build and install Kapsule inside the development container:
+
+```bash
+cd ~/kde/src/kapsule
+kde-builder --no-src kapsule
+sudo systemctl daemon-reload
+sudo systemctl restart kapsule-daemon.service
+```
+
+The development image installs directly into `/usr`. Overwriting its packaged
+Kapsule is intentional: the container is disposable, while the mounted
+`~/kde` tree remains on the host. Recreate the container to return to a clean
+environment.
+
+Do not use `pip install -e .` as a project installation method. Kapsule's
+user-facing CLI and Qt library are C++, and the Python daemon must be installed
+with its systemd and D-Bus integration through CMake.
+
+### CMake Options
 
 | Option | Description |
 |--------|-------------|
 | `BUILD_KDE_COMPONENTS` | Build Qt/KDE libraries (libkapsule-qt) |
-| `INSTALL_PYTHON_CLI` | Install the Python CLI tool |
+| `INSTALL_PYTHON_DAEMON` | Install the Python daemon and system integration |
 | `VENDOR_PYTHON_DEPS` | Bundle Python dependencies with the installation |
 
 ## Commands
@@ -137,6 +150,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed technical document
 
 ## Requirements
 
+- CMake >= 3.27
+- Qt >= 6.6
+- KDE Frameworks >= 6.0
+- QCoro
 - Python >= 3.11
 - Incus
 - systemd
@@ -150,3 +167,68 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed technical document
 ## Contributing
 
 This project is part of KDE. See https://community.kde.org/Get_Involved for how to contribute.
+
+### Integration Tests
+
+The integration suite has three targets. Every target runs the same shell and
+Python tests from `tests/integration/`; only the command transport changes.
+
+The default target is the current `kapsule-dev` container. It tests the Kapsule
+already installed in the container and does not build or deploy anything:
+
+```bash
+tests/integration/run-tests.sh
+```
+
+Use `--deploy` to build the current checkout, install it into the development
+container's `/usr`, restart the daemon, and then run the tests:
+
+```bash
+tests/integration/run-tests.sh --deploy
+```
+
+An existing machine can be tested over SSH:
+
+```bash
+tests/integration/run-tests.sh --ssh user@example.org
+```
+
+The SSH account must have passwordless `sudo` for tests that modify host
+configuration. Set `KAPSULE_TEST_SSH_ROOT_TARGET=root@example.org` instead when
+the target permits direct root login. Additional options such as a non-default
+port or identity file can be supplied with `KAPSULE_TEST_SSH_OPTIONS`.
+
+The repository can also manage a disposable KDE Linux live VM. By default it
+uses `kde-linux_202609272131.iso` in the repository root; override that with
+`KAPSULE_KDE_LINUX_ISO` when needed:
+
+```bash
+tests/integration/run-tests.sh --target kde-linux-vm
+```
+
+Deployment is always separate and opt-in. Add `--deploy` to install the current
+checkout into the local development container or to build and activate its
+system extension on an SSH/VM target:
+
+```bash
+tests/integration/run-tests.sh --target kde-linux-vm --deploy
+```
+
+The managed VM can also be controlled directly:
+
+```bash
+tests/integration/kde-linux-vm.sh start
+tests/integration/kde-linux-vm.sh ssh
+tests/integration/kde-linux-vm.sh stop
+```
+
+The KDE Linux VM path relies on the following validated behavior:
+
+- The live ISO boots under QEMU with UEFI firmware.
+- An EROFS disk labeled `kde-openqa-ext` injects the SSH bootstrap.
+- QEMU user networking forwards a host TCP port to guest port 22.
+- The live session provisions working btrfs-backed Incus storage.
+- QEMU VNC exposes the Plasma desktop for manual testing.
+
+The default VNC endpoint is `vnc://127.0.0.1:5905`; the VM launcher prints the
+actual SSH and VNC endpoints after startup.

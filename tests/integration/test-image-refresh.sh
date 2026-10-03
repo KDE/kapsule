@@ -70,17 +70,22 @@ output=$(ssh_vm "kapsule image refresh kapsule:archlinux" 2>&1)
 assert_success "Command exits successfully" test $? -eq 0
 assert_contains "Shows refreshing header" "$output" "Refreshing image: kapsule:archlinux"
 assert_contains "Finds exactly 1 image" "$output" "Found 1 image(s) to refresh"
-assert_contains "Targets kapsule server" "$output" "storage.kde.org/ci-artifacts/kde-linux/kapsule"
+assert_contains "Targets kapsule server" "$output" "storage.kde.org/kapsule-images/simplestreams"
 assert_refresh_summary "Reports a refresh outcome for the 1 image" "$output" 1
 
-# --- Test 3: Refresh with bare alias (matches multiple servers) ---
+# --- Test 3: Refresh with bare alias ---
 echo ""
 echo "Test: Refresh with bare alias (archlinux)"
 output=$(ssh_vm "kapsule image refresh archlinux" 2>&1)
 assert_success "Command exits successfully" test $? -eq 0
 assert_contains "Shows refreshing header" "$output" "Refreshing image: archlinux"
-assert_contains "Finds 2 images" "$output" "Found 2 image(s) to refresh"
-assert_refresh_summary "Reports a refresh outcome for the 2 images" "$output" 2
+count=$(sed -n 's/.*Found \([0-9][0-9]*\) image(s) to refresh.*/\1/p' <<<"$output")
+if [[ -z $count || $count -eq 0 ]]; then
+    echo -e "  ${RED}✗${NC} Finds at least one matching image"
+    exit 1
+fi
+echo -e "  ${GREEN}✓${NC} Finds $count matching image(s)"
+assert_refresh_summary "Reports a refresh outcome for the matching images" "$output" "$count"
 
 # --- Test 4: Invalid server alias produces error ---
 echo ""

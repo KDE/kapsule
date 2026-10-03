@@ -8,14 +8,16 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 
 import pytest
 
 # ---------------------------------------------------------------------------
-# VM configuration
+# Target configuration
 # ---------------------------------------------------------------------------
 
-TEST_VM = os.environ.get("KAPSULE_TEST_VM", "redshirt")
+TEST_TARGET = os.environ.get("KAPSULE_TEST_TARGET", "local")
+SSH_TARGET = os.environ.get("KAPSULE_TEST_SSH_TARGET")
 SSH_OPTS = [
     "-o",
     "ConnectTimeout=5",
@@ -34,11 +36,17 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 async def ssh_run_on_vm(*cmd: str) -> asyncio.subprocess.Process:
-    """Run a command on the test VM over SSH and return the process.
+    """Run a command on the selected target and return the process.
 
     The caller can ``await proc.wait()`` or read stdout/stderr as needed.
     """
-    full_cmd = ["ssh", *SSH_OPTS, TEST_VM, *cmd]
+    if TEST_TARGET == "local":
+        full_cmd = list(cmd)
+    else:
+        if SSH_TARGET is None:
+            raise RuntimeError("KAPSULE_TEST_SSH_TARGET is required for SSH targets")
+        extra_options = shlex.split(os.environ.get("KAPSULE_TEST_SSH_OPTIONS", ""))
+        full_cmd = ["ssh", *SSH_OPTS, *extra_options, SSH_TARGET, *cmd]
     return await asyncio.create_subprocess_exec(
         *full_cmd,
         stdout=asyncio.subprocess.DEVNULL,

@@ -60,7 +60,7 @@ echo "2. Install Docker and Podman inside container"
 # fails to start without mkfs.erofs available). If this test is ever
 # pointed at a stock LCI image like images:archlinux, add erofs-utils
 # back here.
-kapsule_exec "$CONTAINER_NAME" "sudo pacman -Syu --noconfirm podman docker" || {
+kapsule_exec "$CONTAINER_NAME" "sudo pacman -Syu --noconfirm podman fuse-overlayfs docker" || {
     echo "Docker/Podman installation failed"
     cleanup_container "$CONTAINER_NAME"
     exit 1

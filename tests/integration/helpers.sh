@@ -12,10 +12,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Test VM configuration
-TEST_VM="${KAPSULE_TEST_VM:-redshirt}"
-SSH_OPTS="-o ConnectTimeout=5 -o StrictHostKeyChecking=no -o LogLevel=ERROR"
+source "$SCRIPT_DIR/target.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -24,11 +21,11 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # ============================================================================
-# SSH Helpers
+# Target Helpers
 # ============================================================================
 
 ssh_vm() {
-    ssh $SSH_OPTS "$TEST_VM" "$@"
+    target_exec "$@"
 }
 
 # ============================================================================

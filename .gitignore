@@ -30,3 +30,5 @@ tests/integration/fixtures/test-image/mkosi.cache/
 .opencode/index
 
 /.clang-format
+
+/kde-linux_*.iso

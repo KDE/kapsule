@@ -5,16 +5,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 # Integration test runner for Kapsule
-# Deploys sysext to test VM and runs all integration tests
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-# Test VM configuration
-TEST_VM="${KAPSULE_TEST_VM:-redshirt}"
-SSH_OPTS="-o ConnectTimeout=5 -o StrictHostKeyChecking=no"
+source "$SCRIPT_DIR/target.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -52,32 +48,31 @@ log_skip() {
 }
 
 ssh_vm() {
-    ssh $SSH_OPTS "$TEST_VM" "$@"
+    target_exec "$@"
 }
 
-scp_to_vm() {
-    scp $SSH_OPTS "$1" "$TEST_VM:$2"
-}
-
-# Check VM is reachable
-check_vm() {
-    log_info "Checking test VM at $TEST_VM..."
-    if ! ssh_vm "echo 'VM reachable'" &>/dev/null; then
-        echo -e "${RED}ERROR: Cannot reach test VM at $TEST_VM${NC}"
-        echo "Set KAPSULE_TEST_VM environment variable to override"
+# Check target is reachable and has Kapsule installed.
+check_target() {
+    log_info "Checking $(target_description)..."
+    if ! target_exec true &>/dev/null; then
+        echo -e "${RED}ERROR: Cannot reach $(target_description)${NC}"
         exit 1
     fi
-    log_info "VM is reachable"
-}
-
-# Deploy latest sysext to VM
-deploy_sysext() {
-    log_info "Deploying sysext to test VM..."
-    if ! "$PROJECT_ROOT/deploy-to-lasaths-test-vm.sh"; then
-        echo -e "${RED}ERROR: Failed to deploy sysext${NC}"
+    if ! target_exec "command -v kapsule >/dev/null && command -v incus >/dev/null"; then
+        echo -e "${RED}ERROR: Kapsule or Incus is not installed on the selected target${NC}"
         exit 1
     fi
-    log_info "Sysext deployed successfully"
+    log_info "Target is ready"
+}
+
+# Deploy current checkout to the selected target.
+deploy_kapsule() {
+    log_info "Deploying current checkout to $(target_description)..."
+    if ! "$SCRIPT_DIR/deploy.sh"; then
+        echo -e "${RED}ERROR: Failed to deploy Kapsule${NC}"
+        exit 1
+    fi
+    log_info "Deployment completed"
     
     # Wait for daemon to be ready
     log_info "Waiting for kapsule-daemon to be ready..."
@@ -104,7 +99,7 @@ cleanup_test_containers() {
 # image, not whatever the daemon happens to have cached. Failures here are
 # non-fatal (network blips, CI lag) — the cached image will be used as fallback.
 refresh_kapsule_image() {
-    log_info "Refreshing kapsule:archlinux on test VM..."
+    log_info "Refreshing kapsule:archlinux on the test target..."
     if ssh_vm "kapsule image refresh kapsule:archlinux" 2>&1; then
         log_info "Image refresh complete"
     else
@@ -217,36 +212,48 @@ run_python_tests() {
     local dbus_sock="/tmp/kapsule-test-dbus-$$.sock"
     rm -f "$dbus_sock"
 
-    log_info "Opening SSH tunnel for D-Bus system bus..."
-    ssh $SSH_OPTS -fNT \
-        -L "$dbus_sock:/run/dbus/system_bus_socket" \
-        "$TEST_VM"
-    local ssh_tunnel_pid=$!
+    local ssh_tunnel_pid=""
+    if [[ $KAPSULE_TEST_TARGET != local ]]; then
+        local options
+        target_ssh_options options
+        log_info "Opening SSH tunnel for D-Bus system bus..."
+        ssh "${options[@]}" -NT \
+            -L "$dbus_sock:/run/dbus/system_bus_socket" \
+            "$KAPSULE_TEST_SSH_TARGET" &
+        ssh_tunnel_pid=$!
 
     # Give the tunnel a moment to establish
-    sleep 1
+        sleep 1
 
-    if [[ ! -S "$dbus_sock" ]]; then
-        echo -e "${RED}ERROR: D-Bus tunnel socket was not created${NC}"
-        kill "$ssh_tunnel_pid" 2>/dev/null || true
-        log_fail "Python tests (tunnel setup)"
-        return 0
+        if [[ ! -S $dbus_sock ]]; then
+            echo -e "${RED}ERROR: D-Bus tunnel socket was not created${NC}"
+            kill "$ssh_tunnel_pid" 2>/dev/null || true
+            log_fail "Python tests (tunnel setup)"
+            return 0
+        fi
     fi
 
     # Run pytest locally, pointing D-Bus at the tunnel and passing
     # the VM address so tests can run incus commands over SSH.
     echo ""
-    log_info "Running pytest locally (D-Bus tunnelled to VM)..."
-    if DBUS_SYSTEM_BUS_ADDRESS="unix:path=$dbus_sock" \
-       KAPSULE_TEST_VM="$TEST_VM" \
-       python3 -m pytest "$SCRIPT_DIR" -v --tb=short 2>&1; then
+    log_info "Running pytest locally against the selected target..."
+    if [[ $KAPSULE_TEST_TARGET != local ]]; then
+        if DBUS_SYSTEM_BUS_ADDRESS="unix:path=$dbus_sock" \
+           python3 -m pytest "$SCRIPT_DIR" -v --tb=short 2>&1; then
+            log_pass "Python tests"
+        else
+            log_fail "Python tests"
+        fi
+    elif python3 -m pytest "$SCRIPT_DIR" -v --tb=short 2>&1; then
         log_pass "Python tests"
     else
         log_fail "Python tests"
     fi
 
     # Tear down the tunnel
-    kill "$ssh_tunnel_pid" 2>/dev/null || true
+    if [[ -n $ssh_tunnel_pid ]]; then
+        kill "$ssh_tunnel_pid" 2>/dev/null || true
+    fi
     rm -f "$dbus_sock"
 }
 
@@ -258,29 +265,37 @@ print_usage() {
     cat <<EOF
 Usage: $0 [OPTIONS] [TEST_PATTERN]
 
-Run Kapsule integration tests against a test VM.
+Run the Kapsule integration tests against the selected target.
 
 Options:
     -h, --help          Show this help
-    -n, --no-deploy     Skip sysext deployment (use existing)
+    -t, --target TARGET local (default), ssh, or kde-linux-vm
+    --ssh TARGET        SSH destination (implies --target ssh)
+    -d, --deploy        Deploy the current checkout before testing
     -c, --cleanup-only  Only cleanup test containers, don't run tests
     -s, --shell-only    Only run shell tests
     -p, --python-only   Only run Python tests
     -k, --keep          Don't cleanup test containers after tests
 
 Environment:
-    KAPSULE_TEST_VM     Test VM address (default: redshirt)
+    KAPSULE_TEST_SSH_TARGET       user@host for the ssh target
+    KAPSULE_TEST_SSH_ROOT_TARGET  privileged user@host when different
+    KAPSULE_TEST_SSH_OPTIONS      additional ssh/scp options
+    KAPSULE_KDE_LINUX_ISO         managed VM ISO path
 
 Examples:
-    $0                  Deploy and run all tests
-    $0 -n               Run tests without redeploying
+    $0                          Test installed Kapsule locally
+    $0 --deploy                Deploy locally, then test
+    $0 --ssh user@example.org Test an existing SSH target
+    $0 -t kde-linux-vm         Start and test the managed live VM
+    $0 -t kde-linux-vm -d      Deploy a sysext to the VM, then test
     $0 -s               Only run shell tests
     $0 test-create      Run only tests matching 'test-create'
 EOF
 }
 
 # Parse arguments
-DEPLOY=true
+DEPLOY=false
 CLEANUP_ONLY=false
 SHELL_ONLY=false
 PYTHON_ONLY=false
@@ -293,8 +308,19 @@ while [[ $# -gt 0 ]]; do
             print_usage
             exit 0
             ;;
-        -n|--no-deploy)
-            DEPLOY=false
+        -t|--target)
+            KAPSULE_TEST_TARGET=${2:?--target requires local, ssh, or kde-linux-vm}
+            export KAPSULE_TEST_TARGET
+            shift 2
+            ;;
+        --ssh)
+            KAPSULE_TEST_TARGET=ssh
+            KAPSULE_TEST_SSH_TARGET=${2:?--ssh requires user@host}
+            export KAPSULE_TEST_TARGET KAPSULE_TEST_SSH_TARGET
+            shift 2
+            ;;
+        -d|--deploy)
+            DEPLOY=true
             shift
             ;;
         -c|--cleanup-only)
@@ -327,7 +353,26 @@ echo "  Kapsule Integration Tests"
 echo "======================================"
 echo ""
 
-check_vm
+case $KAPSULE_TEST_TARGET in
+    local|ssh|kde-linux-vm) ;;
+    *)
+        echo -e "${RED}ERROR: Unknown target '$KAPSULE_TEST_TARGET' (expected local, ssh, or kde-linux-vm)${NC}"
+        exit 2
+        ;;
+esac
+
+if [[ $KAPSULE_TEST_TARGET == kde-linux-vm ]]; then
+    "$SCRIPT_DIR/kde-linux-vm.sh" start
+    eval "$("$SCRIPT_DIR/kde-linux-vm.sh" connection)"
+    export KAPSULE_TEST_SSH_TARGET KAPSULE_TEST_SSH_ROOT_TARGET KAPSULE_TEST_SSH_OPTIONS
+fi
+
+if [[ $KAPSULE_TEST_TARGET == ssh && -z ${KAPSULE_TEST_SSH_TARGET:-} ]]; then
+    echo -e "${RED}ERROR: --target ssh requires --ssh or KAPSULE_TEST_SSH_TARGET${NC}"
+    exit 2
+fi
+
+check_target
 
 if [[ "$CLEANUP_ONLY" == "true" ]]; then
     cleanup_test_containers
@@ -336,7 +381,7 @@ if [[ "$CLEANUP_ONLY" == "true" ]]; then
 fi
 
 if [[ "$DEPLOY" == "true" ]]; then
-    deploy_sysext
+    deploy_kapsule
 fi
 
 cleanup_test_containers

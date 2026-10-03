@@ -32,7 +32,7 @@ trap 'cleanup_container "$CONTAINER"' EXIT
 # ============================================================================
 
 ssh_vm_root() {
-    ssh $SSH_OPTS "root@${TEST_VM#*@}" "$@"
+    target_exec_root "$@"
 }
 
 exec_in_container() {
@@ -46,7 +46,7 @@ get_host_timezone() {
 }
 
 get_host_locale() {
-    ssh_vm "cat /etc/locale.conf"
+    ssh_vm "localectl status --no-pager | sed -n 's/^[[:space:]]*System Locale: //p'"
 }
 
 set_host_timezone() {
@@ -72,8 +72,10 @@ echo "  Host locale:   $ORIG_LOCALE"
 
 restore_host_config() {
     set_host_timezone "$ORIG_TZ" 2>/dev/null || true
-    # localectl set-locale expects KEY=VALUE format
-    set_host_locale "$ORIG_LOCALE" 2>/dev/null || true
+    # localectl set-locale expects KEY=VALUE format.
+    if [[ -n $ORIG_LOCALE ]]; then
+        set_host_locale "$ORIG_LOCALE" 2>/dev/null || true
+    fi
     cleanup_container "$CONTAINER"
 }
 trap restore_host_config EXIT
